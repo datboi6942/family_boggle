@@ -10,32 +10,40 @@ const LETTER_SCORES: Record<string, number> = {
   'D': 2, 'G': 2, 'U': 2, 'C': 2, 'M': 2, 'P': 2, 'B': 2,
   'H': 3, 'F': 3, 'W': 3, 'Y': 3, 'V': 3, 'K': 3,
   'J': 5, 'X': 5,
-  'Q': 8, 'Z': 8
+  'Q': 8, 'Z': 8,
+  'QU': 10  // QU tile is worth more (Q + U value)
 };
 
 // Memoized cell component to prevent unnecessary re-renders
-const Cell = memo(({ 
-  letter, 
-  isSelected, 
-  isFirst, 
-  isLast, 
-  isBlocked, 
-  pathIndex 
-}: { 
-  letter: string; 
-  isSelected: boolean; 
-  isFirst: boolean; 
-  isLast: boolean; 
-  isBlocked: boolean; 
+const Cell = memo(({
+  letter,
+  isSelected,
+  isFirst,
+  isLast,
+  isBlocked,
+  pathIndex
+}: {
+  letter: string;
+  isSelected: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  isBlocked: boolean;
   pathIndex: number;
 }) => {
   const points = LETTER_SCORES[letter.toUpperCase()] ?? 1;
-  
+  const isQU = letter.toUpperCase() === 'QU';
+
+  // Display "Qu" with smaller 'u' for the QU tile
+  const displayLetter = isQU ? (
+    <span>Q<span className="text-[0.7em]">u</span></span>
+  ) : letter;
+
   return (
     <div
       className={`
-        aspect-square frosted-glass flex items-center justify-center text-2xl sm:text-3xl font-black
+        aspect-square frosted-glass flex items-center justify-center font-black
         relative rounded-xl transition-transform duration-75
+        ${isQU ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'}
         ${isSelected ? 'bg-primary/80 border-2 border-white scale-105 z-10' : 'bg-white/5 border border-white/10'}
         ${isFirst ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-transparent' : ''}
         ${isLast && !isFirst ? 'bg-white text-primary' : ''}
@@ -51,7 +59,7 @@ const Cell = memo(({
           {pathIndex + 1}
         </span>
       )}
-      {letter}
+      {displayLetter}
       {/* Letter point value */}
       <span className={`absolute bottom-0.5 right-1 text-[8px] sm:text-[10px] font-bold ${isSelected || (isLast && !isFirst) ? 'text-white/70' : 'text-primary/70'}`}>
         {points}
