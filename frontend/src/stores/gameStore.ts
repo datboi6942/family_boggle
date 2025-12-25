@@ -25,11 +25,23 @@ interface PersistedState {
   hostId: string | null;
 }
 
+interface WordAward {
+  word: string;
+  points: number;
+  is_unique: boolean;
+  finders: {
+    player_id: string;
+    username: string;
+    character: string;
+  }[];
+}
+
 interface GameState extends PersistedState {
   // Transient state (not persisted)
   lastWordResult: { valid: boolean; points?: number; powerup?: string; reason?: string } | null;
   winner: any | null;
   results: any[] | null;
+  wordAwards: WordAward[] | null;
   blockedCells: [number, number][];
   isFrozen: boolean;
 
@@ -64,8 +76,9 @@ export const useGameStore = create<GameState>()(
   hostId: null,
   lastWordResult: null,
   winner: null,
-  results: null,
-  blockedCells: [],
+    results: null,
+    wordAwards: null,
+    blockedCells: [],
   isFrozen: false,
 
   setLobbyId: (id) => set({ lobbyId: id }),
@@ -83,6 +96,7 @@ export const useGameStore = create<GameState>()(
     // Clear game-specific state when returning to lobby
     board: data.board || [],
     results: null,
+    wordAwards: null,
     winner: null,
     lastWordResult: null,
     blockedCells: [],
@@ -102,7 +116,8 @@ export const useGameStore = create<GameState>()(
   setGameEnd: (data) => set({
     status: 'summary',
     results: data.results,
-    winner: data.winner
+    winner: data.winner,
+    wordAwards: data.word_awards
   }),
   setPowerup: (data: any) => {
     if (data.type === 'freeze') {
@@ -125,6 +140,7 @@ export const useGameStore = create<GameState>()(
     lastWordResult: null,
     winner: null,
     results: null,
+    wordAwards: null,
     blockedCells: [],
     isFrozen: false,
   }),

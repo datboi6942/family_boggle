@@ -138,24 +138,46 @@ class GameEngine:
         }
 
     def finalize_scores(self, lobby_id: str) -> dict:
-        """Calculates final scores with uniqueness bonuses."""
+        """Calculates final scores with uniqueness bonuses and word award details."""
         if lobby_id not in self.lobbies:
             return {}
             
         lobby = self.lobbies[lobby_id]
-        # Count occurrences of each word across all players
-        word_counts: Dict[str, int] = {}
+        # Count occurrences of each word across all players and track who found them
+        word_data: Dict[str, Dict] = {}
         for p in lobby.players:
             for word in p.found_words:
-                word_counts[word] = word_counts.get(word, 0) + 1
+                if word not in word_data:
+                    word_data[word] = {
+                        "word": word,
+                        "finders": [],
+                        "is_unique": False,
+                        "points": 0
+                    }
+                word_data[word]["finders"].append({
+                    "player_id": p.id,
+                    "username": p.username,
+                    "character": p.character
+                })
+
+        # Process each word to determine uniqueness and points
+        word_awards = []
+        for word, data in word_data.items():
+            is_unique = len(data["finders"]) == 1
+            data["is_unique"] = is_unique
+            data["points"] = calculate_word_score(word, is_unique=is_unique)
+            word_awards.append(data)
+
+        # Sort words by length (shortest first) to build excitement
+        word_awards.sort(key=lambda x: len(x["word"]))
                 
-        # Recalculate scores with unique bonus
+        # Recalculate final results for leaderboard
         final_results = []
         for p in lobby.players:
             p.score = 0
             for word in p.found_words:
-                is_unique = word_counts[word] == 1
-                p.score += calculate_word_score(word, is_unique=is_unique)
+                # We can reuse the points from word_data
+                p.score += word_data[word]["points"]
             
             final_results.append({
                 "username": p.username,
@@ -166,7 +188,11 @@ class GameEngine:
             
         # Sort by score
         final_results.sort(key=lambda x: x["score"], reverse=True)
-        return {"results": final_results, "winner": final_results[0] if final_results else None}
+        return {
+            "results": final_results, 
+            "winner": final_results[0] if final_results else None,
+            "word_awards": word_awards
+        }
 
     def reset_lobby(self, lobby_id: str) -> bool:
         """Resets a lobby for a new game.
