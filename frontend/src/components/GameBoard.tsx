@@ -359,38 +359,42 @@ export const GameBoard = () => {
 
   return (
     <div 
-      className="game-board-container flex flex-col bg-navy-gradient text-white select-none"
+      className="game-board-container flex flex-col h-full bg-navy-gradient min-h-screen text-white select-none"
       style={{ 
-        height: '100dvh',
-        maxHeight: '100dvh',
-        overflow: 'hidden',
-        paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)', 
-        paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)', 
-        paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)', 
-        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' 
+        paddingTop: 'env(safe-area-inset-top, 8px)', 
+        paddingLeft: 'env(safe-area-inset-left, 8px)', 
+        paddingRight: 'env(safe-area-inset-right, 8px)', 
+        paddingBottom: 'env(safe-area-inset-bottom, 8px)' 
       }}
     >
-      {/* Header - Fixed height, always visible */}
-      <div className={`flex-shrink-0 flex justify-between items-center px-4 py-2 frosted-glass rounded-xl mb-2 ${isFrozen ? 'border-2 border-blue-400' : ''}`}>
-        {/* Timer */}
-        <TimerDisplay formattedTimer={formattedTimer} isFrozen={isFrozen} />
-
-        {/* Current Word (center) */}
-        {currentWord && (
-          <div className="text-lg font-black tracking-wide text-primary truncate max-w-[40%]">
-            {currentWord}
+      {/* Header - Compact for mobile */}
+      <div className={`z-30 py-1.5 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
+        <div className="flex justify-between items-center gap-2">
+          {/* Timer */}
+          <div className={`frosted-glass px-2 py-1 flex items-center gap-1.5 shrink-0 ${isFrozen ? 'border-blue-400 border-2 bg-blue-500/20' : ''}`}>
+            {isFrozen ? <Snowflake className="w-4 h-4 animate-spin text-blue-400" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+            <span className={`text-lg font-black font-mono tabular-nums ${isFrozen ? 'text-blue-400' : ''}`}>{formattedTimer}</span>
           </div>
-        )}
 
-        {/* Score */}
-        <div className="flex items-center gap-1">
-          <span className="text-white/50 text-sm font-bold">PTS</span>
-          <span className="text-xl font-black text-primary">{me?.score || 0}</span>
+          {/* Current Word (center) */}
+          <div className="flex-1 text-center min-w-0 overflow-hidden">
+            {currentWord && (
+              <div className="text-lg font-black tracking-wider text-primary truncate">
+                {currentWord}
+              </div>
+            )}
+          </div>
+
+          {/* Score */}
+          <div className="frosted-glass px-2 py-1 text-right shrink-0">
+            <p className="text-lg font-black text-primary leading-none">{me?.score || 0}</p>
+          </div>
         </div>
       </div>
 
-      {/* The Board - Flexible middle section */}
-      <div className="flex-1 flex items-center justify-center min-h-0 min-w-0 p-2 overflow-hidden">
+      {/* The Board */}
+      <div className="flex-1 w-full max-h-[calc(100vh-140px)] aspect-square mx-auto mb-2 px-1">
+        {/* Grid of letters - this is the ref for position calculations */}
         <div 
           ref={boardRef}
           onMouseDown={handleStart}
@@ -400,22 +404,17 @@ export const GameBoard = () => {
           onTouchStart={handleStart}
           onTouchMove={handleMove}
           onTouchEnd={handleEnd}
-          className="relative grid gap-2"
+          className="relative grid gap-2 w-full h-full"
           style={{ 
             gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
-            gridTemplateRows: `repeat(${boardSize}, 1fr)`,
-            touchAction: 'none',
-            /* Square board: use aspect-ratio with height constraint */
-            aspectRatio: '1 / 1',
-            height: '100%',
-            maxWidth: '100%',
+            touchAction: 'none' 
           }}
         >
-          {/* SVG Overlay for connecting lines */}
+          {/* SVG Overlay for connecting lines - positioned relative to grid */}
           {linePath && (
-            <svg
+            <svg 
               className="absolute inset-0 w-full h-full pointer-events-none z-20"
-              style={{ overflow: 'visible', willChange: 'contents' }}
+              style={{ overflow: 'visible' }}
             >
               {/* Glow effect (render first, behind main line) */}
               <path
@@ -437,8 +436,6 @@ export const GameBoard = () => {
               />
             </svg>
           )}
-
-          {/* Grid cells */}
           {board.map((row, r) => row.map((letter, c) => {
             const key = `${r}-${c}`;
             const pathIndex = pathSet.get(key) ?? -1;
