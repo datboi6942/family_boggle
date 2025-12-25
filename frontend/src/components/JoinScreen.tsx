@@ -17,10 +17,8 @@ export const JoinScreen = () => {
       audio.playMenuMusic();
       musicStartedRef.current = true;
     }
-    return () => {
-      musicStartedRef.current = false;
-    };
-  }, [audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleStart = (mode: 'create' | 'join') => {
     if (!username) return;

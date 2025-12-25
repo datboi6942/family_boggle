@@ -87,17 +87,15 @@ export const GameBoard = () => {
   const musicStartedRef = useRef(false);
   const lastTimerRef = useRef<number>(timer);
 
-  // Start gameplay music when game begins
+  // Start gameplay music when game begins (run once on mount)
   useEffect(() => {
     if (!musicStartedRef.current) {
       audio.playGameStart();
       audio.playGameplayMusic();
       musicStartedRef.current = true;
     }
-    return () => {
-      musicStartedRef.current = false;
-    };
-  }, [audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Timer sounds
   useEffect(() => {
@@ -113,7 +111,8 @@ export const GameBoard = () => {
       }
       lastTimerRef.current = timer;
     }
-  }, [timer, audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timer]);
 
   // Word result sounds
   useEffect(() => {
@@ -129,20 +128,23 @@ export const GameBoard = () => {
         audio.playWordInvalid();
       }
     }
-  }, [lastWordResult, audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastWordResult]);
 
   // Frozen/powerup sounds
   useEffect(() => {
     if (isFrozen) {
       audio.playPowerupFreeze();
     }
-  }, [isFrozen, audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFrozen]);
 
   useEffect(() => {
     if (blockedCells.length > 0) {
       audio.playPowerupBomb();
     }
-  }, [blockedCells, audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockedCells]);
 
   // Cache board dimensions on drag start for performance
   const updateBoardRect = useCallback(() => {
@@ -194,7 +196,8 @@ export const GameBoard = () => {
       audio.playLetterChain(currentPath.length);
     }
     prevPathLengthRef.current = currentPath.length;
-  }, [currentPath.length, audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPath.length]);
 
   const handleStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault();

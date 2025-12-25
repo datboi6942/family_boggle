@@ -21,10 +21,8 @@ export const Lobby = () => {
       audio.playMenuMusic();
       musicStartedRef.current = true;
     }
-    return () => {
-      musicStartedRef.current = false;
-    };
-  }, [audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const copyToClipboard = () => {
     if (lobbyId) {

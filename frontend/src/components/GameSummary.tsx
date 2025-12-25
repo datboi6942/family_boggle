@@ -31,10 +31,8 @@ export const GameSummary = () => {
       audio.playSummaryMusic();
       musicStartedRef.current = true;
     }
-    return () => {
-      musicStartedRef.current = false;
-    };
-  }, [audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     // If there are no word awards to animate, skip to longest-word or celebration
@@ -82,7 +80,8 @@ export const GameSummary = () => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [phase, audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   const handleAnimationsComplete = () => {
     // After word awards, show longest word animation if available

@@ -50,7 +50,8 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
         setTimeout(() => audio.playUniqueWordBonus(), 200);
       }
     }
-  }, [currentIndex, wordAwards, audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, wordAwards]);
 
   const handleWordComplete = () => {
     if (!wordAwards) return;

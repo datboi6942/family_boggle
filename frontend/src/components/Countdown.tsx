@@ -15,10 +15,8 @@ export const Countdown = () => {
       audio.playCountdownRiser();
       musicStartedRef.current = true;
     }
-    return () => {
-      musicStartedRef.current = false;
-    };
-  }, [audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Play countdown sounds on timer change
   useEffect(() => {
@@ -30,7 +28,8 @@ export const Countdown = () => {
       }
       lastTimerRef.current = timer;
     }
-  }, [timer, audio]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timer]);
 
   return (
     <div className="flex items-center justify-center h-full bg-navy-gradient">
