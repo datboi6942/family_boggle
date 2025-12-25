@@ -1,6 +1,7 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
+import { useAudioContext } from '../contexts/AudioContext';
 import { MonsterAvatar } from './MonsterAvatar';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
@@ -10,8 +11,10 @@ import { Trophy, Sparkles, ChevronDown, ChevronUp, Check, X } from 'lucide-react
 export const GameSummary = () => {
   const { results, winner, wordAwards, longestWordFound, longestPossibleWord, allPossibleWords, totalPossibleWords, resetSession } = useGameStore();
   const { send } = useWebSocketContext();
+  const audio = useAudioContext();
   const [phase, setPhase] = useState<'animating' | 'longest-word' | 'celebrating'>('animating');
   const [showAllWords, setShowAllWords] = useState(false);
+  const musicStartedRef = useRef(false);
 
   // Calculate which words were found by players
   const foundWordsSet = useMemo(() => {
@@ -21,6 +24,17 @@ export const GameSummary = () => {
   }, [results]);
 
   const totalFoundWords = foundWordsSet.size;
+
+  // Start summary music
+  useEffect(() => {
+    if (!musicStartedRef.current) {
+      audio.playSummaryMusic();
+      musicStartedRef.current = true;
+    }
+    return () => {
+      musicStartedRef.current = false;
+    };
+  }, [audio]);
 
   useEffect(() => {
     // If there are no word awards to animate, skip to longest-word or celebration
@@ -36,6 +50,10 @@ export const GameSummary = () => {
   useEffect(() => {
     let interval: any;
     if (phase === 'celebrating') {
+      // Play victory sounds
+      audio.playVictoryFanfare();
+      audio.playConfettiBurst();
+
       confetti({
         particleCount: 200,
         spread: 100,
@@ -57,11 +75,14 @@ export const GameSummary = () => {
         const particleCount = 50 * (timeLeft / duration);
         confetti({ ...defaults, particleCount, origin: { x: Math.random(), y: Math.random() - 0.2 } });
       }, 250);
+    } else if (phase === 'longest-word') {
+      // Play longest word award sound
+      audio.playLongestWordAward();
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [phase]);
+  }, [phase, audio]);
 
   const handleAnimationsComplete = () => {
     // After word awards, show longest word animation if available

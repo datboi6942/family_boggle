@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback, useMemo, memo } from 'react';
+import { useState, useRef, useCallback, useMemo, memo, useEffect } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
+import { useAudioContext } from '../contexts/AudioContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Snowflake, Bomb, RotateCw } from 'lucide-react';
 
@@ -77,11 +78,71 @@ Cell.displayName = 'Cell';
 export const GameBoard = () => {
   const { playerId, board, boardSize, timer, lastWordResult, players, blockedCells, isFrozen } = useGameStore();
   const { send } = useWebSocketContext();
-  
+  const audio = useAudioContext();
+
   const [currentPath, setCurrentPath] = useState<[number, number][]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const boardRectRef = useRef<DOMRect | null>(null);
+  const musicStartedRef = useRef(false);
+  const lastTimerRef = useRef<number>(timer);
+
+  // Start gameplay music when game begins
+  useEffect(() => {
+    if (!musicStartedRef.current) {
+      audio.playGameStart();
+      audio.playGameplayMusic();
+      musicStartedRef.current = true;
+    }
+    return () => {
+      musicStartedRef.current = false;
+    };
+  }, [audio]);
+
+  // Timer sounds
+  useEffect(() => {
+    if (timer !== lastTimerRef.current) {
+      // Timer warning when 10 seconds or less
+      if (timer <= 10 && timer > 0) {
+        audio.playTimerWarning();
+      }
+      // Game end sound
+      if (timer === 0 && lastTimerRef.current > 0) {
+        audio.playGameEnd();
+        audio.stopMusic();
+      }
+      lastTimerRef.current = timer;
+    }
+  }, [timer, audio]);
+
+  // Word result sounds
+  useEffect(() => {
+    if (lastWordResult) {
+      if (lastWordResult.valid) {
+        audio.playWordValid();
+        if (lastWordResult.powerup) {
+          setTimeout(() => audio.playPowerupEarned(), 200);
+        }
+      } else if (lastWordResult.reason === 'Already found') {
+        audio.playWordAlreadyFound();
+      } else {
+        audio.playWordInvalid();
+      }
+    }
+  }, [lastWordResult, audio]);
+
+  // Frozen/powerup sounds
+  useEffect(() => {
+    if (isFrozen) {
+      audio.playPowerupFreeze();
+    }
+  }, [isFrozen, audio]);
+
+  useEffect(() => {
+    if (blockedCells.length > 0) {
+      audio.playPowerupBomb();
+    }
+  }, [blockedCells, audio]);
 
   // Cache board dimensions on drag start for performance
   const updateBoardRect = useCallback(() => {
@@ -125,6 +186,16 @@ export const GameBoard = () => {
     return null;
   }, [boardSize]);
 
+  // Track path length changes for letter chain sounds
+  const prevPathLengthRef = useRef(0);
+  useEffect(() => {
+    if (currentPath.length > prevPathLengthRef.current && currentPath.length > 0) {
+      // Path grew - play chain sound based on length
+      audio.playLetterChain(currentPath.length);
+    }
+    prevPathLengthRef.current = currentPath.length;
+  }, [currentPath.length, audio]);
+
   const handleStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault();
     updateBoardRect();
@@ -132,8 +203,9 @@ export const GameBoard = () => {
     if (cell) {
       setIsDragging(true);
       setCurrentPath([cell]);
+      audio.playLetterSelect();
     }
-  }, [getCellFromTouch, updateBoardRect]);
+  }, [getCellFromTouch, updateBoardRect, audio]);
 
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isDragging) return;
@@ -326,7 +398,12 @@ export const GameBoard = () => {
             <button
               key={p}
               disabled={count === 0}
-              onClick={() => send('use_powerup', { powerup: p })}
+              onClick={() => {
+                send('use_powerup', { powerup: p });
+                if (p === 'shuffle') {
+                  audio.playPowerupShuffle();
+                }
+              }}
               className={`
                 relative p-4 rounded-2xl frosted-glass transition-all
                 ${count > 0 ? 'bg-primary/20 border-primary animate-pulse' : 'opacity-50'}

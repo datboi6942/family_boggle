@@ -1,15 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../stores/gameStore';
+import { useAudioContext } from '../contexts/AudioContext';
 import { MONSTERS, MonsterAvatar } from './MonsterAvatar';
 import { motion } from 'framer-motion';
 import { Leaderboard } from './Leaderboard';
 
 export const JoinScreen = () => {
   const { setUsername, setCharacter, setLobbyId, setPlayerId, setStatus, setMode, username, character } = useGameStore();
+  const audio = useAudioContext();
   const [lobbyInput, setLobbyInput] = useState('');
+  const musicStartedRef = useRef(false);
+
+  // Start menu music on join screen
+  useEffect(() => {
+    if (!musicStartedRef.current) {
+      audio.playMenuMusic();
+      musicStartedRef.current = true;
+    }
+    return () => {
+      musicStartedRef.current = false;
+    };
+  }, [audio]);
 
   const handleStart = (mode: 'create' | 'join') => {
     if (!username) return;
+
+    audio.playButtonClick();
 
     const pId = Math.random().toString(36).substring(7);
     setPlayerId(pId);
@@ -49,7 +65,11 @@ export const JoinScreen = () => {
           {MONSTERS.map((m) => (
             <button
               key={m.name}
-              onClick={() => setCharacter(m.name)}
+              onClick={() => {
+                audio.playButtonClick();
+                setCharacter(m.name);
+              }}
+              onMouseEnter={() => audio.playButtonHover()}
               className={`aspect-square rounded-lg border-2 transition-all overflow-hidden flex items-center justify-center ${character === m.name ? 'border-primary bg-primary/20 scale-110' : 'border-transparent'}`}
             >
               <MonsterAvatar name={m.name} size={36} animated={true} />

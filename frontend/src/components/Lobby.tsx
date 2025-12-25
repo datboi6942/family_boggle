@@ -1,20 +1,35 @@
+import { useEffect, useRef } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
+import { useAudioContext } from '../contexts/AudioContext';
 import { MonsterAvatar } from './MonsterAvatar';
 import { motion } from 'framer-motion';
 
 export const Lobby = () => {
   const { lobbyId, playerId, players, hostId, boardSize } = useGameStore();
   const { send } = useWebSocketContext();
+  const audio = useAudioContext();
+  const musicStartedRef = useRef(false);
 
   const isHost = hostId === playerId;
   const me = players.find(p => p.id === playerId);
   const { resetSession } = useGameStore();
 
+  // Start menu music
+  useEffect(() => {
+    if (!musicStartedRef.current) {
+      audio.playMenuMusic();
+      musicStartedRef.current = true;
+    }
+    return () => {
+      musicStartedRef.current = false;
+    };
+  }, [audio]);
+
   const copyToClipboard = () => {
     if (lobbyId) {
+      audio.playButtonClick();
       navigator.clipboard.writeText(lobbyId);
-      // Optional: add a toast or feedback here
     }
   };
 
@@ -61,7 +76,10 @@ export const Lobby = () => {
             {[4, 5, 6].map(size => (
               <button
                 key={size}
-                onClick={() => send('set_board_size', { size })}
+                onClick={() => {
+                  audio.playButtonClick();
+                  send('set_board_size', { size });
+                }}
                 className={`w-12 h-12 rounded-xl font-bold transition-all ${boardSize === size ? 'bg-primary scale-110' : 'bg-white/10'}`}
               >
                 {size}x{size}
@@ -73,6 +91,8 @@ export const Lobby = () => {
 
       <button
         onClick={() => {
+          audio.playButtonClick();
+          audio.stopMusic();
           resetSession();
         }}
         className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-white/50 active:scale-95 transition-all mb-2"
@@ -81,7 +101,10 @@ export const Lobby = () => {
       </button>
 
       <button
-        onClick={() => send('toggle_ready')}
+        onClick={() => {
+          audio.playButtonClick();
+          send('toggle_ready');
+        }}
         className={`w-full py-6 rounded-2xl font-black text-2xl shadow-xl active:scale-95 transition-all ${me?.is_ready ? 'bg-success/20 border-2 border-success text-success' : 'bg-primary'}`}
       >
         {me?.is_ready ? 'UNREADY' : 'READY TO PLAY'}

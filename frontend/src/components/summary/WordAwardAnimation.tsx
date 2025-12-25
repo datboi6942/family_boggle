@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../../stores/gameStore';
+import { useAudioContext } from '../../contexts/AudioContext';
 import { PlayerScoreCard } from './PlayerScoreCard';
 import { FlyingWord } from './FlyingWord';
 
@@ -10,6 +11,7 @@ interface WordAwardAnimationProps {
 
 export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCompleted }) => {
   const { wordAwards, players, results } = useGameStore();
+  const audio = useAudioContext();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playerScores, setPlayerScores] = useState<Record<string, number>>(
     players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
@@ -39,10 +41,24 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
     return () => window.removeEventListener('resize', updatePositions);
   }, [players]);
 
+  // Play reveal sound when showing a new word
+  useEffect(() => {
+    if (wordAwards && wordAwards.length > 0) {
+      audio.playWordAwardReveal();
+      // Play unique word bonus sound if it's a unique word
+      if (wordAwards[currentIndex]?.is_unique) {
+        setTimeout(() => audio.playUniqueWordBonus(), 200);
+      }
+    }
+  }, [currentIndex, wordAwards, audio]);
+
   const handleWordComplete = () => {
     if (!wordAwards) return;
 
     const currentWord = wordAwards[currentIndex];
+
+    // Play points landing sound
+    audio.playPointsLand();
 
     // Update local scores
     const newScores = { ...playerScores };
@@ -55,6 +71,7 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
     if (currentIndex < wordAwards.length - 1) {
       setTimeout(() => setCurrentIndex(currentIndex + 1), 100);
     } else {
+      audio.playFinalScoreReveal();
       setTimeout(() => onAllCompleted(newScores), 300);
     }
   };
