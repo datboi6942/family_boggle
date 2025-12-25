@@ -1,9 +1,5 @@
-{
-    auto_https off
-}
-
-:2727 {
-    tls internal
+api.bluecollarx.co {
+    # Caddy will automatically get a Let's Encrypt certificate
     
     # Proxy WebSocket connections to backend
     handle /ws/* {
