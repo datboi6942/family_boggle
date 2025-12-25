@@ -1,16 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { MonsterAvatar } from './MonsterAvatar';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { WordAwardAnimation } from './summary/WordAwardAnimation';
-import { Trophy, Sparkles } from 'lucide-react';
+import { Trophy, Sparkles, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
 
 export const GameSummary = () => {
-  const { results, winner, wordAwards, longestWordFound, longestPossibleWord, resetSession } = useGameStore();
+  const { results, winner, wordAwards, longestWordFound, longestPossibleWord, allPossibleWords, totalPossibleWords, resetSession } = useGameStore();
   const { send } = useWebSocketContext();
   const [phase, setPhase] = useState<'animating' | 'longest-word' | 'celebrating'>('animating');
+  const [showAllWords, setShowAllWords] = useState(false);
+
+  // Calculate which words were found by players
+  const foundWordsSet = useMemo(() => {
+    const set = new Set<string>();
+    results?.forEach(r => r.words.forEach(w => set.add(w.toUpperCase())));
+    return set;
+  }, [results]);
+
+  const totalFoundWords = foundWordsSet.size;
 
   useEffect(() => {
     // If there are no word awards to animate, skip to longest-word or celebration
@@ -174,25 +184,111 @@ export const GameSummary = () => {
               <p className="text-primary font-black text-2xl mt-2">{winner?.score} PTS</p>
             </div>
 
-            {/* Longest Possible Word Section */}
-            {longestPossibleWord && (
+            {/* Board Words Summary Section */}
+            {allPossibleWords && allPossibleWords.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
                 className="max-w-2xl mx-auto w-full mb-6"
               >
-                <div className="frosted-glass p-4 border border-yellow-500/30 bg-yellow-500/5">
-                  <div className="flex items-center justify-between">
+                <div className="frosted-glass p-4 border border-white/10">
+                  {/* Stats Row */}
+                  <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <Sparkles className="w-5 h-5 text-yellow-500" />
+                      <Sparkles className="w-5 h-5 text-primary" />
                       <div>
-                        <p className="text-[10px] text-yellow-500/70 uppercase font-bold tracking-wider">Longest Possible Word</p>
-                        <p className="text-xl font-black text-yellow-500 uppercase tracking-tight">{longestPossibleWord}</p>
+                        <p className="text-[10px] text-white/50 uppercase font-bold tracking-wider">Board Statistics</p>
+                        <p className="text-lg font-black text-white">
+                          <span className="text-green-400">{totalFoundWords}</span>
+                          <span className="text-white/40"> / </span>
+                          <span className="text-white/70">{totalPossibleWords}</span>
+                          <span className="text-white/40 text-sm ml-2">words found</span>
+                        </p>
                       </div>
                     </div>
-                    <span className="text-yellow-500/50 font-bold">{longestPossibleWord.length} letters</span>
+                    <div className="text-right">
+                      <p className="text-2xl font-black text-primary">
+                        {totalPossibleWords > 0 ? Math.round((totalFoundWords / totalPossibleWords) * 100) : 0}%
+                      </p>
+                      <p className="text-[10px] text-white/40 uppercase">discovered</p>
+                    </div>
                   </div>
+
+                  {/* Longest Possible Word */}
+                  {longestPossibleWord && (
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] text-yellow-500/70 uppercase font-bold tracking-wider">Longest Possible</p>
+                          <p className="text-lg font-black text-yellow-500 uppercase tracking-tight">{longestPossibleWord}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-yellow-500/50 font-bold">{longestPossibleWord.length} letters</span>
+                          {foundWordsSet.has(longestPossibleWord.toUpperCase()) ? (
+                            <Check className="w-5 h-5 text-green-400" />
+                          ) : (
+                            <X className="w-5 h-5 text-red-400/50" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expand/Collapse Button */}
+                  <button
+                    onClick={() => setShowAllWords(!showAllWords)}
+                    className="w-full flex items-center justify-center gap-2 py-2 text-white/50 hover:text-white/80 transition-colors"
+                  >
+                    <span className="text-xs font-bold uppercase">
+                      {showAllWords ? 'Hide' : 'Show'} All {totalPossibleWords} Words
+                    </span>
+                    {showAllWords ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+
+                  {/* All Words Grid */}
+                  <AnimatePresence>
+                    {showAllWords && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="border-t border-white/10 pt-3 mt-2">
+                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1 max-h-[300px] overflow-y-auto">
+                            {allPossibleWords.map((word, i) => {
+                              const wasFound = foundWordsSet.has(word.toUpperCase());
+                              return (
+                                <div
+                                  key={`${word}-${i}`}
+                                  className={`px-2 py-1 rounded text-xs font-bold text-center truncate ${
+                                    wasFound
+                                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                      : 'bg-white/5 text-white/30 border border-white/10'
+                                  }`}
+                                  title={word}
+                                >
+                                  {word}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center justify-center gap-4 mt-3 text-[10px] text-white/40">
+                            <span className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-green-500/20 border border-green-500/30" />
+                              Found
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded bg-white/5 border border-white/10" />
+                              Missed
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </motion.div>
             )}

@@ -18,7 +18,7 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Blobby',
     color: '#22c55e',
-    bodyAnimation: { y: [0, -8, 0], scaleY: [1, 0.85, 1.1, 1], scaleX: [1, 1.1, 0.9, 1] },
+    bodyAnimation: { scaleY: [1, 0.88, 1.08, 1], scaleX: [1, 1.08, 0.92, 1] },
     eyeAnimation: { scaleY: [1, 0.1, 1] },
     transitionDuration: 1.5,
     shape: 'blob',
@@ -28,8 +28,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Spike',
     color: '#8b5cf6',
-    bodyAnimation: { scale: [1, 1.05, 1], rotate: [0, 3, -3, 0] },
-    eyeAnimation: { x: [-2, 2, -2] },
+    bodyAnimation: { scale: [1, 1.08, 1], rotate: [0, 5, -5, 0] },
+    eyeAnimation: { scaleX: [1, 0.9, 1.1, 1] },
     transitionDuration: 2,
     shape: 'star',
     eyeStyle: 'angry',
@@ -49,8 +49,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Floaty',
     color: '#3b82f6',
-    bodyAnimation: { y: [-5, 5, -5], rotate: [-2, 2, -2] },
-    eyeAnimation: { y: [-1, 1, -1] },
+    bodyAnimation: { scaleY: [0.95, 1.05, 0.95], rotate: [-2, 2, -2] },
+    eyeAnimation: { scaleY: [1, 0.8, 1] },
     transitionDuration: 3,
     shape: 'ghost',
     eyeStyle: 'sleepy',
@@ -59,7 +59,7 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Grumble',
     color: '#ef4444',
-    bodyAnimation: { x: [-3, 3, -3], scaleY: [1, 0.95, 1] },
+    bodyAnimation: { rotate: [-3, 3, -3], scaleY: [1, 0.95, 1] },
     eyeAnimation: { rotate: [0, 5, 0] },
     transitionDuration: 1.2,
     shape: 'square',
@@ -70,7 +70,7 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Zippy',
     color: '#eab308',
-    bodyAnimation: { x: [-5, 5, -10, 10, 0], y: [-3, 3, -3] },
+    bodyAnimation: { rotate: [-8, 8, -8, 8, 0], scale: [1, 1.1, 0.95, 1.05, 1] },
     eyeAnimation: { scale: [1, 1.2, 1] },
     transitionDuration: 0.6,
     shape: 'triangle',
@@ -80,7 +80,7 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Mossy',
     color: '#166534',
-    bodyAnimation: { rotate: [0, 2, -2, 0] },
+    bodyAnimation: { rotate: [0, 3, -3, 0] },
     transitionDuration: 4,
     shape: 'blob',
     eyeStyle: 'sleepy',
@@ -90,7 +90,7 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Pebble',
     color: '#6b7280',
-    bodyAnimation: { scale: [1, 0.98, 1], y: [0, 1, 0] },
+    bodyAnimation: { scale: [1, 0.96, 1.02, 1] },
     eyeAnimation: { scaleY: [1, 0.1, 1] },
     transitionDuration: 5,
     shape: 'square',
@@ -100,7 +100,7 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Bubbles',
     color: '#ec4899',
-    bodyAnimation: { y: [0, -10, 0], scale: [1, 1.05, 1] },
+    bodyAnimation: { scaleY: [1, 0.9, 1.1, 1], scale: [1, 1.05, 1] },
     eyeAnimation: { scale: [1, 1.3, 1] },
     transitionDuration: 1.8,
     shape: 'circle',
@@ -111,7 +111,7 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Shadow',
     color: '#1f2937',
-    bodyAnimation: { scale: [1, 1.1, 0.95, 1], opacity: [0.7, 1, 0.7] },
+    bodyAnimation: { scale: [1, 1.08, 0.95, 1], opacity: [0.7, 1, 0.7] },
     eyeAnimation: { opacity: [1, 0.5, 1] },
     transitionDuration: 2.5,
     shape: 'ghost',

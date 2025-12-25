@@ -82,6 +82,8 @@ interface GameState extends PersistedState {
   wordAwards: WordAward[] | null;
   longestWordFound: LongestWordFound | null;
   longestPossibleWord: string | null;
+  allPossibleWords: string[] | null;
+  totalPossibleWords: number;
   challenges: ChallengeDefinition[];
   blockedCells: [number, number][];
   isFrozen: boolean;
@@ -121,6 +123,8 @@ export const useGameStore = create<GameState>()(
   wordAwards: null,
   longestWordFound: null,
   longestPossibleWord: null,
+  allPossibleWords: null,
+  totalPossibleWords: 0,
   challenges: [],
   blockedCells: [],
   isFrozen: false,
@@ -165,7 +169,9 @@ export const useGameStore = create<GameState>()(
     winner: data.winner,
     wordAwards: data.word_awards,
     longestWordFound: data.longest_word_found || null,
-    longestPossibleWord: data.longest_possible_word || null
+    longestPossibleWord: data.longest_possible_word || null,
+    allPossibleWords: data.all_possible_words || null,
+    totalPossibleWords: data.total_possible_words || 0
   }),
   setPowerup: (data: any, myPlayerId?: string) => {
     if (data.type === 'freeze') {
@@ -197,6 +203,8 @@ export const useGameStore = create<GameState>()(
     wordAwards: null,
     longestWordFound: null,
     longestPossibleWord: null,
+    allPossibleWords: null,
+    totalPossibleWords: 0,
     challenges: [],
     blockedCells: [],
     isFrozen: false,

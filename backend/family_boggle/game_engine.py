@@ -215,16 +215,20 @@ class GameEngine:
                 "character": finder["character"]
             }
 
-        # Find the longest possible word on the board
+        # Find all possible words on the board
+        all_possible_words: List[str] = []
         longest_possible_word = ""
         if self.board_gen:
             try:
-                longest_possible_word = self.board_gen.find_longest_possible_word(
+                all_possible_words = self.board_gen.find_all_valid_words(
                     self.validator.get_word_set(),
                     self.validator.get_prefix_set()
                 )
+                # Sort by length (longest first), then alphabetically
+                all_possible_words.sort(key=lambda w: (-len(w), w))
+                longest_possible_word = all_possible_words[0] if all_possible_words else ""
             except Exception as e:
-                logger.warning("failed_to_find_longest_word", error=str(e))
+                logger.warning("failed_to_find_possible_words", error=str(e))
 
         # Recalculate final results for leaderboard
         final_results = []
@@ -286,7 +290,9 @@ class GameEngine:
             "winner": winner,
             "word_awards": word_awards,
             "longest_word_found": longest_word_found,
-            "longest_possible_word": longest_possible_word
+            "longest_possible_word": longest_possible_word,
+            "all_possible_words": all_possible_words,
+            "total_possible_words": len(all_possible_words)
         }
 
     def leave_lobby(self, lobby_id: str, player_id: str) -> bool:
