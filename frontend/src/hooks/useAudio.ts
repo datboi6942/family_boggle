@@ -52,6 +52,46 @@ const MUSIC = {
 // Audio cache to avoid reloading
 const audioCache: Map<string, HTMLAudioElement> = new Map();
 
+// Track if audio has been unlocked (required on mobile)
+let audioUnlocked = false;
+
+function unlockAudio(): void {
+  if (audioUnlocked) return;
+  
+  // Create a silent audio context to unlock audio on mobile
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContext) {
+      const ctx = new AudioContext();
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+      ctx.resume();
+    }
+    audioUnlocked = true;
+    console.log('Audio unlocked');
+  } catch (e) {
+    console.warn('Failed to unlock audio:', e);
+  }
+}
+
+// Unlock audio on first user interaction
+if (typeof window !== 'undefined') {
+  const unlockHandler = () => {
+    unlockAudio();
+    document.removeEventListener('touchstart', unlockHandler);
+    document.removeEventListener('touchend', unlockHandler);
+    document.removeEventListener('click', unlockHandler);
+    document.removeEventListener('keydown', unlockHandler);
+  };
+  document.addEventListener('touchstart', unlockHandler, { passive: true });
+  document.addEventListener('touchend', unlockHandler, { passive: true });
+  document.addEventListener('click', unlockHandler, { passive: true });
+  document.addEventListener('keydown', unlockHandler, { passive: true });
+}
+
 function getAudio(src: string): HTMLAudioElement {
   if (!audioCache.has(src)) {
     const audio = new Audio(src);
@@ -164,19 +204,30 @@ export function useAudio(): AudioManager {
   const playSfx = useCallback((src: string, volume?: number) => {
     if (isMuted) return;
 
+    // Ensure audio is unlocked
+    unlockAudio();
+
     try {
       const audio = getAudio(src);
       audio.volume = volume ?? sfxVolume;
       audio.currentTime = 0;
-      audio.play().catch(() => {
-        // Ignore autoplay errors
-      });
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((e) => {
+          // Try to unlock and play again
+          unlockAudio();
+          console.warn('Audio play failed:', e.message);
+        });
+      }
     } catch (e) {
       // Ignore audio errors
     }
   }, [isMuted, sfxVolume]);
 
   const playMusic = useCallback((src: string, loop: boolean = true) => {
+    // Ensure audio is unlocked
+    unlockAudio();
+
     try {
       const audio = getAudio(src);
 
@@ -198,9 +249,12 @@ export function useAudio(): AudioManager {
       // Only reset if not already playing
       if (audio.paused) {
         audio.currentTime = 0;
-        audio.play().catch(() => {
-          // Ignore autoplay errors
-        });
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((e) => {
+            console.warn('Music play failed:', e.message);
+          });
+        }
       }
 
       currentMusicRef.current = audio;

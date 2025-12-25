@@ -332,9 +332,18 @@ export const GameBoard = () => {
   const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
   return (
-    <div className="game-board-container flex flex-col bg-navy-gradient h-[100dvh] text-white select-none overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top, 4px)', paddingLeft: 'env(safe-area-inset-left, 4px)', paddingRight: 'env(safe-area-inset-right, 4px)', paddingBottom: 'env(safe-area-inset-bottom, 4px)' }}>
-      {/* Header - Compact but visible */}
-      <div className={`flex justify-between items-center px-3 py-2 frosted-glass mx-2 mt-1 rounded-xl ${isFrozen ? 'border border-blue-400' : ''}`}>
+    <div 
+      className="game-board-container flex flex-col bg-navy-gradient text-white select-none overflow-hidden"
+      style={{ 
+        height: '100dvh',
+        paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)', 
+        paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)', 
+        paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)', 
+        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' 
+      }}
+    >
+      {/* Header - Fixed height, always visible */}
+      <div className={`flex-shrink-0 flex justify-between items-center px-4 py-3 frosted-glass rounded-xl ${isFrozen ? 'border-2 border-blue-400' : ''}`}>
         {/* Timer */}
         <TimerDisplay formattedTimer={formattedTimer} isFrozen={isFrozen} />
 
@@ -352,10 +361,17 @@ export const GameBoard = () => {
         </div>
       </div>
 
-
-      {/* The Board - Takes remaining space */}
-      <div className="flex-1 flex items-center justify-center p-1 min-h-0">
-        <div className="relative w-full h-full max-w-[min(100%,100vh-120px)] max-h-[min(100%,100vw)] aspect-square mx-auto">
+      {/* The Board - Flexible middle section */}
+      <div className="flex-1 flex items-center justify-center py-2 min-h-0 overflow-hidden">
+        <div 
+          className="relative aspect-square"
+          style={{
+            width: 'min(100%, calc(100dvh - 180px))',
+            height: 'min(100%, calc(100dvh - 180px))',
+            maxWidth: '100%',
+            maxHeight: '100%'
+          }}
+        >
         {/* SVG Overlay for connecting lines */}
         {linePath && (
           <svg
