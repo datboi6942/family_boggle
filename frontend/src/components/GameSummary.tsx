@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { useAudioContext } from '../contexts/AudioContext';
@@ -16,9 +16,18 @@ export const GameSummary = () => {
   const [showAllWords, setShowAllWords] = useState(false);
   const musicStartedRef = useRef(false);
 
-  // Keep a ref to audio so effects can access latest version
-  const audioRef = useRef(audio);
-  audioRef.current = audio;
+  // Stable audio function refs that always use the latest audio context
+  const playSummaryMusic = useCallback(() => {
+    audio.stopMusic();
+    // Small delay to ensure clean transition
+    setTimeout(() => {
+      audio.playSummaryMusic();
+    }, 100);
+  }, [audio]);
+
+  const playVictoryFanfare = useCallback(() => audio.playVictoryFanfare(), [audio]);
+  const playConfettiBurst = useCallback(() => audio.playConfettiBurst(), [audio]);
+  const playLongestWordAward = useCallback(() => audio.playLongestWordAward(), [audio]);
 
   // Calculate which words were found by players
   const foundWordsSet = useMemo(() => {
@@ -32,16 +41,10 @@ export const GameSummary = () => {
   // Start summary music when summary phase begins
   useEffect(() => {
     if (!musicStartedRef.current) {
-      // Stop any existing music first (gameplay music)
-      audioRef.current.stopMusic();
-      // Small delay to ensure clean transition
-      const timeoutId = setTimeout(() => {
-        audioRef.current.playSummaryMusic();
-      }, 100);
       musicStartedRef.current = true;
-      return () => clearTimeout(timeoutId);
+      playSummaryMusic();
     }
-  }, []);
+  }, [playSummaryMusic]);
 
   useEffect(() => {
     // If there are no word awards to animate, skip to longest-word or celebration
@@ -55,11 +58,11 @@ export const GameSummary = () => {
   }, [wordAwards, longestWordFound, phase]);
 
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (phase === 'celebrating') {
       // Play victory sounds
-      audioRef.current.playVictoryFanfare();
-      audioRef.current.playConfettiBurst();
+      playVictoryFanfare();
+      playConfettiBurst();
 
       confetti({
         particleCount: 100,
@@ -84,12 +87,12 @@ export const GameSummary = () => {
       }, 300);
     } else if (phase === 'longest-word') {
       // Play longest word award sound
-      audioRef.current.playLongestWordAward();
+      playLongestWordAward();
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [phase]);
+  }, [phase, playVictoryFanfare, playConfettiBurst, playLongestWordAward]);
 
   const handleAnimationsComplete = () => {
     // After word awards, show longest word animation if available
