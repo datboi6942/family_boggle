@@ -1,6 +1,4 @@
-api.bluecollarx.co {
-    # Caddy will automatically get a Let's Encrypt certificate
-    
+:80 {
     # Proxy WebSocket connections to backend
     handle /ws/* {
         reverse_proxy backend:8000
