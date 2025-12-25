@@ -27,16 +27,16 @@ export const JoinScreen = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-start sm:justify-center h-full p-6 space-y-6 bg-navy-gradient min-h-screen pt-12 sm:pt-0 overflow-y-auto">
+    <div className="flex flex-col items-center justify-start sm:justify-center min-h-screen p-6 pb-12 space-y-6 bg-navy-gradient pt-12 sm:pt-6 overflow-y-auto">
       <motion.h1
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-pink-500 italic"
+        className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-pink-500 italic shrink-0"
       >
         FAMILY BOGGLE
       </motion.h1>
 
-      <div className="w-full max-w-sm space-y-4 frosted-glass p-8">
+      <div className="w-full max-w-sm space-y-4 frosted-glass p-6 sm:p-8 shrink-0">
         <input
           type="text"
           placeholder="ENTER USERNAME"
@@ -84,7 +84,9 @@ export const JoinScreen = () => {
       </div>
 
       {/* High Scores Leaderboard */}
-      <Leaderboard />
+      <div className="w-full max-w-sm shrink-0 mb-6">
+        <Leaderboard />
+      </div>
     </div>
   );
 };

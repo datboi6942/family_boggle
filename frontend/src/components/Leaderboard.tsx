@@ -114,7 +114,7 @@ export const Leaderboard = () => {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="overflow-hidden"
+            className="overflow-hidden max-h-[60vh] overflow-y-auto"
           >
             {/* Your Stats Section */}
             {!isNewPlayer && playerStats && (
