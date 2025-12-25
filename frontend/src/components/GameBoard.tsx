@@ -82,10 +82,12 @@ export const GameBoard = () => {
 
   const [currentPath, setCurrentPath] = useState<[number, number][]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [touchPos, setTouchPos] = useState<{ x: number; y: number } | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
-  const boardRectRef = useRef<DOMRect | null>(null);
   const musicStartedRef = useRef(false);
   const lastTimerRef = useRef<number>(timer);
+  const lastSoundTimeRef = useRef(0);
+  const prevPathLengthRef = useRef(0);
 
   // Keep a ref to audio so effects can access latest version
   const audioRef = useRef(audio);
@@ -145,104 +147,100 @@ export const GameBoard = () => {
     }
   }, [blockedCells]);
 
-  // Cache board dimensions on drag start for performance
-  const updateBoardRect = useCallback(() => {
-    if (boardRef.current) {
-      boardRectRef.current = boardRef.current.getBoundingClientRect();
-    }
-  }, []);
+  // Get cell from coordinates relative to board
+  const getCellFromCoords = useCallback((clientX: number, clientY: number): { cell: [number, number] | null; localX: number; localY: number } => {
+    const rect = boardRef.current?.getBoundingClientRect();
+    if (!rect) return { cell: null, localX: 0, localY: 0 };
 
-  // Get cell from touch/mouse position with center-based hitbox detection
-  const getCellFromTouch = useCallback((touch: React.Touch | React.MouseEvent): [number, number] | null => {
-    const rect = boardRectRef.current;
-    if (!rect) return null;
-    
-    const x = 'clientX' in touch ? touch.clientX - rect.left : 0;
-    const y = 'clientY' in touch ? touch.clientY - rect.top : 0;
-    
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
     const cellSize = rect.width / boardSize;
-    
-    // Find which cell we're potentially in
-    const col = Math.floor(x / cellSize);
-    const row = Math.floor(y / cellSize);
-    
+
+    const col = Math.floor(localX / cellSize);
+    const row = Math.floor(localY / cellSize);
+
     if (row < 0 || row >= boardSize || col < 0 || col >= boardSize) {
-      return null;
+      return { cell: null, localX, localY };
     }
-    
+
     // Calculate cell center
     const cellCenterX = col * cellSize + cellSize / 2;
     const cellCenterY = row * cellSize + cellSize / 2;
-    
-    // Distance from touch to cell center (squared to avoid sqrt)
-    const distSq = (x - cellCenterX) ** 2 + (y - cellCenterY) ** 2;
-    
-    // Only register if within 45% of cell size radius
-    const hitRadiusSq = (cellSize * 0.45) ** 2;
-    
+
+    // Distance from touch to cell center
+    const distSq = (localX - cellCenterX) ** 2 + (localY - cellCenterY) ** 2;
+    const hitRadiusSq = (cellSize * 0.5) ** 2;
+
     if (distSq <= hitRadiusSq) {
-      return [row, col];
+      return { cell: [row, col], localX, localY };
     }
-    
-    return null;
+
+    return { cell: null, localX, localY };
   }, [boardSize]);
 
-  // Track path length changes for letter chain sounds (throttled)
-  const prevPathLengthRef = useRef(0);
-  const lastSoundTimeRef = useRef(0);
-  useEffect(() => {
+  // Play chain sound immediately when path grows
+  const playChainSound = useCallback((pathLength: number) => {
     const now = Date.now();
-    // Only play sound if path grew and at least 80ms since last sound
-    if (currentPath.length > prevPathLengthRef.current && currentPath.length > 0 && now - lastSoundTimeRef.current > 80) {
-      audioRef.current.playLetterChain(currentPath.length);
+    if (now - lastSoundTimeRef.current > 50) {
+      audioRef.current.playLetterChain(pathLength);
       lastSoundTimeRef.current = now;
     }
-    prevPathLengthRef.current = currentPath.length;
-  }, [currentPath.length]);
+  }, []);
 
   const handleStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault();
-    updateBoardRect();
-    const cell = getCellFromTouch('touches' in e ? e.touches[0] : e);
+    const touch = 'touches' in e ? e.touches[0] : e;
+    const { cell, localX, localY } = getCellFromCoords(touch.clientX, touch.clientY);
+
     if (cell) {
       setIsDragging(true);
       setCurrentPath([cell]);
-      audio.playLetterSelect();
+      setTouchPos({ x: localX, y: localY });
+      audioRef.current.playLetterSelect();
+      prevPathLengthRef.current = 1;
     }
-  }, [getCellFromTouch, updateBoardRect, audio]);
+  }, [getCellFromCoords]);
 
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isDragging) return;
     e.preventDefault();
-    
-    const cell = getCellFromTouch('touches' in e ? e.touches[0] : e);
+
+    const touch = 'touches' in e ? e.touches[0] : e;
+    const { cell, localX, localY } = getCellFromCoords(touch.clientX, touch.clientY);
+
+    // Always update touch position for smooth line
+    setTouchPos({ x: localX, y: localY });
+
     if (!cell) return;
-    
+
     setCurrentPath(prevPath => {
       const last = prevPath[prevPath.length - 1];
       if (last[0] === cell[0] && last[1] === cell[1]) return prevPath;
-      
-      // Check if this cell is the second-to-last in path (backtracking)
+
+      // Check if backtracking
       if (prevPath.length >= 2) {
         const secondToLast = prevPath[prevPath.length - 2];
         if (secondToLast[0] === cell[0] && secondToLast[1] === cell[1]) {
           return prevPath.slice(0, -1);
         }
       }
-      
-      // Check adjacency to last cell
+
+      // Check adjacency
       if (Math.abs(last[0] - cell[0]) <= 1 && Math.abs(last[1] - cell[1]) <= 1) {
         const existingIndex = prevPath.findIndex(p => p[0] === cell[0] && p[1] === cell[1]);
         if (existingIndex === -1) {
+          // Play sound immediately when adding new cell
+          playChainSound(prevPath.length + 1);
+          prevPathLengthRef.current = prevPath.length + 1;
           return [...prevPath, cell];
         } else if (existingIndex < prevPath.length - 2) {
           return prevPath.slice(0, existingIndex + 1);
         }
       }
-      
+
       return prevPath;
     });
-  }, [isDragging, getCellFromTouch]);
+  }, [isDragging, getCellFromCoords, playChainSound]);
 
   const handleEnd = useCallback(() => {
     if (currentPath.length >= 3) {
@@ -251,21 +249,35 @@ export const GameBoard = () => {
     }
     setIsDragging(false);
     setCurrentPath([]);
+    setTouchPos(null);
+    prevPathLengthRef.current = 0;
   }, [currentPath, board, send]);
 
-  // Memoize the SVG path string
-  const linePath = useMemo((): string => {
-    if (currentPath.length < 2 || !boardRectRef.current) return '';
-    
-    const rect = boardRectRef.current;
+  // Calculate line path with trailing line to touch position
+  const getLinePath = useCallback((): string => {
+    if (currentPath.length === 0) return '';
+
+    const rect = boardRef.current?.getBoundingClientRect();
+    if (!rect) return '';
+
     const cellSize = rect.width / boardSize;
-    
-    return currentPath.map(([r, c], i) => {
+
+    // Build path through all selected cells
+    let path = currentPath.map(([r, c], i) => {
       const x = c * cellSize + cellSize / 2;
       const y = r * cellSize + cellSize / 2;
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     }).join(' ');
-  }, [currentPath, boardSize]);
+
+    // Add trailing line to current touch position
+    if (touchPos && isDragging) {
+      path += ` L ${touchPos.x} ${touchPos.y}`;
+    }
+
+    return path;
+  }, [currentPath, boardSize, touchPos, isDragging]);
+
+  const linePath = getLinePath();
 
   // Memoize current word display
   const currentWord = useMemo(() => {
@@ -294,34 +306,29 @@ export const GameBoard = () => {
   const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
   return (
-    <div className="game-board-container flex flex-col h-full bg-navy-gradient min-h-screen text-white select-none" style={{ paddingTop: 'env(safe-area-inset-top, 8px)', paddingLeft: 'env(safe-area-inset-left, 8px)', paddingRight: 'env(safe-area-inset-right, 8px)', paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}>
-      {/* Header - Compact for mobile */}
-      <div className={`z-30 py-1.5 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
-        <div className="flex justify-between items-center gap-2">
-          {/* Timer */}
-          <div className={`frosted-glass px-2 py-1 flex items-center gap-1.5 shrink-0 ${isFrozen ? 'border-blue-400 border-2 bg-blue-500/20' : ''}`}>
-            {isFrozen ? <Snowflake className="w-4 h-4 animate-spin text-blue-400" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
-            <span className={`text-lg font-black font-mono tabular-nums ${isFrozen ? 'text-blue-400' : ''}`}>{formattedTimer}</span>
-          </div>
-
-          {/* Current Word (center) */}
-          <div className="flex-1 text-center min-w-0 overflow-hidden">
-            {currentWord && (
-              <div className="text-lg font-black tracking-wider text-primary truncate">
-                {currentWord}
-              </div>
-            )}
-          </div>
-
-          {/* Score */}
-          <div className="frosted-glass px-2 py-1 text-right shrink-0">
-            <p className="text-lg font-black text-primary leading-none">{me?.score || 0}</p>
-          </div>
+    <div className="game-board-container flex flex-col bg-navy-gradient h-[100dvh] text-white select-none overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top, 4px)', paddingLeft: 'env(safe-area-inset-left, 4px)', paddingRight: 'env(safe-area-inset-right, 4px)', paddingBottom: 'env(safe-area-inset-bottom, 4px)' }}>
+      {/* Header - Ultra compact */}
+      <div className={`flex justify-between items-center px-2 py-1 ${isFrozen ? 'text-blue-400' : ''}`}>
+        {/* Timer */}
+        <div className={`flex items-center gap-1 ${isFrozen ? 'text-blue-400' : ''}`}>
+          {isFrozen ? <Snowflake className="w-3 h-3 animate-spin" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+          <span className="text-base font-black font-mono tabular-nums">{formattedTimer}</span>
         </div>
+
+        {/* Current Word (center) */}
+        {currentWord && (
+          <div className="text-base font-black tracking-wide text-primary truncate max-w-[50%]">
+            {currentWord}
+          </div>
+        )}
+
+        {/* Score */}
+        <span className="text-base font-black text-primary">{me?.score || 0}</span>
       </div>
 
-      {/* The Board */}
-      <div className="relative flex-1 w-full max-h-[calc(100vh-140px)] aspect-square mx-auto mb-2 px-1">
+      {/* The Board - Takes remaining space */}
+      <div className="flex-1 flex items-center justify-center p-1 min-h-0">
+        <div className="relative w-full h-full max-w-[min(100%,100vh-120px)] max-h-[min(100%,100vw)] aspect-square mx-auto">
         {/* SVG Overlay for connecting lines */}
         {linePath && (
           <svg 
@@ -372,7 +379,7 @@ export const GameBoard = () => {
             const isFirst = pathIndex === 0;
             const isLast = pathIndex === currentPath.length - 1 && currentPath.length > 0;
             const isBlocked = blockedSet.has(key);
-            
+
             return (
               <Cell
                 key={key}
@@ -386,10 +393,11 @@ export const GameBoard = () => {
             );
           }))}
         </div>
+        </div>
       </div>
 
-      {/* Power-ups */}
-      <div className="flex justify-center space-x-4">
+      {/* Power-ups - Compact */}
+      <div className="flex justify-center gap-3 py-2">
         {['freeze', 'blowup', 'shuffle'].map(p => {
           const count = me?.powerups?.filter(x => x === p).length || 0;
           return (
@@ -403,15 +411,15 @@ export const GameBoard = () => {
                 }
               }}
               className={`
-                relative p-4 rounded-2xl frosted-glass transition-all
-                ${count > 0 ? 'bg-primary/20 border-primary animate-pulse' : 'opacity-50'}
+                relative p-3 rounded-xl frosted-glass transition-all
+                ${count > 0 ? 'bg-primary/20 border-primary' : 'opacity-40'}
               `}
             >
-              {p === 'freeze' && <Snowflake />}
-              {p === 'blowup' && <Bomb />}
-              {p === 'shuffle' && <RotateCw />}
+              {p === 'freeze' && <Snowflake className="w-5 h-5" />}
+              {p === 'blowup' && <Bomb className="w-5 h-5" />}
+              {p === 'shuffle' && <RotateCw className="w-5 h-5" />}
               {count > 0 && (
-                <span className="absolute -top-2 -right-2 bg-primary w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold">
+                <span className="absolute -top-1 -right-1 bg-primary w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold">
                   {count}
                 </span>
               )}

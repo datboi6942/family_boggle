@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useAudioContext } from '../contexts/AudioContext';
 import { motion } from 'framer-motion';
@@ -14,19 +14,19 @@ export const Countdown = () => {
   audioRef.current = audio;
 
   // Play countdown riser music when countdown starts
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!musicStartedRef.current) {
       audioRef.current.playCountdownRiser();
       musicStartedRef.current = true;
     }
   }, []);
 
-  // Play countdown sounds on timer change
-  useEffect(() => {
+  // Play countdown sounds immediately on timer change (useLayoutEffect for sync timing)
+  useLayoutEffect(() => {
     if (lastTimerRef.current !== timer) {
       if (timer > 0 && timer <= 3) {
         audioRef.current.playCountdownBeep();
-      } else if (timer === 0 || lastTimerRef.current === 1) {
+      } else if (timer === 0) {
         audioRef.current.playCountdownGo();
       }
       lastTimerRef.current = timer;

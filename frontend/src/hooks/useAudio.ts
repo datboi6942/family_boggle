@@ -177,19 +177,32 @@ export function useAudio(): AudioManager {
   }, [isMuted, sfxVolume]);
 
   const playMusic = useCallback((src: string, loop: boolean = true) => {
-    if (currentMusicRef.current) {
-      currentMusicRef.current.pause();
-      currentMusicRef.current.currentTime = 0;
-    }
-
     try {
       const audio = getAudio(src);
+
+      // If already playing this track, just update volume and return
+      if (currentMusicRef.current === audio && !audio.paused) {
+        audio.volume = isMusicMuted ? 0 : musicVolume;
+        return;
+      }
+
+      // Stop previous music if different track
+      if (currentMusicRef.current && currentMusicRef.current !== audio) {
+        currentMusicRef.current.pause();
+        currentMusicRef.current.currentTime = 0;
+      }
+
       audio.loop = loop;
       audio.volume = isMusicMuted ? 0 : musicVolume;
-      audio.currentTime = 0;
-      audio.play().catch(() => {
-        // Ignore autoplay errors
-      });
+
+      // Only reset if not already playing
+      if (audio.paused) {
+        audio.currentTime = 0;
+        audio.play().catch(() => {
+          // Ignore autoplay errors
+        });
+      }
+
       currentMusicRef.current = audio;
     } catch (e) {
       // Ignore audio errors
