@@ -147,8 +147,14 @@ async def websocket_endpoint(
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        # Handle player leaving logic here if needed
-        # (e.g. remove from lobby if game hasn't started)
+        # Remove player from lobby
+        if game_engine.leave_lobby(lobby_id, player_id):
+            # If lobby still exists, broadcast update
+            if lobby_id in game_engine.lobbies:
+                await manager.broadcast(lobby_id, {
+                    "type": "lobby_update",
+                    "data": game_engine.lobbies[lobby_id].model_dump()
+                })
 
 async def run_game_loop(lobby_id: str):
     """Handles the 3-2-1 countdown and the 3-minute game timer."""

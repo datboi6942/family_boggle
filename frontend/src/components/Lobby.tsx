@@ -9,6 +9,7 @@ export const Lobby = () => {
 
   const isHost = hostId === playerId;
   const me = players.find(p => p.id === playerId);
+  const { resetSession } = useGameStore();
 
   const copyToClipboard = () => {
     if (lobbyId) {
@@ -69,6 +70,15 @@ export const Lobby = () => {
           </div>
         </div>
       )}
+
+      <button
+        onClick={() => {
+          resetSession();
+        }}
+        className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-white/50 active:scale-95 transition-all mb-2"
+      >
+        LEAVE LOBBY
+      </button>
 
       <button
         onClick={() => send('toggle_ready')}

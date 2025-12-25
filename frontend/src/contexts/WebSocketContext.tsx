@@ -113,6 +113,15 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [status, lobbyId, playerId, connect]);
 
+  // Disconnect when returning to join screen or clearing session
+  useEffect(() => {
+    if ((status === 'join' || !lobbyId || !playerId) && socketRef.current) {
+      console.log('Disconnecting WebSocket...');
+      socketRef.current.close();
+      socketRef.current = null;
+    }
+  }, [status, lobbyId, playerId]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {

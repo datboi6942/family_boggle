@@ -7,7 +7,7 @@ import confetti from 'canvas-confetti';
 import { WordAwardAnimation } from './summary/WordAwardAnimation';
 
 export const GameSummary = () => {
-  const { results, winner, wordAwards } = useGameStore();
+  const { results, winner, wordAwards, resetSession } = useGameStore();
   const { send } = useWebSocketContext();
   const [phase, setPhase] = useState<'animating' | 'celebrating'>('animating');
 
@@ -122,9 +122,19 @@ export const GameSummary = () => {
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 1.5 }}
               onClick={() => send('reset_game', {})}
-              className="w-full max-w-md mx-auto py-5 bg-primary rounded-2xl font-black text-xl mt-12 mb-8 shadow-2xl active:scale-95 transition-transform"
+              className="w-full max-w-md mx-auto py-5 bg-primary rounded-2xl font-black text-xl mt-12 mb-2 shadow-2xl active:scale-95 transition-transform"
             >
               PLAY AGAIN
+            </motion.button>
+
+            <motion.button
+              initial={{ y: 50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 1.7 }}
+              onClick={() => resetSession()}
+              className="w-full max-w-md mx-auto py-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-white/50 active:scale-95 transition-all mb-8"
+            >
+              LEAVE GAME
             </motion.button>
           </motion.div>
         )}

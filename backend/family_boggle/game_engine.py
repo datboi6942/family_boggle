@@ -194,6 +194,28 @@ class GameEngine:
             "word_awards": word_awards
         }
 
+    def leave_lobby(self, lobby_id: str, player_id: str) -> bool:
+        """Removes a player from a lobby."""
+        if lobby_id not in self.lobbies:
+            return False
+            
+        lobby = self.lobbies[lobby_id]
+        lobby.players = [p for p in lobby.players if p.id != player_id]
+        
+        # If lobby is empty, delete it
+        if not lobby.players:
+            del self.lobbies[lobby_id]
+            logger.info("lobby_deleted", lobby_id=lobby_id)
+            return True
+            
+        # If host left, assign new host
+        if lobby.host_id == player_id:
+            lobby.host_id = lobby.players[0].id
+            logger.info("new_host_assigned", lobby_id=lobby_id, new_host_id=lobby.host_id)
+            
+        logger.info("player_left", lobby_id=lobby_id, player_id=player_id)
+        return True
+
     def reset_lobby(self, lobby_id: str) -> bool:
         """Resets a lobby for a new game.
         
