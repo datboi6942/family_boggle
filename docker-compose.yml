@@ -1,10 +1,23 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "0.0.0.0:2727:2727"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    restart: always
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "2626:8000"
+    expose:
+      - "8000"
     environment:
       - BOGGLE_DEBUG=False
     restart: always
@@ -13,8 +26,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "2727:80"
+    expose:
+      - "80"
     depends_on:
       - backend
     restart: always
+
+volumes:
+  caddy_data:
+  caddy_config:
