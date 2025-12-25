@@ -79,3 +79,241 @@ body {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+
+/* GPU-accelerated Monster Animations - using transform only for 60fps */
+@keyframes monster-blobby {
+  0%, 100% { transform: scaleX(1) scaleY(1); }
+  25% { transform: scaleX(1.08) scaleY(0.88); }
+  50% { transform: scaleX(0.92) scaleY(1.08); }
+  75% { transform: scaleX(1.04) scaleY(0.96); }
+}
+
+@keyframes monster-spike {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  25% { transform: scale(1.08) rotate(5deg); }
+  50% { transform: scale(1) rotate(-5deg); }
+  75% { transform: scale(1.04) rotate(2deg); }
+}
+
+@keyframes monster-chompy {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(1.1); }
+}
+
+@keyframes monster-floaty {
+  0%, 100% { transform: scaleY(0.95) rotate(-2deg); }
+  50% { transform: scaleY(1.05) rotate(2deg); }
+}
+
+@keyframes monster-grumble {
+  0%, 100% { transform: rotate(-3deg) scaleY(1); }
+  50% { transform: rotate(3deg) scaleY(0.95); }
+}
+
+@keyframes monster-zippy {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  20% { transform: rotate(-8deg) scale(1.1); }
+  40% { transform: rotate(8deg) scale(0.95); }
+  60% { transform: rotate(-8deg) scale(1.05); }
+  80% { transform: rotate(8deg) scale(1); }
+}
+
+@keyframes monster-mossy {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(3deg); }
+  75% { transform: rotate(-3deg); }
+}
+
+@keyframes monster-pebble {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.96); }
+}
+
+@keyframes monster-bubbles {
+  0%, 100% { transform: scaleY(1) scale(1); }
+  25% { transform: scaleY(0.9) scale(1.05); }
+  50% { transform: scaleY(1.1) scale(1); }
+  75% { transform: scaleY(0.95) scale(1.02); }
+}
+
+@keyframes monster-shadow {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+/* Eye animations */
+@keyframes monster-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+
+@keyframes monster-blink-slow {
+  0%, 85%, 100% { transform: scaleY(1); }
+  90% { transform: scaleY(0.1); }
+}
+
+@keyframes monster-squint {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(0.9); }
+}
+
+@keyframes monster-drowsy {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.8); }
+}
+
+@keyframes monster-glare {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(5deg); }
+}
+
+@keyframes monster-excited {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+@keyframes monster-sparkle {
+  0%, 100% { transform: scale(1); }
+  25% { transform: scale(1.3); }
+  50% { transform: scale(1); }
+  75% { transform: scale(1.2); }
+}
+
+@keyframes monster-fade {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Mouth animations */
+@keyframes monster-chomp {
+  0%, 100% { transform: scaleY(1); }
+  25% { transform: scaleY(1.5); }
+  50% { transform: scaleY(0.5); }
+  75% { transform: scaleY(1.2); }
+}
+
+/* Bubble animations */
+@keyframes monster-bubble-1 {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(-10px); opacity: 1; }
+}
+
+@keyframes monster-bubble-2 {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(-7px); opacity: 1; }
+}
+
+@keyframes monster-bubble-3 {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(-8px); opacity: 1; }
+}
+
+/* Animation classes with GPU acceleration hints */
+.animate-monster-blobby {
+  animation: monster-blobby 1.5s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-spike {
+  animation: monster-spike 2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-chompy {
+  animation: monster-chompy 0.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-floaty {
+  animation: monster-floaty 3s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-grumble {
+  animation: monster-grumble 1.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-zippy {
+  animation: monster-zippy 0.6s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-mossy {
+  animation: monster-mossy 4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-pebble {
+  animation: monster-pebble 5s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-bubbles {
+  animation: monster-bubbles 1.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-shadow {
+  animation: monster-shadow 2.5s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* Eye animation classes */
+.animate-monster-blink {
+  animation: monster-blink 3s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-blink-slow {
+  animation: monster-blink-slow 5s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-squint {
+  animation: monster-squint 2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-drowsy {
+  animation: monster-drowsy 3s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-glare {
+  animation: monster-glare 1.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-excited {
+  animation: monster-excited 0.6s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-sparkle {
+  animation: monster-sparkle 1.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.animate-monster-fade {
+  animation: monster-fade 2.5s ease-in-out infinite;
+}
+
+/* Mouth animation classes */
+.animate-monster-chomp {
+  animation: monster-chomp 0.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* Bubble animation classes */
+.animate-monster-bubble-1 {
+  animation: monster-bubble-1 2s ease-in-out infinite;
+}
+
+.animate-monster-bubble-2 {
+  animation: monster-bubble-2 1.5s ease-in-out infinite 0.5s;
+}
+
+.animate-monster-bubble-3 {
+  animation: monster-bubble-3 1.8s ease-in-out infinite 0.3s;
+}

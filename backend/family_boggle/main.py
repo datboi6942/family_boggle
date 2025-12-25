@@ -1,6 +1,6 @@
 import asyncio
-from typing import Dict, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, Query, Request
+from typing import Dict
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
@@ -8,7 +8,6 @@ from family_boggle.config import settings
 from family_boggle.websocket_manager import manager
 from family_boggle.game_engine import game_engine
 from family_boggle.models import WordSubmission
-from family_boggle.high_scores import get_leaderboard, get_player_stats
 
 # Setup structured logging
 structlog.configure(
@@ -33,83 +32,36 @@ app.add_middleware(
 async def health_check():
     return {"status": "ok"}
 
-
-@app.get("/api/leaderboard")
-async def leaderboard(limit: int = Query(default=10, le=50)):
-    """Returns the high scores leaderboard."""
-    return {"leaderboard": get_leaderboard(limit)}
-
-
-@app.get("/api/player-stats")
-async def player_stats(request: Request):
-    """Returns the current player's stats based on their IP address."""
-    # Get client IP - check forwarded headers first for proxy support
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        ip = forwarded.split(",")[0].strip()
-    else:
-        ip = request.client.host if request.client else "unknown"
-
-    stats = get_player_stats(ip)
-    if not stats:
-        return {"stats": None, "is_new_player": True}
-    return {"stats": stats, "is_new_player": False}
-
-
-def get_client_ip(websocket: WebSocket) -> str:
-    """Extract client IP from WebSocket connection."""
-    # Check for forwarded headers (for proxied connections)
-    forwarded = websocket.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-
-    # Fall back to direct client connection
-    if websocket.client:
-        return websocket.client.host
-    return "unknown"
-
-
 @app.websocket("/ws/{lobby_id}/{player_id}")
 async def websocket_endpoint(
-    websocket: WebSocket,
-    lobby_id: str,
+    websocket: WebSocket, 
+    lobby_id: str, 
     player_id: str,
     username: str = Query(...),
     character: str = Query(...),
     mode: str = Query(default="join")
 ):
     await manager.connect(websocket, lobby_id)
-
-    # Get client IP for high score tracking
-    client_ip = get_client_ip(websocket)
-    logger.info("client_connected", player_id=player_id, ip=client_ip)
-
+    
     # Handle create vs join modes
     lobby_exists = lobby_id in game_engine.lobbies
-
+    
     if mode == "join" and not lobby_exists:
         # Trying to join a lobby that doesn't exist
         logger.warning("join_failed_lobby_not_found", lobby_id=lobby_id, player_id=player_id)
         await websocket.close(code=1008, reason="Lobby not found")
         return
-
+    
     if mode == "create" and not lobby_exists:
-        # Create new lobby with IP tracking
-        game_engine.create_lobby(
-            player_id, username, character,
-            lobby_id=lobby_id,
-            ip_address=client_ip
-        )
+        # Create new lobby
+        game_engine.create_lobby(player_id, username, character, lobby_id=lobby_id)
     elif lobby_exists:
-        # Join existing lobby with IP tracking
-        success = game_engine.join_lobby(
-            lobby_id, player_id, username, character,
-            ip_address=client_ip
-        )
+        # Join existing lobby
+        success = game_engine.join_lobby(lobby_id, player_id, username, character)
         if not success:
             await websocket.close(code=1008, reason="Lobby full or error joining")
             return
-
+    
     # Broadcast updated lobby state
     await manager.broadcast(lobby_id, {
         "type": "lobby_update",
@@ -224,27 +176,21 @@ async def run_game_loop(lobby_id: str):
     lobby.status = "playing"
     lobby.timer = settings.GAME_DURATION_SECONDS
     
-    from family_boggle.powerups import powerup_manager
+    # Send initial full state for playing phase
+    await manager.broadcast(lobby_id, {
+        "type": "game_state",
+        "data": lobby.model_dump()
+    })
+    
     while lobby.timer > 0:
-        await manager.broadcast(lobby_id, {
-            "type": "game_state",
-            "data": lobby.model_dump()
-        })
         await asyncio.sleep(1)
-        
-        # Only decrement timer for players NOT frozen
-        # This is tricky because the lobby has ONE timer.
-        # Requirement says "Pause YOUR timer". 
-        # So we'll need to track per-player timers OR just pause the shared one if ANYONE is frozen?
-        # Actually, "Pause YOUR timer" in multiplayer usually means the player gets extra time at the end.
-        # But for Boggle, everyone ends at the same time.
-        # Better: Freeze means YOUR screen/timer pauses while others continue, 
-        # and you get those 10s extra? No, that's messy.
-        # Let's interpret "Pause YOUR timer" as "Timer doesn't tick down for YOU".
-        # We'll stick to a shared timer for simplicity, but if a player has 'freeze' active,
-        # they can still submit words for 10s after the main timer hits 0.
-        
         lobby.timer -= 1
+        
+        # Broadcast timer update only (90% reduction in payload)
+        await manager.broadcast(lobby_id, {
+            "type": "timer_update",
+            "data": {"timer": lobby.timer}
+        })
         
         # Check if game was forcibly ended or everyone left
         if lobby_id not in game_engine.lobbies:

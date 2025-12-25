@@ -4,10 +4,9 @@ import { useMemo } from 'react';
 interface MonsterConfig {
   name: string;
   color: string;
-  bodyAnimation: Record<string, any>;
-  eyeAnimation?: Record<string, any>;
-  mouthAnimation?: Record<string, any>;
-  transitionDuration: number;
+  animationClass: string;
+  eyeAnimationClass?: string;
+  mouthAnimationClass?: string;
   shape: 'circle' | 'blob' | 'square' | 'triangle' | 'star' | 'ghost';
   eyeStyle: 'normal' | 'big' | 'sleepy' | 'angry' | 'cute' | 'cyclops';
   mouthStyle: 'smile' | 'teeth' | 'open' | 'small' | 'wavy' | 'fangs';
@@ -18,9 +17,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Blobby',
     color: '#22c55e',
-    bodyAnimation: { scaleY: [1, 0.88, 1.08, 1], scaleX: [1, 1.08, 0.92, 1] },
-    eyeAnimation: { scaleY: [1, 0.1, 1] },
-    transitionDuration: 1.5,
+    animationClass: 'animate-monster-blobby',
+    eyeAnimationClass: 'animate-monster-blink',
     shape: 'blob',
     eyeStyle: 'cute',
     mouthStyle: 'smile'
@@ -28,9 +26,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Spike',
     color: '#8b5cf6',
-    bodyAnimation: { scale: [1, 1.08, 1], rotate: [0, 5, -5, 0] },
-    eyeAnimation: { scaleX: [1, 0.9, 1.1, 1] },
-    transitionDuration: 2,
+    animationClass: 'animate-monster-spike',
+    eyeAnimationClass: 'animate-monster-squint',
     shape: 'star',
     eyeStyle: 'angry',
     mouthStyle: 'teeth',
@@ -39,9 +36,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Chompy',
     color: '#f97316',
-    bodyAnimation: { scaleX: [1, 1.1, 0.9, 1] },
-    mouthAnimation: { scaleY: [1, 1.5, 0.5, 1] },
-    transitionDuration: 0.8,
+    animationClass: 'animate-monster-chompy',
+    mouthAnimationClass: 'animate-monster-chomp',
     shape: 'circle',
     eyeStyle: 'big',
     mouthStyle: 'fangs'
@@ -49,9 +45,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Floaty',
     color: '#3b82f6',
-    bodyAnimation: { scaleY: [0.95, 1.05, 0.95], rotate: [-2, 2, -2] },
-    eyeAnimation: { scaleY: [1, 0.8, 1] },
-    transitionDuration: 3,
+    animationClass: 'animate-monster-floaty',
+    eyeAnimationClass: 'animate-monster-drowsy',
     shape: 'ghost',
     eyeStyle: 'sleepy',
     mouthStyle: 'small'
@@ -59,9 +54,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Grumble',
     color: '#ef4444',
-    bodyAnimation: { rotate: [-3, 3, -3], scaleY: [1, 0.95, 1] },
-    eyeAnimation: { rotate: [0, 5, 0] },
-    transitionDuration: 1.2,
+    animationClass: 'animate-monster-grumble',
+    eyeAnimationClass: 'animate-monster-glare',
     shape: 'square',
     eyeStyle: 'angry',
     mouthStyle: 'wavy',
@@ -70,9 +64,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Zippy',
     color: '#eab308',
-    bodyAnimation: { rotate: [-8, 8, -8, 8, 0], scale: [1, 1.1, 0.95, 1.05, 1] },
-    eyeAnimation: { scale: [1, 1.2, 1] },
-    transitionDuration: 0.6,
+    animationClass: 'animate-monster-zippy',
+    eyeAnimationClass: 'animate-monster-excited',
     shape: 'triangle',
     eyeStyle: 'big',
     mouthStyle: 'open'
@@ -80,8 +73,7 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Mossy',
     color: '#166534',
-    bodyAnimation: { rotate: [0, 3, -3, 0] },
-    transitionDuration: 4,
+    animationClass: 'animate-monster-mossy',
     shape: 'blob',
     eyeStyle: 'sleepy',
     mouthStyle: 'small',
@@ -90,9 +82,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Pebble',
     color: '#6b7280',
-    bodyAnimation: { scale: [1, 0.96, 1.02, 1] },
-    eyeAnimation: { scaleY: [1, 0.1, 1] },
-    transitionDuration: 5,
+    animationClass: 'animate-monster-pebble',
+    eyeAnimationClass: 'animate-monster-blink-slow',
     shape: 'square',
     eyeStyle: 'sleepy',
     mouthStyle: 'small'
@@ -100,9 +91,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Bubbles',
     color: '#ec4899',
-    bodyAnimation: { scaleY: [1, 0.9, 1.1, 1], scale: [1, 1.05, 1] },
-    eyeAnimation: { scale: [1, 1.3, 1] },
-    transitionDuration: 1.8,
+    animationClass: 'animate-monster-bubbles',
+    eyeAnimationClass: 'animate-monster-sparkle',
     shape: 'circle',
     eyeStyle: 'cute',
     mouthStyle: 'open',
@@ -111,9 +101,8 @@ export const MONSTERS: MonsterConfig[] = [
   {
     name: 'Shadow',
     color: '#1f2937',
-    bodyAnimation: { scale: [1, 1.08, 0.95, 1], opacity: [0.7, 1, 0.7] },
-    eyeAnimation: { opacity: [1, 0.5, 1] },
-    transitionDuration: 2.5,
+    animationClass: 'animate-monster-shadow',
+    eyeAnimationClass: 'animate-monster-fade',
     shape: 'ghost',
     eyeStyle: 'cyclops',
     mouthStyle: 'wavy'
@@ -270,25 +259,10 @@ const getExtras = (extras: string[] | undefined, color: string, size: number) =>
         );
       case 'bubbles':
         return (
-          <g key={i}>
-            <motion.circle
-              cx="80" cy="30" r={3 * scale}
-              fill="rgba(255,255,255,0.5)"
-              animate={{ y: [-5, -15, -5], opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-            <motion.circle
-              cx="85" cy="45" r={2 * scale}
-              fill="rgba(255,255,255,0.5)"
-              animate={{ y: [-3, -10, -3], opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 1.5, repeat: Infinity, delay: 0.5 }}
-            />
-            <motion.circle
-              cx="78" cy="55" r={2.5 * scale}
-              fill="rgba(255,255,255,0.5)"
-              animate={{ y: [-4, -12, -4], opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 1.8, repeat: Infinity, delay: 0.3 }}
-            />
+          <g key={i} className="animate-monster-bubble-float">
+            <circle cx="80" cy="30" r={3 * scale} fill="rgba(255,255,255,0.5)" className="animate-monster-bubble-1" />
+            <circle cx="85" cy="45" r={2 * scale} fill="rgba(255,255,255,0.5)" className="animate-monster-bubble-2" />
+            <circle cx="78" cy="55" r={2.5 * scale} fill="rgba(255,255,255,0.5)" className="animate-monster-bubble-3" />
           </g>
         );
       default:
@@ -318,16 +292,12 @@ export const MonsterAvatar = ({ name, size = 100, isWinner = false, animated = t
           👑
         </motion.div>
       )}
-      <motion.svg
+      <svg
         width={size}
         height={size}
         viewBox="0 0 100 100"
-        animate={animated ? monster.bodyAnimation : undefined}
-        transition={animated ? {
-          duration: monster.transitionDuration,
-          repeat: Infinity,
-          ease: "easeInOut"
-        } : undefined}
+        className={animated ? monster.animationClass : ''}
+        style={{ willChange: animated ? 'transform' : 'auto' }}
       >
         {/* Body */}
         {monster.shape === 'circle' ? (
@@ -340,30 +310,15 @@ export const MonsterAvatar = ({ name, size = 100, isWinner = false, animated = t
         {getExtras(monster.extras, monster.color, size)}
 
         {/* Eyes with optional animation */}
-        <motion.g
-          animate={animated && monster.eyeAnimation ? monster.eyeAnimation : undefined}
-          transition={animated ? {
-            duration: monster.transitionDuration * 0.8,
-            repeat: Infinity,
-            ease: "easeInOut",
-            repeatDelay: 1
-          } : undefined}
-        >
+        <g className={animated && monster.eyeAnimationClass ? monster.eyeAnimationClass : ''}>
           {getEyes(monster.eyeStyle, size)}
-        </motion.g>
+        </g>
 
         {/* Mouth with optional animation */}
-        <motion.g
-          animate={animated && monster.mouthAnimation ? monster.mouthAnimation : undefined}
-          transition={animated ? {
-            duration: monster.transitionDuration * 0.5,
-            repeat: Infinity,
-            ease: "easeInOut"
-          } : undefined}
-        >
+        <g className={animated && monster.mouthAnimationClass ? monster.mouthAnimationClass : ''}>
           {getMouth(monster.mouthStyle, size)}
-        </motion.g>
-      </motion.svg>
+        </g>
+      </svg>
     </div>
   );
 };

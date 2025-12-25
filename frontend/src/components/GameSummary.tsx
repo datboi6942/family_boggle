@@ -56,14 +56,14 @@ export const GameSummary = () => {
       audioRef.current.playConfettiBurst();
 
       confetti({
-        particleCount: 200,
+        particleCount: 100,
         spread: 100,
         origin: { y: 0.6 },
         colors: ['#8b5cf6', '#22c55e', '#f97316', '#eab308']
       });
 
       // Secondary bursts
-      const duration = 3 * 1000;
+      const duration = 2 * 1000;
       const animationEnd = Date.now() + duration;
       const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
 
@@ -73,9 +73,9 @@ export const GameSummary = () => {
           clearInterval(interval);
           return;
         }
-        const particleCount = 50 * (timeLeft / duration);
+        const particleCount = 30 * (timeLeft / duration);
         confetti({ ...defaults, particleCount, origin: { x: Math.random(), y: Math.random() - 0.2 } });
-      }, 250);
+      }, 300);
     } else if (phase === 'longest-word') {
       // Play longest word award sound
       audioRef.current.playLongestWordAward();

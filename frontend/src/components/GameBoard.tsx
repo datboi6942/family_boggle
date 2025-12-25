@@ -15,6 +15,15 @@ const LETTER_SCORES: Record<string, number> = {
   'QU': 10  // QU tile is worth more (Q + U value)
 };
 
+// Memoized timer component to isolate timer re-renders
+const TimerDisplay = memo(({ formattedTimer, isFrozen }: { formattedTimer: string; isFrozen: boolean }) => (
+  <div className={`flex items-center gap-2 ${isFrozen ? 'text-blue-400' : 'text-white'}`}>
+    {isFrozen ? <Snowflake className="w-4 h-4 animate-spin" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+    <span className="text-lg font-black font-mono tabular-nums">{formattedTimer}</span>
+  </div>
+));
+TimerDisplay.displayName = 'TimerDisplay';
+
 // Memoized cell component to prevent unnecessary re-renders
 const Cell = memo(({
   letter,
@@ -76,7 +85,15 @@ const Cell = memo(({
 Cell.displayName = 'Cell';
 
 export const GameBoard = () => {
-  const { playerId, board, boardSize, timer, lastWordResult, players, blockedCells, isFrozen } = useGameStore();
+  const playerId = useGameStore(state => state.playerId);
+  const board = useGameStore(state => state.board);
+  const boardSize = useGameStore(state => state.boardSize);
+  const timer = useGameStore(state => state.timer);
+  const lastWordResult = useGameStore(state => state.lastWordResult);
+  const players = useGameStore(state => state.players);
+  const blockedCells = useGameStore(state => state.blockedCells);
+  const isFrozen = useGameStore(state => state.isFrozen);
+
   const { send } = useWebSocketContext();
   const audio = useAudioContext();
 
@@ -254,7 +271,7 @@ export const GameBoard = () => {
   }, [currentPath, board, send]);
 
   // Calculate line path with trailing line to touch position
-  const getLinePath = useCallback((): string => {
+  const linePath = useMemo((): string => {
     if (currentPath.length === 0) return '';
 
     const rect = boardRef.current?.getBoundingClientRect();
@@ -276,8 +293,6 @@ export const GameBoard = () => {
 
     return path;
   }, [currentPath, boardSize, touchPos, isDragging]);
-
-  const linePath = getLinePath();
 
   // Memoize current word display
   const currentWord = useMemo(() => {
@@ -310,10 +325,7 @@ export const GameBoard = () => {
       {/* Header - Compact but visible */}
       <div className={`flex justify-between items-center px-3 py-2 frosted-glass mx-2 mt-1 rounded-xl ${isFrozen ? 'border border-blue-400' : ''}`}>
         {/* Timer */}
-        <div className={`flex items-center gap-2 ${isFrozen ? 'text-blue-400' : 'text-white'}`}>
-          {isFrozen ? <Snowflake className="w-4 h-4 animate-spin" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
-          <span className="text-lg font-black font-mono tabular-nums">{formattedTimer}</span>
-        </div>
+        <TimerDisplay formattedTimer={formattedTimer} isFrozen={isFrozen} />
 
         {/* Current Word (center) */}
         {currentWord && (
@@ -328,6 +340,7 @@ export const GameBoard = () => {
           <span className="text-xl font-black text-primary">{me?.score || 0}</span>
         </div>
       </div>
+
 
       {/* The Board - Takes remaining space */}
       <div className="flex-1 flex items-center justify-center p-1 min-h-0">

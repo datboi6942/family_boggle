@@ -87,6 +87,7 @@ interface GameState extends PersistedState {
   challenges: ChallengeDefinition[];
   blockedCells: [number, number][];
   isFrozen: boolean;
+  setTimer: (timer: number) => void;
 
   // Actions
   setLobbyId: (id: string) => void;
@@ -102,6 +103,11 @@ interface GameState extends PersistedState {
   setPowerup: (data: any, myPlayerId?: string) => void;
   resetSession: () => void;
 }
+
+// Store timeout IDs for cleanup
+let wordResultTimeout: ReturnType<typeof setTimeout> | null = null;
+let freezeTimeout: ReturnType<typeof setTimeout> | null = null;
+let blockedTimeout: ReturnType<typeof setTimeout> | null = null;
 
 export const useGameStore = create<GameState>()(
   persist<GameState, [], [], PersistedState>(
@@ -128,6 +134,8 @@ export const useGameStore = create<GameState>()(
   challenges: [],
   blockedCells: [],
   isFrozen: false,
+
+  setTimer: (timer) => set({ timer }),
 
   setLobbyId: (id) => set({ lobbyId: id }),
   setPlayerId: (id) => set({ playerId: id }),
@@ -159,9 +167,10 @@ export const useGameStore = create<GameState>()(
     challenges: data.challenges || [],
   }),
   setWordResult: (result) => {
+    if (wordResultTimeout) clearTimeout(wordResultTimeout);
     set({ lastWordResult: result });
     // Auto-clear the word result after 2 seconds
-    setTimeout(() => set({ lastWordResult: null }), 2000);
+    wordResultTimeout = setTimeout(() => set({ lastWordResult: null }), 2000);
   },
   setGameEnd: (data) => set({
     status: 'summary',
@@ -177,14 +186,16 @@ export const useGameStore = create<GameState>()(
     if (data.type === 'freeze') {
       // Only freeze the player who activated it (they get time pause benefit)
       if (data.by === myPlayerId) {
+        if (freezeTimeout) clearTimeout(freezeTimeout);
         set({ isFrozen: true });
-        setTimeout(() => set({ isFrozen: false }), 10000);
+        freezeTimeout = setTimeout(() => set({ isFrozen: false }), 10000);
       }
     } else if (data.type === 'blowup') {
       // Blowup affects everyone EXCEPT the player who used it
       if (data.by !== myPlayerId) {
+        if (blockedTimeout) clearTimeout(blockedTimeout);
         set({ blockedCells: data.blocked_cells });
-        setTimeout(() => set({ blockedCells: [] }), 8000);
+        blockedTimeout = setTimeout(() => set({ blockedCells: [] }), 8000);
       }
     }
   },

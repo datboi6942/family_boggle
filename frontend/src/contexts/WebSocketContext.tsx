@@ -64,6 +64,9 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
         case 'game_state':
           updateFromGameState(message.data);
           break;
+        case 'timer_update':
+          useGameStore.getState().setTimer(message.data.timer);
+          break;
         case 'word_result':
           setWordResult(message.data);
           break;
