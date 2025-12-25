@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { useGameStore } from '../stores/gameStore';
+import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { MonsterAvatar } from './MonsterAvatar';
 import { motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 
 export const GameSummary = () => {
-  const { results, setStatus } = useGameStore();
+  const { results } = useGameStore();
+  const { send } = useWebSocketContext();
 
   useEffect(() => {
     confetti({
@@ -50,10 +52,10 @@ export const GameSummary = () => {
       </div>
 
       <button
-        onClick={() => setStatus('lobby')}
+        onClick={() => send('reset_game', {})}
         className="w-full py-5 bg-white/10 rounded-2xl font-black text-xl mt-6 active:scale-95 transition-transform"
       >
-        BACK TO LOBBY
+        PLAY AGAIN
       </button>
     </div>
   );

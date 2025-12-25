@@ -137,6 +137,14 @@ async def websocket_endpoint(
                         "data": effect
                     })
 
+            elif msg_type == "reset_game":
+                # Reset the lobby for a new game
+                if game_engine.reset_lobby(lobby_id):
+                    await manager.broadcast(lobby_id, {
+                        "type": "lobby_update",
+                        "data": game_engine.lobbies[lobby_id].model_dump()
+                    })
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         # Handle player leaving logic here if needed

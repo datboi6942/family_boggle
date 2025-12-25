@@ -80,6 +80,13 @@ export const useGameStore = create<GameState>()(
     hostId: data.host_id || data.hostId || null,
     boardSize: data.board_size || data.boardSize || 6,
     status: (data.status === 'lobby' ? 'lobby' : data.status) || 'lobby',
+    // Clear game-specific state when returning to lobby
+    board: data.board || [],
+    results: null,
+    winner: null,
+    lastWordResult: null,
+    blockedCells: [],
+    isFrozen: false,
   }),
   updateFromGameState: (data) => set({
     status: data.status,

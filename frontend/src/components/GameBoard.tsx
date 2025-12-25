@@ -4,6 +4,15 @@ import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Snowflake, Bomb, RotateCw } from 'lucide-react';
 
+// Letter point values (same as backend scoring.py)
+const LETTER_SCORES: Record<string, number> = {
+  'A': 1, 'E': 1, 'I': 1, 'O': 1, 'N': 1, 'R': 1, 'T': 1, 'L': 1, 'S': 1,
+  'D': 2, 'G': 2, 'U': 2, 'C': 2, 'M': 2, 'P': 2, 'B': 2,
+  'H': 3, 'F': 3, 'W': 3, 'Y': 3, 'V': 3, 'K': 3,
+  'J': 5, 'X': 5,
+  'Q': 8, 'Z': 8
+};
+
 // Memoized cell component to prevent unnecessary re-renders
 const Cell = memo(({ 
   letter, 
@@ -19,34 +28,42 @@ const Cell = memo(({
   isLast: boolean; 
   isBlocked: boolean; 
   pathIndex: number;
-}) => (
-  <div
-    className={`
-      aspect-square frosted-glass flex items-center justify-center text-3xl font-black
-      relative rounded-xl transition-transform duration-75
-      ${isSelected ? 'bg-primary/80 border-2 border-white scale-105 z-10' : 'bg-white/5 border border-white/10'}
-      ${isFirst ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-transparent' : ''}
-      ${isLast && !isFirst ? 'bg-white text-primary' : ''}
-      ${isBlocked ? 'opacity-20 grayscale border-red-500' : ''}
-    `}
-    style={{
-      boxShadow: isSelected ? '0 0 20px rgba(139, 92, 246, 0.5)' : undefined,
-      willChange: isSelected ? 'transform' : 'auto'
-    }}
-  >
-    {isSelected && (
-      <span className="absolute top-0.5 left-1 text-[10px] font-bold text-white/70">
-        {pathIndex + 1}
+}) => {
+  const points = LETTER_SCORES[letter.toUpperCase()] ?? 1;
+  
+  return (
+    <div
+      className={`
+        aspect-square frosted-glass flex items-center justify-center text-2xl sm:text-3xl font-black
+        relative rounded-xl transition-transform duration-75
+        ${isSelected ? 'bg-primary/80 border-2 border-white scale-105 z-10' : 'bg-white/5 border border-white/10'}
+        ${isFirst ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-transparent' : ''}
+        ${isLast && !isFirst ? 'bg-white text-primary' : ''}
+        ${isBlocked ? 'opacity-20 grayscale border-red-500' : ''}
+      `}
+      style={{
+        boxShadow: isSelected ? '0 0 20px rgba(139, 92, 246, 0.5)' : undefined,
+        willChange: isSelected ? 'transform' : 'auto'
+      }}
+    >
+      {isSelected && (
+        <span className="absolute top-0.5 left-1 text-[8px] sm:text-[10px] font-bold text-white/70">
+          {pathIndex + 1}
+        </span>
+      )}
+      {letter}
+      {/* Letter point value */}
+      <span className={`absolute bottom-0.5 right-1 text-[8px] sm:text-[10px] font-bold ${isSelected || (isLast && !isFirst) ? 'text-white/70' : 'text-primary/70'}`}>
+        {points}
       </span>
-    )}
-    {letter}
-    {isBlocked && (
-      <div className="absolute inset-0 flex items-center justify-center">
-        <Bomb className="text-red-500 w-1/2 h-1/2 opacity-50" />
-      </div>
-    )}
-  </div>
-));
+      {isBlocked && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Bomb className="text-red-500 w-1/2 h-1/2 opacity-50" />
+        </div>
+      )}
+    </div>
+  );
+});
 Cell.displayName = 'Cell';
 
 export const GameBoard = () => {
@@ -193,30 +210,35 @@ export const GameBoard = () => {
   const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
   return (
-    <div className="game-board-container flex flex-col h-full bg-navy-gradient min-h-screen text-white p-4 select-none">
-      {/* Header */}
-      <div className={`flex justify-between items-center mb-4 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
-        <div className={`frosted-glass px-4 py-2 flex items-center space-x-2 ${isFrozen ? 'border-blue-400' : ''}`}>
-          {isFrozen ? <Snowflake className="animate-spin" /> : <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />}
-          <span className="text-2xl font-black font-mono">{formattedTimer}</span>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-white/50 uppercase font-bold">Your Score</p>
-          <p className="text-3xl font-black text-primary">{me?.score || 0}</p>
-        </div>
-      </div>
-
-      {/* Selected Word Display */}
-      <div className="h-12 flex justify-center items-center mb-4">
-        {currentWord && (
-          <div className="text-3xl font-black tracking-widest text-primary animate-pulse">
-            {currentWord}
+    <div className="game-board-container flex flex-col h-full bg-navy-gradient min-h-screen text-white select-none" style={{ paddingTop: 'env(safe-area-inset-top, 12px)', paddingLeft: 'env(safe-area-inset-left, 12px)', paddingRight: 'env(safe-area-inset-right, 12px)', paddingBottom: 'env(safe-area-inset-bottom, 12px)' }}>
+      {/* Header - Fixed position for visibility */}
+      <div className={`sticky top-0 z-30 py-3 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
+        <div className="flex justify-between items-center gap-2">
+          {/* Timer */}
+          <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
+            {isFrozen ? <Snowflake className="w-5 h-5 animate-spin" /> : <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />}
+            <span className="text-xl sm:text-2xl font-black font-mono tabular-nums">{formattedTimer}</span>
           </div>
-        )}
+          
+          {/* Current Word (center) */}
+          <div className="flex-1 text-center min-w-0 overflow-hidden">
+            {currentWord && (
+              <div className="text-lg sm:text-2xl font-black tracking-wider text-primary animate-pulse truncate">
+                {currentWord}
+              </div>
+            )}
+          </div>
+          
+          {/* Score */}
+          <div className="frosted-glass px-3 py-2 text-right shrink-0">
+            <p className="text-[10px] sm:text-xs text-white/50 uppercase font-bold leading-none">Score</p>
+            <p className="text-xl sm:text-2xl font-black text-primary leading-none">{me?.score || 0}</p>
+          </div>
+        </div>
       </div>
 
       {/* The Board */}
-      <div className="relative w-full aspect-square mb-6">
+      <div className="relative w-full aspect-square mb-4 mt-2 px-1">
         {/* SVG Overlay for connecting lines */}
         {linePath && (
           <svg 
