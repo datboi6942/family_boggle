@@ -359,43 +359,43 @@ export const GameBoard = () => {
 
   return (
     <div 
-      className="game-board-container flex flex-col bg-navy-gradient text-white select-none overflow-hidden"
+      className="game-board-container flex flex-col h-full bg-navy-gradient min-h-screen text-white select-none"
       style={{ 
-        height: '100dvh',
-        paddingTop: 'env(safe-area-inset-top, 8px)', 
-        paddingLeft: 'env(safe-area-inset-left, 8px)', 
-        paddingRight: 'env(safe-area-inset-right, 8px)', 
-        paddingBottom: 'env(safe-area-inset-bottom, 8px)' 
+        paddingTop: 'env(safe-area-inset-top, 12px)', 
+        paddingLeft: 'env(safe-area-inset-left, 12px)', 
+        paddingRight: 'env(safe-area-inset-right, 12px)', 
+        paddingBottom: 'env(safe-area-inset-bottom, 12px)' 
       }}
     >
-      {/* Header - Compact for mobile */}
-      <div className={`flex-shrink-0 z-30 py-1.5 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
+      {/* Header - Fixed position for visibility */}
+      <div className={`sticky top-0 z-30 py-3 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
-          <div className={`frosted-glass px-2 py-1 flex items-center gap-1.5 shrink-0 ${isFrozen ? 'border-blue-400 border-2 bg-blue-500/20' : ''}`}>
-            {isFrozen ? <Snowflake className="w-4 h-4 animate-spin text-blue-400" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
-            <span className={`text-lg font-black font-mono tabular-nums ${isFrozen ? 'text-blue-400' : ''}`}>{formattedTimer}</span>
+          <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
+            {isFrozen ? <Snowflake className="w-5 h-5 animate-spin" /> : <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />}
+            <span className="text-xl sm:text-2xl font-black font-mono tabular-nums">{formattedTimer}</span>
           </div>
-
+          
           {/* Current Word (center) */}
           <div className="flex-1 text-center min-w-0 overflow-hidden">
             {currentWord && (
-              <div className="text-lg font-black tracking-wider text-primary truncate">
+              <div className="text-lg sm:text-2xl font-black tracking-wider text-primary animate-pulse truncate">
                 {currentWord}
               </div>
             )}
           </div>
-
+          
           {/* Score */}
-          <div className="frosted-glass px-2 py-1 text-right shrink-0">
-            <p className="text-lg font-black text-primary leading-none">{me?.score || 0}</p>
+          <div className="frosted-glass px-3 py-2 text-right shrink-0">
+            <p className="text-[10px] sm:text-xs text-white/50 uppercase font-bold leading-none">Score</p>
+            <p className="text-xl sm:text-2xl font-black text-primary leading-none">{me?.score || 0}</p>
           </div>
         </div>
       </div>
 
-      {/* The Board - Centered square that fits within available space */}
-      <div className="flex-1 flex items-center justify-center min-h-0 p-2">
-        {/* Grid of letters - square board that fits within container */}
+      {/* The Board - Simple w-full aspect-square that works on mobile */}
+      <div className="w-full aspect-square mb-4 mt-2 px-1">
+        {/* Grid of letters */}
         <div 
           ref={boardRef}
           onMouseDown={handleStart}
@@ -405,18 +405,13 @@ export const GameBoard = () => {
           onTouchStart={handleStart}
           onTouchMove={handleMove}
           onTouchEnd={handleEnd}
-          className="relative grid gap-2"
+          className="relative grid gap-2 w-full h-full"
           style={{ 
             gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
-            gridTemplateRows: `repeat(${boardSize}, 1fr)`,
-            touchAction: 'none',
-            /* Square board sized to fit within available space */
-            width: 'min(100%, calc(100dvh - 160px))',
-            height: 'min(100%, calc(100dvh - 160px))',
-            aspectRatio: '1 / 1',
+            touchAction: 'none' 
           }}
         >
-          {/* SVG Overlay for connecting lines - positioned relative to grid */}
+          {/* SVG Overlay for connecting lines - inside grid for correct alignment */}
           {linePath && (
             <svg 
               className="absolute inset-0 w-full h-full pointer-events-none z-20"
@@ -465,8 +460,8 @@ export const GameBoard = () => {
         </div>
       </div>
 
-      {/* Power-ups - Compact */}
-      <div className="flex justify-center gap-3 py-2">
+      {/* Power-ups */}
+      <div className="flex justify-center space-x-4">
         {['freeze', 'blowup', 'shuffle'].map(p => {
           const count = me?.powerups?.filter(x => x === p).length || 0;
           return (
@@ -480,15 +475,15 @@ export const GameBoard = () => {
                 }
               }}
               className={`
-                relative p-3 rounded-xl frosted-glass transition-all
-                ${count > 0 ? 'bg-primary/20 border-primary' : 'opacity-40'}
+                relative p-4 rounded-2xl frosted-glass transition-all
+                ${count > 0 ? 'bg-primary/20 border-primary animate-pulse' : 'opacity-50'}
               `}
             >
-              {p === 'freeze' && <Snowflake className="w-5 h-5" />}
-              {p === 'blowup' && <Bomb className="w-5 h-5" />}
-              {p === 'shuffle' && <RotateCw className="w-5 h-5" />}
+              {p === 'freeze' && <Snowflake />}
+              {p === 'blowup' && <Bomb />}
+              {p === 'shuffle' && <RotateCw />}
               {count > 0 && (
-                <span className="absolute -top-1 -right-1 bg-primary w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold">
+                <span className="absolute -top-2 -right-2 bg-primary w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold">
                   {count}
                 </span>
               )}
