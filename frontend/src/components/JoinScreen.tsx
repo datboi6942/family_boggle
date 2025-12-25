@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useAudioContext } from '../contexts/AudioContext';
 import { MONSTERS, MonsterAvatar } from './MonsterAvatar';
@@ -11,17 +11,13 @@ export const JoinScreen = () => {
   const [lobbyInput, setLobbyInput] = useState('');
   const musicStartedRef = useRef(false);
 
-  // Keep a ref to audio so effects can access latest version
-  const audioRef = useRef(audio);
-  audioRef.current = audio;
-
-  // Start menu music on join screen
-  useEffect(() => {
+  // Start menu music on first user interaction (mobile browsers block autoplay)
+  const startMusicOnInteraction = useCallback(() => {
     if (!musicStartedRef.current) {
-      audioRef.current.playMenuMusic();
+      audio.playMenuMusic();
       musicStartedRef.current = true;
     }
-  }, []);
+  }, [audio]);
 
   const handleStart = (mode: 'create' | 'join') => {
     if (!username) return;
@@ -44,7 +40,11 @@ export const JoinScreen = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-start sm:justify-center min-h-screen p-6 pb-12 space-y-6 bg-navy-gradient pt-12 sm:pt-6 overflow-y-auto">
+    <div
+      className="flex flex-col items-center justify-start sm:justify-center min-h-screen p-6 pb-12 space-y-6 bg-navy-gradient pt-12 sm:pt-6 overflow-y-auto"
+      onClick={startMusicOnInteraction}
+      onTouchStart={startMusicOnInteraction}
+    >
       <motion.h1
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}

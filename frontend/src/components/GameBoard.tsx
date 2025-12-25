@@ -43,16 +43,16 @@ const Cell = memo(({
     <div
       className={`
         aspect-square frosted-glass flex items-center justify-center font-black
-        relative rounded-xl transition-transform duration-75
+        relative rounded-xl transition-all duration-150 ease-out
         ${isQU ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'}
-        ${isSelected ? 'bg-primary/80 border-2 border-white scale-105 z-10' : 'bg-white/5 border border-white/10'}
+        ${isSelected ? 'bg-primary/80 border-2 border-white scale-110 z-10' : 'bg-white/5 border border-white/10 scale-100'}
         ${isFirst ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-transparent' : ''}
         ${isLast && !isFirst ? 'bg-white text-primary' : ''}
         ${isBlocked ? 'opacity-20 grayscale border-red-500' : ''}
       `}
       style={{
         boxShadow: isSelected ? '0 0 20px rgba(139, 92, 246, 0.5)' : undefined,
-        willChange: isSelected ? 'transform' : 'auto'
+        transform: isSelected ? 'scale(1.1)' : 'scale(1)',
       }}
     >
       {isSelected && (
@@ -187,12 +187,15 @@ export const GameBoard = () => {
     return null;
   }, [boardSize]);
 
-  // Track path length changes for letter chain sounds
+  // Track path length changes for letter chain sounds (throttled)
   const prevPathLengthRef = useRef(0);
+  const lastSoundTimeRef = useRef(0);
   useEffect(() => {
-    if (currentPath.length > prevPathLengthRef.current && currentPath.length > 0) {
-      // Path grew - play chain sound based on length
+    const now = Date.now();
+    // Only play sound if path grew and at least 80ms since last sound
+    if (currentPath.length > prevPathLengthRef.current && currentPath.length > 0 && now - lastSoundTimeRef.current > 80) {
       audioRef.current.playLetterChain(currentPath.length);
+      lastSoundTimeRef.current = now;
     }
     prevPathLengthRef.current = currentPath.length;
   }, [currentPath.length]);
@@ -291,40 +294,34 @@ export const GameBoard = () => {
   const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
   return (
-    <div className="game-board-container flex flex-col h-full bg-navy-gradient min-h-screen text-white select-none" style={{ paddingTop: 'env(safe-area-inset-top, 12px)', paddingLeft: 'env(safe-area-inset-left, 12px)', paddingRight: 'env(safe-area-inset-right, 12px)', paddingBottom: 'env(safe-area-inset-bottom, 12px)' }}>
-      {/* Header - Fixed position for visibility */}
-      <div className={`sticky top-0 z-30 py-3 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
+    <div className="game-board-container flex flex-col h-full bg-navy-gradient min-h-screen text-white select-none" style={{ paddingTop: 'env(safe-area-inset-top, 8px)', paddingLeft: 'env(safe-area-inset-left, 8px)', paddingRight: 'env(safe-area-inset-right, 8px)', paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}>
+      {/* Header - Compact for mobile */}
+      <div className={`z-30 py-1.5 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
-          <div className={`frosted-glass px-3 py-2 flex flex-col items-center shrink-0 ${isFrozen ? 'border-blue-400 border-2 bg-blue-500/20' : ''}`}>
-            <div className="flex items-center space-x-2">
-              {isFrozen ? <Snowflake className="w-5 h-5 animate-spin text-blue-400" /> : <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />}
-              <span className={`text-xl sm:text-2xl font-black font-mono tabular-nums ${isFrozen ? 'text-blue-400' : ''}`}>{formattedTimer}</span>
-            </div>
-            {isFrozen && (
-              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Timer Paused!</span>
-            )}
+          <div className={`frosted-glass px-2 py-1 flex items-center gap-1.5 shrink-0 ${isFrozen ? 'border-blue-400 border-2 bg-blue-500/20' : ''}`}>
+            {isFrozen ? <Snowflake className="w-4 h-4 animate-spin text-blue-400" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+            <span className={`text-lg font-black font-mono tabular-nums ${isFrozen ? 'text-blue-400' : ''}`}>{formattedTimer}</span>
           </div>
-          
+
           {/* Current Word (center) */}
           <div className="flex-1 text-center min-w-0 overflow-hidden">
             {currentWord && (
-              <div className="text-lg sm:text-2xl font-black tracking-wider text-primary animate-pulse truncate">
+              <div className="text-lg font-black tracking-wider text-primary truncate">
                 {currentWord}
               </div>
             )}
           </div>
-          
+
           {/* Score */}
-          <div className="frosted-glass px-3 py-2 text-right shrink-0">
-            <p className="text-[10px] sm:text-xs text-white/50 uppercase font-bold leading-none">Score</p>
-            <p className="text-xl sm:text-2xl font-black text-primary leading-none">{me?.score || 0}</p>
+          <div className="frosted-glass px-2 py-1 text-right shrink-0">
+            <p className="text-lg font-black text-primary leading-none">{me?.score || 0}</p>
           </div>
         </div>
       </div>
 
       {/* The Board */}
-      <div className="relative w-full aspect-square mb-4 mt-2 px-1">
+      <div className="relative flex-1 w-full max-h-[calc(100vh-140px)] aspect-square mx-auto mb-2 px-1">
         {/* SVG Overlay for connecting lines */}
         {linePath && (
           <svg 
