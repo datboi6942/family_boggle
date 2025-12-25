@@ -1,6 +1,6 @@
 import asyncio
-from typing import Dict
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, Query
+from typing import Dict, Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
@@ -8,6 +8,7 @@ from family_boggle.config import settings
 from family_boggle.websocket_manager import manager
 from family_boggle.game_engine import game_engine
 from family_boggle.models import WordSubmission
+from family_boggle.high_scores import get_leaderboard, get_player_stats, ip_tracker
 
 # Setup structured logging
 structlog.configure(
@@ -32,6 +33,42 @@ app.add_middleware(
 async def health_check():
     return {"status": "ok"}
 
+
+@app.get("/api/leaderboard")
+async def leaderboard(limit: int = Query(default=10, le=50)):
+    """Returns the high scores leaderboard."""
+    return {"leaderboard": get_leaderboard(limit)}
+
+
+@app.get("/api/player-stats")
+async def player_stats(request: Request):
+    """Returns the current player's stats based on their IP address."""
+    # Get client IP - check forwarded headers first for proxy support
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+    else:
+        ip = request.client.host if request.client else "unknown"
+
+    stats = get_player_stats(ip)
+    if not stats:
+        return {"stats": None, "is_new_player": True}
+    return {"stats": stats, "is_new_player": False}
+
+
+def get_client_ip(websocket: WebSocket) -> str:
+    """Extract client IP from WebSocket connection."""
+    # Check for forwarded headers (for proxied connections)
+    forwarded = websocket.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+
+    # Fall back to direct client connection
+    if websocket.client:
+        return websocket.client.host
+    return "unknown"
+
+
 @app.websocket("/ws/{lobby_id}/{player_id}")
 async def websocket_endpoint(
     websocket: WebSocket, 
@@ -43,6 +80,13 @@ async def websocket_endpoint(
 ):
     await manager.connect(websocket, lobby_id)
     
+    # Get client IP for high score tracking
+    client_ip = get_client_ip(websocket)
+    logger.info("client_connected", player_id=player_id, ip=client_ip)
+    
+    # Register player IP for high score tracking
+    ip_tracker.register_player(player_id, client_ip)
+
     # Handle create vs join modes
     lobby_exists = lobby_id in game_engine.lobbies
     
@@ -147,6 +191,7 @@ async def websocket_endpoint(
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+        ip_tracker.remove_player(player_id)
         # Remove player from lobby
         if game_engine.leave_lobby(lobby_id, player_id):
             # If lobby still exists, broadcast update
@@ -200,6 +245,25 @@ async def run_game_loop(lobby_id: str):
     if lobby_id in game_engine.lobbies:
         lobby.status = "summary"
         summary = game_engine.finalize_scores(lobby_id)
+        
+        # Update high scores for all players
+        from family_boggle.high_scores import update_player_score
+        winner_id = summary.get("winner", {}).get("player_id") if summary.get("winner") else None
+        
+        for result in summary.get("results", []):
+            player_id = result.get("player_id")
+            if player_id:
+                player_ip = ip_tracker.get_player_ip(player_id)
+                if player_ip:
+                    update_player_score(
+                        ip_address=player_ip,
+                        username=result.get("username", "Unknown"),
+                        score=result.get("score", 0),
+                        words_count=len(result.get("words", [])),
+                        is_winner=(player_id == winner_id),
+                        challenges_completed=result.get("challenges_completed", 0)
+                    )
+        
         await manager.broadcast(lobby_id, {
             "type": "game_end",
             "data": summary

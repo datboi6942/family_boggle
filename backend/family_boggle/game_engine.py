@@ -7,9 +7,7 @@ import structlog
 from family_boggle.board import BoggleBoard
 from family_boggle.dictionary import DictionaryValidator
 from family_boggle.scoring import calculate_word_score
-from family_boggle.models import GameStateModel, PlayerModel, WordSubmission, ChallengeDefinition
-from family_boggle.challenges import challenge_manager
-from family_boggle.high_scores import ip_tracker, update_player_score
+from family_boggle.models import GameStateModel, PlayerModel, WordSubmission
 
 logger = structlog.get_logger()
 
@@ -24,28 +22,16 @@ class GameEngine:
         self.validator = DictionaryValidator()
         self.board_gen: Optional[BoggleBoard] = None
 
-    def create_lobby(
-        self,
-        host_id: str,
-        host_username: str,
-        host_character: str,
-        lobby_id: Optional[str] = None,
-        ip_address: Optional[str] = None
-    ) -> str:
+    def create_lobby(self, host_id: str, host_username: str, host_character: str, lobby_id: Optional[str] = None) -> str:
         """Creates a new game lobby."""
         if not lobby_id:
             lobby_id = str(uuid.uuid4())[:8].upper()
-
-        # Track IP address
-        if ip_address:
-            ip_tracker.register_player(host_id, ip_address)
-
+        
         host = PlayerModel(
             id=host_id,
             username=host_username,
             character=host_character,
-            is_ready=False,
-            ip_address=ip_address
+            is_ready=False
         )
         self.lobbies[lobby_id] = GameStateModel(
             lobby_id=lobby_id,
@@ -56,36 +42,24 @@ class GameEngine:
         logger.info("lobby_created", lobby_id=lobby_id, host_id=host_id)
         return lobby_id
 
-    def join_lobby(
-        self,
-        lobby_id: str,
-        player_id: str,
-        username: str,
-        character: str,
-        ip_address: Optional[str] = None
-    ) -> bool:
+    def join_lobby(self, lobby_id: str, player_id: str, username: str, character: str) -> bool:
         """Adds a player to an existing lobby."""
         if lobby_id not in self.lobbies:
             return False
-
+            
         lobby = self.lobbies[lobby_id]
         if len(lobby.players) >= 10:
             return False
-
-        # Track IP address
-        if ip_address:
-            ip_tracker.register_player(player_id, ip_address)
-
+            
         # Check if player already in lobby
         if any(p.id == player_id for p in lobby.players):
             return True
-
+            
         new_player = PlayerModel(
             id=player_id,
             username=username,
             character=character,
-            is_ready=False,
-            ip_address=ip_address
+            is_ready=False
         )
         lobby.players.append(new_player)
         logger.info("player_joined", lobby_id=lobby_id, player_id=player_id)
@@ -107,21 +81,17 @@ class GameEngine:
         """Starts the game if all players are ready."""
         if lobby_id not in self.lobbies:
             return False
-
+            
         lobby = self.lobbies[lobby_id]
         if not all(p.is_ready for p in lobby.players):
             return False
-
+            
         self.board_gen = BoggleBoard(size=lobby.board_size)
         lobby.board = self.board_gen.grid
         lobby.status = "countdown"
         lobby.timer = 3  # 3-2-1 countdown
-
-        # Setup challenges for this game
-        challenge_defs = challenge_manager.setup_game_challenges(lobby_id)
-        lobby.challenges = [ChallengeDefinition(**c) for c in challenge_defs]
-
-        logger.info("game_countdown_started", lobby_id=lobby_id, challenges=len(lobby.challenges))
+        
+        logger.info("game_countdown_started", lobby_id=lobby_id)
         return True
 
     def submit_word(self, lobby_id: str, player_id: str, submission: WordSubmission) -> dict:
@@ -171,7 +141,7 @@ class GameEngine:
         """Calculates final scores with uniqueness bonuses and word award details."""
         if lobby_id not in self.lobbies:
             return {}
-
+            
         lobby = self.lobbies[lobby_id]
         # Count occurrences of each word across all players and track who found them
         word_data: Dict[str, Dict] = {}
@@ -200,36 +170,7 @@ class GameEngine:
 
         # Sort words by length (shortest first) to build excitement
         word_awards.sort(key=lambda x: len(x["word"]))
-
-        # Find the longest word found by any player
-        longest_word_found = None
-        if word_data:
-            longest_word = max(word_data.keys(), key=len)
-            # Get the first finder of the longest word
-            finder = word_data[longest_word]["finders"][0]
-            longest_word_found = {
-                "word": longest_word,
-                "length": len(longest_word),
-                "player_id": finder["player_id"],
-                "username": finder["username"],
-                "character": finder["character"]
-            }
-
-        # Find all possible words on the board
-        all_possible_words: List[str] = []
-        longest_possible_word = ""
-        if self.board_gen:
-            try:
-                all_possible_words = self.board_gen.find_all_valid_words(
-                    self.validator.get_word_set(),
-                    self.validator.get_prefix_set()
-                )
-                # Sort by length (longest first), then alphabetically
-                all_possible_words.sort(key=lambda w: (-len(w), w))
-                longest_possible_word = all_possible_words[0] if all_possible_words else ""
-            except Exception as e:
-                logger.warning("failed_to_find_possible_words", error=str(e))
-
+                
         # Recalculate final results for leaderboard
         final_results = []
         for p in lobby.players:
@@ -237,62 +178,21 @@ class GameEngine:
             for word in p.found_words:
                 # We can reuse the points from word_data
                 p.score += word_data[word]["points"]
-
-            # Get challenge progress for this player
-            all_challenges = challenge_manager.get_player_progress(
-                lobby_id, p.found_words, p.score
-            )
-            best_challenge = challenge_manager.get_best_challenge_for_player(
-                lobby_id, p.found_words, p.score
-            )
-            challenges_completed = sum(1 for c in all_challenges if c["completed"])
-
-            # Find the longest word this player found
-            player_longest = max(p.found_words, key=len) if p.found_words else ""
-
+            
             final_results.append({
+                "player_id": p.id,
                 "username": p.username,
                 "character": p.character,
-                "player_id": p.id,
                 "score": p.score,
-                "words": p.found_words,
-                "longest_word": player_longest,
-                "best_challenge": best_challenge,
-                "all_challenges": all_challenges,
-                "challenges_completed": challenges_completed
+                "words": p.found_words
             })
-
-        # Sort by score (descending), then by number of words (descending), then by username for consistency
-        final_results.sort(key=lambda x: (-x["score"], -len(x["words"]), x["username"]))
-
-        # Determine winner (first in sorted list = highest score)
-        winner = final_results[0] if final_results else None
-
-        # Update high scores for all players
-        for result in final_results:
-            player = next((p for p in lobby.players if p.id == result["player_id"]), None)
-            if player and player.ip_address:
-                is_winner = (winner and result["player_id"] == winner.get("player_id", ""))
-                update_player_score(
-                    ip_address=player.ip_address,
-                    username=result["username"],
-                    score=result["score"],
-                    words_count=len(result["words"]),
-                    is_winner=is_winner,
-                    challenges_completed=result["challenges_completed"]
-                )
-
-        # Cleanup challenge data for this game
-        challenge_manager.cleanup_game(lobby_id)
-
+            
+        # Sort by score
+        final_results.sort(key=lambda x: x["score"], reverse=True)
         return {
-            "results": final_results,
-            "winner": winner,
-            "word_awards": word_awards,
-            "longest_word_found": longest_word_found,
-            "longest_possible_word": longest_possible_word,
-            "all_possible_words": all_possible_words,
-            "total_possible_words": len(all_possible_words)
+            "results": final_results, 
+            "winner": final_results[0] if final_results else None,
+            "word_awards": word_awards
         }
 
     def leave_lobby(self, lobby_id: str, player_id: str) -> bool:
