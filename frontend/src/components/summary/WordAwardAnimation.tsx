@@ -79,7 +79,7 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
               initial={{ y: 100, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: i * 0.1 }}
-              ref={(el) => (playerRefs.current[player.id] = el)}
+              ref={(el) => { playerRefs.current[player.id] = el; }}
             >
               <PlayerScoreCard
                 playerId={player.id}
