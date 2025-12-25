@@ -87,14 +87,17 @@ export const GameBoard = () => {
   const musicStartedRef = useRef(false);
   const lastTimerRef = useRef<number>(timer);
 
+  // Keep a ref to audio so effects can access latest version
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+
   // Start gameplay music when game begins (run once on mount)
   useEffect(() => {
     if (!musicStartedRef.current) {
-      audio.playGameStart();
-      audio.playGameplayMusic();
+      audioRef.current.playGameStart();
+      audioRef.current.playGameplayMusic();
       musicStartedRef.current = true;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Timer sounds
@@ -102,48 +105,44 @@ export const GameBoard = () => {
     if (timer !== lastTimerRef.current) {
       // Timer warning when 10 seconds or less
       if (timer <= 10 && timer > 0) {
-        audio.playTimerWarning();
+        audioRef.current.playTimerWarning();
       }
       // Game end sound
       if (timer === 0 && lastTimerRef.current > 0) {
-        audio.playGameEnd();
-        audio.stopMusic();
+        audioRef.current.playGameEnd();
+        audioRef.current.stopMusic();
       }
       lastTimerRef.current = timer;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timer]);
 
   // Word result sounds
   useEffect(() => {
     if (lastWordResult) {
       if (lastWordResult.valid) {
-        audio.playWordValid();
+        audioRef.current.playWordValid();
         if (lastWordResult.powerup) {
-          setTimeout(() => audio.playPowerupEarned(), 200);
+          setTimeout(() => audioRef.current.playPowerupEarned(), 200);
         }
       } else if (lastWordResult.reason === 'Already found') {
-        audio.playWordAlreadyFound();
+        audioRef.current.playWordAlreadyFound();
       } else {
-        audio.playWordInvalid();
+        audioRef.current.playWordInvalid();
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastWordResult]);
 
   // Frozen/powerup sounds
   useEffect(() => {
     if (isFrozen) {
-      audio.playPowerupFreeze();
+      audioRef.current.playPowerupFreeze();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFrozen]);
 
   useEffect(() => {
     if (blockedCells.length > 0) {
-      audio.playPowerupBomb();
+      audioRef.current.playPowerupBomb();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blockedCells]);
 
   // Cache board dimensions on drag start for performance
@@ -193,10 +192,9 @@ export const GameBoard = () => {
   useEffect(() => {
     if (currentPath.length > prevPathLengthRef.current && currentPath.length > 0) {
       // Path grew - play chain sound based on length
-      audio.playLetterChain(currentPath.length);
+      audioRef.current.playLetterChain(currentPath.length);
     }
     prevPathLengthRef.current = currentPath.length;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath.length]);
 
   const handleStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {

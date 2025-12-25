@@ -9,26 +9,28 @@ export const Countdown = () => {
   const lastTimerRef = useRef<number | null>(null);
   const musicStartedRef = useRef(false);
 
+  // Keep a ref to audio so effects can access latest version
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+
   // Play countdown riser music when countdown starts
   useEffect(() => {
     if (!musicStartedRef.current) {
-      audio.playCountdownRiser();
+      audioRef.current.playCountdownRiser();
       musicStartedRef.current = true;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Play countdown sounds on timer change
   useEffect(() => {
     if (lastTimerRef.current !== timer) {
       if (timer > 0 && timer <= 3) {
-        audio.playCountdownBeep();
+        audioRef.current.playCountdownBeep();
       } else if (timer === 0 || lastTimerRef.current === 1) {
-        audio.playCountdownGo();
+        audioRef.current.playCountdownGo();
       }
       lastTimerRef.current = timer;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timer]);
 
   return (

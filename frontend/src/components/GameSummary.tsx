@@ -16,6 +16,10 @@ export const GameSummary = () => {
   const [showAllWords, setShowAllWords] = useState(false);
   const musicStartedRef = useRef(false);
 
+  // Keep a ref to audio so effects can access latest version
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+
   // Calculate which words were found by players
   const foundWordsSet = useMemo(() => {
     const set = new Set<string>();
@@ -28,10 +32,9 @@ export const GameSummary = () => {
   // Start summary music
   useEffect(() => {
     if (!musicStartedRef.current) {
-      audio.playSummaryMusic();
+      audioRef.current.playSummaryMusic();
       musicStartedRef.current = true;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -49,8 +52,8 @@ export const GameSummary = () => {
     let interval: any;
     if (phase === 'celebrating') {
       // Play victory sounds
-      audio.playVictoryFanfare();
-      audio.playConfettiBurst();
+      audioRef.current.playVictoryFanfare();
+      audioRef.current.playConfettiBurst();
 
       confetti({
         particleCount: 200,
@@ -75,12 +78,11 @@ export const GameSummary = () => {
       }, 250);
     } else if (phase === 'longest-word') {
       // Play longest word award sound
-      audio.playLongestWordAward();
+      audioRef.current.playLongestWordAward();
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
   const handleAnimationsComplete = () => {

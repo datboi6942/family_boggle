@@ -11,13 +11,16 @@ export const JoinScreen = () => {
   const [lobbyInput, setLobbyInput] = useState('');
   const musicStartedRef = useRef(false);
 
+  // Keep a ref to audio so effects can access latest version
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+
   // Start menu music on join screen
   useEffect(() => {
     if (!musicStartedRef.current) {
-      audio.playMenuMusic();
+      audioRef.current.playMenuMusic();
       musicStartedRef.current = true;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleStart = (mode: 'create' | 'join') => {

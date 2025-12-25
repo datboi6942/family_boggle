@@ -19,6 +19,10 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
   const [targetPositions, setTargetPositions] = useState<Record<string, { x: number; y: number }>>({});
   const playerRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  // Keep a ref to audio so effects can access latest version
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+
   // Capture player card positions for flying word targets
   useEffect(() => {
     const updatePositions = () => {
@@ -44,13 +48,12 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
   // Play reveal sound when showing a new word
   useEffect(() => {
     if (wordAwards && wordAwards.length > 0) {
-      audio.playWordAwardReveal();
+      audioRef.current.playWordAwardReveal();
       // Play unique word bonus sound if it's a unique word
       if (wordAwards[currentIndex]?.is_unique) {
-        setTimeout(() => audio.playUniqueWordBonus(), 200);
+        setTimeout(() => audioRef.current.playUniqueWordBonus(), 200);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, wordAwards]);
 
   const handleWordComplete = () => {
@@ -59,7 +62,7 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
     const currentWord = wordAwards[currentIndex];
 
     // Play points landing sound
-    audio.playPointsLand();
+    audioRef.current.playPointsLand();
 
     // Update local scores
     const newScores = { ...playerScores };
@@ -72,7 +75,7 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
     if (currentIndex < wordAwards.length - 1) {
       setTimeout(() => setCurrentIndex(currentIndex + 1), 100);
     } else {
-      audio.playFinalScoreReveal();
+      audioRef.current.playFinalScoreReveal();
       setTimeout(() => onAllCompleted(newScores), 300);
     }
   };
