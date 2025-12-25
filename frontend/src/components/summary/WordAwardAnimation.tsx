@@ -10,7 +10,7 @@ interface WordAwardAnimationProps {
 }
 
 export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCompleted }) => {
-  const { wordAwards, players, results } = useGameStore();
+  const { wordAwards, players } = useGameStore();
   const audio = useAudioContext();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playerScores, setPlayerScores] = useState<Record<string, number>>(
@@ -71,12 +71,12 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
     });
     setPlayerScores(newScores);
 
-    // Move to next word or finish (fast transitions)
+    // Move to next word or finish (very fast transitions)
     if (currentIndex < wordAwards.length - 1) {
-      setTimeout(() => setCurrentIndex(currentIndex + 1), 100);
+      setTimeout(() => setCurrentIndex(currentIndex + 1), 30);
     } else {
       audioRef.current.playFinalScoreReveal();
-      setTimeout(() => onAllCompleted(newScores), 300);
+      setTimeout(() => onAllCompleted(newScores), 150);
     }
   };
 
@@ -95,10 +95,6 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
       <div className="flex flex-wrap justify-center gap-4 p-4 mt-8">
         <AnimatePresence>
           {players.map((player, i) => {
-            // Get the best challenge for this player from results
-            const playerResult = results?.find(r => r.player_id === player.id);
-            const bestChallenge = playerResult?.best_challenge;
-
             return (
               <motion.div
                 key={player.id}
@@ -112,8 +108,7 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
                   username={player.username}
                   character={player.character}
                   score={playerScores[player.id] || 0}
-                  bestChallenge={bestChallenge}
-                  showChallenge={true}
+                  showChallenge={false}
                 />
               </motion.div>
             );

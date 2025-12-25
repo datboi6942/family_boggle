@@ -167,9 +167,9 @@ export const GameBoard = () => {
     const cellCenterX = col * cellSize + cellSize / 2;
     const cellCenterY = row * cellSize + cellSize / 2;
 
-    // Distance from touch to cell center
+    // Distance from touch to cell center (reduced sensitivity - must be closer to center)
     const distSq = (localX - cellCenterX) ** 2 + (localY - cellCenterY) ** 2;
-    const hitRadiusSq = (cellSize * 0.5) ** 2;
+    const hitRadiusSq = (cellSize * 0.35) ** 2;
 
     if (distSq <= hitRadiusSq) {
       return { cell: [row, col], localX, localY };
@@ -307,23 +307,26 @@ export const GameBoard = () => {
 
   return (
     <div className="game-board-container flex flex-col bg-navy-gradient h-[100dvh] text-white select-none overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top, 4px)', paddingLeft: 'env(safe-area-inset-left, 4px)', paddingRight: 'env(safe-area-inset-right, 4px)', paddingBottom: 'env(safe-area-inset-bottom, 4px)' }}>
-      {/* Header - Ultra compact */}
-      <div className={`flex justify-between items-center px-2 py-1 ${isFrozen ? 'text-blue-400' : ''}`}>
+      {/* Header - Compact but visible */}
+      <div className={`flex justify-between items-center px-3 py-2 frosted-glass mx-2 mt-1 rounded-xl ${isFrozen ? 'border border-blue-400' : ''}`}>
         {/* Timer */}
-        <div className={`flex items-center gap-1 ${isFrozen ? 'text-blue-400' : ''}`}>
-          {isFrozen ? <Snowflake className="w-3 h-3 animate-spin" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
-          <span className="text-base font-black font-mono tabular-nums">{formattedTimer}</span>
+        <div className={`flex items-center gap-2 ${isFrozen ? 'text-blue-400' : 'text-white'}`}>
+          {isFrozen ? <Snowflake className="w-4 h-4 animate-spin" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+          <span className="text-lg font-black font-mono tabular-nums">{formattedTimer}</span>
         </div>
 
         {/* Current Word (center) */}
         {currentWord && (
-          <div className="text-base font-black tracking-wide text-primary truncate max-w-[50%]">
+          <div className="text-lg font-black tracking-wide text-primary truncate max-w-[40%]">
             {currentWord}
           </div>
         )}
 
         {/* Score */}
-        <span className="text-base font-black text-primary">{me?.score || 0}</span>
+        <div className="flex items-center gap-1">
+          <span className="text-white/50 text-sm font-bold">PTS</span>
+          <span className="text-xl font-black text-primary">{me?.score || 0}</span>
+        </div>
       </div>
 
       {/* The Board - Takes remaining space */}
@@ -331,9 +334,9 @@ export const GameBoard = () => {
         <div className="relative w-full h-full max-w-[min(100%,100vh-120px)] max-h-[min(100%,100vw)] aspect-square mx-auto">
         {/* SVG Overlay for connecting lines */}
         {linePath && (
-          <svg 
+          <svg
             className="absolute inset-0 w-full h-full pointer-events-none z-20"
-            style={{ overflow: 'visible' }}
+            style={{ overflow: 'visible', willChange: 'contents' }}
           >
             {/* Glow effect (render first, behind main line) */}
             <path

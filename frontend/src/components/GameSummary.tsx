@@ -207,7 +207,7 @@ export const GameSummary = () => {
             </div>
 
             {/* Board Words Summary Section */}
-            {allPossibleWords && allPossibleWords.length > 0 && (
+            {(totalPossibleWords > 0 || totalFoundWords > 0) && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -257,20 +257,22 @@ export const GameSummary = () => {
                     </div>
                   )}
 
-                  {/* Expand/Collapse Button */}
-                  <button
-                    onClick={() => setShowAllWords(!showAllWords)}
-                    className="w-full flex items-center justify-center gap-2 py-2 text-white/50 hover:text-white/80 transition-colors"
-                  >
-                    <span className="text-xs font-bold uppercase">
-                      {showAllWords ? 'Hide' : 'Show'} All {totalPossibleWords} Words
-                    </span>
-                    {showAllWords ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </button>
+                  {/* Expand/Collapse Button - only show if we have all words data */}
+                  {allPossibleWords && allPossibleWords.length > 0 && (
+                    <button
+                      onClick={() => setShowAllWords(!showAllWords)}
+                      className="w-full flex items-center justify-center gap-2 py-2 text-white/50 hover:text-white/80 transition-colors"
+                    >
+                      <span className="text-xs font-bold uppercase">
+                        {showAllWords ? 'Hide' : 'Show'} All {totalPossibleWords} Words
+                      </span>
+                      {showAllWords ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                  )}
 
                   {/* All Words Grid */}
                   <AnimatePresence>
-                    {showAllWords && (
+                    {showAllWords && allPossibleWords && allPossibleWords.length > 0 && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
@@ -280,7 +282,7 @@ export const GameSummary = () => {
                       >
                         <div className="border-t border-white/10 pt-3 mt-2">
                           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1 max-h-[300px] overflow-y-auto">
-                            {allPossibleWords.map((word, i) => {
+                            {allPossibleWords?.map((word, i) => {
                               const wasFound = foundWordsSet.has(word.toUpperCase());
                               return (
                                 <div
@@ -319,6 +321,7 @@ export const GameSummary = () => {
               <h2 className="text-white/50 font-bold uppercase tracking-widest text-center mb-4">Final Leaderboard</h2>
               {results?.map((res, i) => {
                 const hasLongestWord = longestWordFound?.player_id === res.player_id;
+                const isWinner = winner?.player_id === res.player_id;
                 return (
                   <motion.div
                     key={res.username}
@@ -326,12 +329,12 @@ export const GameSummary = () => {
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ delay: 0.5 + i * 0.1 }}
                     className={`frosted-glass p-4 flex items-center justify-between ${
-                      i === 0 ? 'border-primary border-2 scale-105 shadow-xl' : ''
+                      isWinner ? 'border-primary border-2 scale-105 shadow-xl' : ''
                     } ${hasLongestWord ? 'ring-2 ring-yellow-500/50' : ''}`}
                   >
                     <div className="flex items-center space-x-4">
                       <span className="text-xl font-black text-white/30">{i + 1}</span>
-                      <MonsterAvatar name={res.character} size={50} isWinner={i === 0} animated={false} />
+                      <MonsterAvatar name={res.character} size={50} isWinner={isWinner} animated={false} />
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-bold text-lg">{res.username}</p>
@@ -347,27 +350,74 @@ export const GameSummary = () => {
                     </div>
                     <div className="flex flex-col items-end">
                       <p className="text-2xl font-black text-primary">{res.score}</p>
-                      {/* Best Challenge Badge */}
-                      {res.best_challenge && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: 0.8 + i * 0.1 }}
-                          className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            res.best_challenge.completed
-                              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                              : 'bg-primary/20 text-primary border border-primary/30'
-                          }`}
-                        >
-                          {res.best_challenge.name}: {res.best_challenge.progress}/{res.best_challenge.target}
-                          {res.best_challenge.completed && ' ✓'}
-                        </motion.div>
-                      )}
                     </div>
                   </motion.div>
                 );
               })}
             </div>
+
+            {/* Challenges Section - All challenges for all players */}
+            {results && results.some(r => r.all_challenges && r.all_challenges.length > 0) && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1 }}
+                className="max-w-2xl mx-auto w-full mt-8"
+              >
+                <h2 className="text-white/50 font-bold uppercase tracking-widest text-center mb-4">Challenge Results</h2>
+                <div className="space-y-3">
+                  {results.map((res, playerIndex) => (
+                    res.all_challenges && res.all_challenges.length > 0 && (
+                      <div key={res.player_id} className="frosted-glass p-4">
+                        <div className="flex items-center gap-3 mb-3">
+                          <MonsterAvatar name={res.character} size={32} animated={false} />
+                          <span className="font-bold text-white">{res.username}</span>
+                          {res.challenges_completed > 0 && (
+                            <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
+                              {res.challenges_completed} completed
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid gap-2">
+                          {res.all_challenges.map((challenge, i) => (
+                            <motion.div
+                              key={challenge.id}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: 1.2 + playerIndex * 0.1 + i * 0.05 }}
+                              className={`flex items-center justify-between p-2 rounded-lg ${
+                                challenge.completed
+                                  ? 'bg-green-500/10 border border-green-500/30'
+                                  : 'bg-white/5 border border-white/10'
+                              }`}
+                            >
+                              <div className="flex-1">
+                                <p className={`text-sm font-bold ${challenge.completed ? 'text-green-400' : 'text-white/70'}`}>
+                                  {challenge.name}
+                                </p>
+                                <p className="text-[10px] text-white/40">{challenge.description}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full ${challenge.completed ? 'bg-green-400' : 'bg-primary'}`}
+                                    style={{ width: `${Math.min(100, challenge.ratio * 100)}%` }}
+                                  />
+                                </div>
+                                <span className={`text-xs font-bold min-w-[3rem] text-right ${challenge.completed ? 'text-green-400' : 'text-white/50'}`}>
+                                  {challenge.progress}/{challenge.target}
+                                  {challenge.completed && ' ✓'}
+                                </span>
+                              </div>
+                            </motion.div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  ))}
+                </div>
+              </motion.div>
+            )}
 
             <motion.button
               initial={{ y: 50, opacity: 0 }}

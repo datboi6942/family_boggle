@@ -262,10 +262,10 @@ class GameEngine:
                 "challenges_completed": challenges_completed
             })
 
-        # Sort by score
-        final_results.sort(key=lambda x: x["score"], reverse=True)
+        # Sort by score (descending), then by number of words (descending), then by username for consistency
+        final_results.sort(key=lambda x: (-x["score"], -len(x["words"]), x["username"]))
 
-        # Determine winner
+        # Determine winner (first in sorted list = highest score)
         winner = final_results[0] if final_results else None
 
         # Update high scores for all players

@@ -39,7 +39,7 @@ export const FlyingWord: React.FC<FlyingWordProps> = ({
   const handleFragmentComplete = () => {
     completedCountRef.current += 1;
     if (completedCountRef.current >= targetPositions.length) {
-      setTimeout(onComplete, 100);
+      setTimeout(onComplete, 30);
     }
   };
 
@@ -52,10 +52,10 @@ export const FlyingWord: React.FC<FlyingWordProps> = ({
           animate={{ scale: 1, opacity: 1, rotateX: 0 }}
           transition={{
             type: "spring",
-            stiffness: 400,
-            damping: 25,
+            stiffness: 500,
+            damping: 30,
           }}
-          onAnimationComplete={() => setTimeout(handleRevealComplete, 400)}
+          onAnimationComplete={() => setTimeout(handleRevealComplete, 120)}
           className={`frosted-glass px-6 py-4 flex flex-col items-center ${
             isUnique ? 'border-2 border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.5)]' : ''
           }`}
@@ -102,9 +102,9 @@ export const FlyingWord: React.FC<FlyingWordProps> = ({
             opacity: 0.8,
           }}
           transition={{
-            duration: 0.4,
+            duration: 0.2,
             ease: [0.25, 0.46, 0.45, 0.94],
-            delay: index * 0.05,
+            delay: index * 0.02,
           }}
           onAnimationComplete={handleFragmentComplete}
           className="absolute px-3 py-1.5 bg-primary rounded-lg text-white font-bold text-sm shadow-lg"
