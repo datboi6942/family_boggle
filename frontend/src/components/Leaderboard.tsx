@@ -160,38 +160,44 @@ export const Leaderboard = () => {
 
             {/* Leaderboard Section */}
             <div className="p-4">
-              <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Top Players</p>
+              <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Top Players by Best Score</p>
               {leaderboard.length === 0 ? (
                 <div className="text-center py-4 text-white/40 text-sm">
                   No scores yet. Be the first!
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {leaderboard.map((entry, index) => (
-                    <motion.div
-                      key={`${entry.username}-${index}`}
-                      initial={{ x: -20, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      transition={{ delay: index * 0.05 }}
-                      className={`flex items-center justify-between p-2 rounded-lg ${
-                        index === 0 ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-white/5'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        {getRankIcon(index)}
-                        <div>
-                          <p className="font-bold text-sm">{entry.username}</p>
-                          <p className="text-[10px] text-white/40">
-                            {entry.total_wins} win{entry.total_wins !== 1 ? 's' : ''} · {entry.total_games_played} game{entry.total_games_played !== 1 ? 's' : ''}
-                          </p>
+                  {leaderboard.map((entry, index) => {
+                    const winRate = entry.total_games_played > 0
+                      ? Math.round((entry.total_wins / entry.total_games_played) * 100)
+                      : 0;
+
+                    return (
+                      <motion.div
+                        key={`${entry.username}-${index}`}
+                        initial={{ x: -20, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        transition={{ delay: index * 0.05 }}
+                        className={`flex items-center justify-between p-2 rounded-lg ${
+                          index === 0 ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-white/5'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {getRankIcon(index)}
+                          <div>
+                            <p className="font-bold text-sm">{entry.username}</p>
+                            <p className="text-[10px] text-white/40">
+                              {entry.total_wins}/{entry.total_games_played} wins ({winRate}%)
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-black text-primary">{entry.best_score}</p>
-                        <p className="text-[10px] text-white/40">{entry.best_words_count} words</p>
-                      </div>
-                    </motion.div>
-                  ))}
+                        <div className="text-right">
+                          <p className="font-black text-primary text-lg">{entry.best_score}</p>
+                          <p className="text-[10px] text-white/40">best score</p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
                 </div>
               )}
             </div>
