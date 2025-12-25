@@ -38,50 +38,10 @@ export function AudioControls() {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2"
+      className="fixed top-4 right-4 z-50 flex flex-col items-end gap-2"
       onClick={handleContainerClick}
       onTouchStart={handleContainerClick}
     >
-      <AnimatePresence>
-        {showVolume && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.9 }}
-            className="frosted-glass p-3 rounded-xl flex flex-col gap-3 mb-2"
-          >
-            {/* SFX Volume */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-white/70 w-10">SFX</span>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={audio.sfxVolume}
-                onChange={handleSfxVolumeChange}
-                className="w-24 accent-primary"
-              />
-              <span className="text-xs text-white/50 w-8">{Math.round(audio.sfxVolume * 100)}%</span>
-            </div>
-            {/* Music Volume */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-white/70 w-10">Music</span>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={audio.musicVolume}
-                onChange={handleMusicVolumeChange}
-                className="w-24 accent-primary"
-              />
-              <span className="text-xs text-white/50 w-8">{Math.round(audio.musicVolume * 100)}%</span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="flex gap-2">
         {/* Volume slider toggle */}
         <button
@@ -118,6 +78,46 @@ export function AudioControls() {
           )}
         </button>
       </div>
+
+      <AnimatePresence>
+        {showVolume && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.9 }}
+            className="frosted-glass p-3 rounded-xl flex flex-col gap-3 mt-2"
+          >
+            {/* SFX Volume */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/70 w-10">SFX</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={audio.sfxVolume}
+                onChange={handleSfxVolumeChange}
+                className="w-24 accent-primary"
+              />
+              <span className="text-xs text-white/50 w-8">{Math.round(audio.sfxVolume * 100)}%</span>
+            </div>
+            {/* Music Volume */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/70 w-10">Music</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={audio.musicVolume}
+                onChange={handleMusicVolumeChange}
+                className="w-24 accent-primary"
+              />
+              <span className="text-xs text-white/50 w-8">{Math.round(audio.musicVolume * 100)}%</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

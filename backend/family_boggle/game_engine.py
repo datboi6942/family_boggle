@@ -12,6 +12,7 @@ from family_boggle.models import GameStateModel, PlayerModel, WordSubmission
 logger = structlog.get_logger()
 
 from family_boggle.powerups import powerup_manager
+from family_boggle.challenges import challenge_manager
 
 class GameEngine:
     """Core logic for managing Boggle game sessions."""
@@ -91,6 +92,10 @@ class GameEngine:
         lobby.status = "countdown"
         lobby.timer = 3  # 3-2-1 countdown
         
+        # Set up challenges for this game
+        challenges = challenge_manager.setup_game_challenges(lobby_id)
+        lobby.challenges = challenges
+        
         logger.info("game_countdown_started", lobby_id=lobby_id)
         return True
 
@@ -143,6 +148,15 @@ class GameEngine:
             return {}
             
         lobby = self.lobbies[lobby_id]
+        
+        # Get all possible words from the board
+        all_possible_words: List[str] = []
+        longest_possible_word = ""
+        if self.board_gen:
+            all_possible_words = self.board_gen.find_all_words(self.validator._word_set)
+            if all_possible_words:
+                longest_possible_word = all_possible_words[0]  # Already sorted longest first
+        
         # Count occurrences of each word across all players and track who found them
         word_data: Dict[str, Dict] = {}
         for p in lobby.players:
@@ -170,8 +184,21 @@ class GameEngine:
 
         # Sort words by length (shortest first) to build excitement
         word_awards.sort(key=lambda x: len(x["word"]))
+        
+        # Find the longest word any player found
+        longest_word_found = None
+        for p in lobby.players:
+            for word in p.found_words:
+                if longest_word_found is None or len(word) > longest_word_found["length"]:
+                    longest_word_found = {
+                        "word": word,
+                        "length": len(word),
+                        "player_id": p.id,
+                        "username": p.username,
+                        "character": p.character
+                    }
                 
-        # Recalculate final results for leaderboard
+        # Recalculate final results for leaderboard with challenge data
         final_results = []
         for p in lobby.players:
             p.score = 0
@@ -179,20 +206,39 @@ class GameEngine:
                 # We can reuse the points from word_data
                 p.score += word_data[word]["points"]
             
+            # Get challenge progress for this player
+            all_challenges = challenge_manager.get_player_progress(
+                lobby_id, p.found_words, p.score
+            )
+            best_challenge = challenge_manager.get_best_challenge_for_player(
+                lobby_id, p.found_words, p.score
+            )
+            challenges_completed = sum(1 for c in all_challenges if c.get("completed", False))
+            
             final_results.append({
                 "player_id": p.id,
                 "username": p.username,
                 "character": p.character,
                 "score": p.score,
-                "words": p.found_words
+                "words": p.found_words,
+                "all_challenges": all_challenges,
+                "best_challenge": best_challenge,
+                "challenges_completed": challenges_completed
             })
+        
+        # Clean up challenge data for this game
+        challenge_manager.cleanup_game(lobby_id)
             
         # Sort by score
         final_results.sort(key=lambda x: x["score"], reverse=True)
         return {
             "results": final_results, 
             "winner": final_results[0] if final_results else None,
-            "word_awards": word_awards
+            "word_awards": word_awards,
+            "longest_word_found": longest_word_found,
+            "longest_possible_word": longest_possible_word,
+            "all_possible_words": all_possible_words,
+            "total_possible_words": len(all_possible_words)
         }
 
     def leave_lobby(self, lobby_id: str, player_id: str) -> bool:
