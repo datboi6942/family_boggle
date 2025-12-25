@@ -52,7 +52,7 @@ export const JoinScreen = () => {
               onClick={() => setCharacter(m.name)}
               className={`aspect-square rounded-lg border-2 transition-all overflow-hidden flex items-center justify-center ${character === m.name ? 'border-primary bg-primary/20 scale-110' : 'border-transparent'}`}
             >
-              <MonsterAvatar name={m.name} size={36} animated={false} />
+              <MonsterAvatar name={m.name} size={36} animated={true} />
             </button>
           ))}
         </div>
