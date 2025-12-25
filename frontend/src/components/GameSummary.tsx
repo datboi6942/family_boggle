@@ -79,7 +79,7 @@ export const GameSummary = () => {
                 transition={{ type: 'spring', damping: 12 }}
                 className="inline-block"
               >
-                <MonsterAvatar name={winner?.character} size={150} isWinner={true} />
+                <MonsterAvatar name={winner?.character || 'Blobby'} size={150} isWinner={true} />
               </motion.div>
               <motion.h1 
                 initial={{ y: 20, opacity: 0 }}
@@ -110,9 +110,30 @@ export const GameSummary = () => {
                     <div>
                       <p className="font-bold text-lg">{res.username}</p>
                       <p className="text-xs text-white/40">{res.words.length} words found</p>
+                      {res.challenges_completed > 0 && (
+                        <p className="text-xs text-green-400">{res.challenges_completed} challenge{res.challenges_completed !== 1 ? 's' : ''} completed</p>
+                      )}
                     </div>
                   </div>
-                  <p className="text-2xl font-black text-primary">{res.score}</p>
+                  <div className="flex flex-col items-end">
+                    <p className="text-2xl font-black text-primary">{res.score}</p>
+                    {/* Best Challenge Badge */}
+                    {res.best_challenge && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.8 + i * 0.1 }}
+                        className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          res.best_challenge.completed
+                            ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                            : 'bg-primary/20 text-primary border border-primary/30'
+                        }`}
+                      >
+                        {res.best_challenge.name}: {res.best_challenge.progress}/{res.best_challenge.target}
+                        {res.best_challenge.completed && ' ✓'}
+                      </motion.div>
+                    )}
+                  </div>
                 </motion.div>
               ))}
             </div>

@@ -36,12 +36,43 @@ interface WordAward {
   }[];
 }
 
+interface ChallengeProgress {
+  id: string;
+  name: string;
+  description: string;
+  target: number;
+  progress: number;
+  ratio: number;
+  completed: boolean;
+  category: string;
+}
+
+interface ChallengeDefinition {
+  id: string;
+  name: string;
+  description: string;
+  target: number;
+  category: string;
+}
+
+interface PlayerResult {
+  username: string;
+  character: string;
+  player_id: string;
+  score: number;
+  words: string[];
+  best_challenge: ChallengeProgress | null;
+  all_challenges: ChallengeProgress[];
+  challenges_completed: number;
+}
+
 interface GameState extends PersistedState {
   // Transient state (not persisted)
   lastWordResult: { valid: boolean; points?: number; powerup?: string; reason?: string } | null;
-  winner: any | null;
-  results: any[] | null;
+  winner: PlayerResult | null;
+  results: PlayerResult[] | null;
   wordAwards: WordAward[] | null;
+  challenges: ChallengeDefinition[];
   blockedCells: [number, number][];
   isFrozen: boolean;
 
@@ -76,9 +107,10 @@ export const useGameStore = create<GameState>()(
   hostId: null,
   lastWordResult: null,
   winner: null,
-    results: null,
-    wordAwards: null,
-    blockedCells: [],
+  results: null,
+  wordAwards: null,
+  challenges: [],
+  blockedCells: [],
   isFrozen: false,
 
   setLobbyId: (id) => set({ lobbyId: id }),
@@ -95,6 +127,7 @@ export const useGameStore = create<GameState>()(
     status: (data.status === 'lobby' ? 'lobby' : data.status) || 'lobby',
     // Clear game-specific state when returning to lobby
     board: data.board || [],
+    challenges: data.challenges || [],
     results: null,
     wordAwards: null,
     winner: null,
@@ -107,6 +140,7 @@ export const useGameStore = create<GameState>()(
     board: data.board,
     timer: data.timer,
     players: data.players,
+    challenges: data.challenges || [],
   }),
   setWordResult: (result) => {
     set({ lastWordResult: result });
@@ -141,6 +175,7 @@ export const useGameStore = create<GameState>()(
     winner: null,
     results: null,
     wordAwards: null,
+    challenges: [],
     blockedCells: [],
     isFrozen: false,
   }),

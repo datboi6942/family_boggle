@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { MONSTERS, MonsterAvatar } from './MonsterAvatar';
 import { motion } from 'framer-motion';
+import { Leaderboard } from './Leaderboard';
 
 export const JoinScreen = () => {
   const { setUsername, setCharacter, setLobbyId, setPlayerId, setStatus, setMode, username, character } = useGameStore();
@@ -9,11 +10,11 @@ export const JoinScreen = () => {
 
   const handleStart = (mode: 'create' | 'join') => {
     if (!username) return;
-    
+
     const pId = Math.random().toString(36).substring(7);
     setPlayerId(pId);
     setMode(mode);
-    
+
     if (mode === 'create') {
       const lId = Math.random().toString(36).substring(7).toUpperCase();
       setLobbyId(lId);
@@ -21,13 +22,13 @@ export const JoinScreen = () => {
       if (!lobbyInput) return;
       setLobbyId(lobbyInput.toUpperCase());
     }
-    
+
     setStatus('lobby');
   };
 
   return (
-    <div className="flex flex-col items-center justify-start sm:justify-center h-full p-6 space-y-8 bg-navy-gradient min-h-screen pt-12 sm:pt-0">
-      <motion.h1 
+    <div className="flex flex-col items-center justify-start sm:justify-center h-full p-6 space-y-6 bg-navy-gradient min-h-screen pt-12 sm:pt-0 overflow-y-auto">
+      <motion.h1
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-pink-500 italic"
@@ -81,6 +82,9 @@ export const JoinScreen = () => {
           </div>
         </div>
       </div>
+
+      {/* High Scores Leaderboard */}
+      <Leaderboard />
     </div>
   );
 };

@@ -7,6 +7,8 @@ services:
       - "2626:8000"
     environment:
       - BOGGLE_DEBUG=False
+    volumes:
+      - boggle_data:/data
     restart: always
 
   frontend:
@@ -18,3 +20,6 @@ services:
     depends_on:
       - backend
     restart: always
+
+volumes:
+  boggle_data:

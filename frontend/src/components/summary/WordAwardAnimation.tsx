@@ -9,7 +9,7 @@ interface WordAwardAnimationProps {
 }
 
 export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCompleted }) => {
-  const { wordAwards, players } = useGameStore();
+  const { wordAwards, players, results } = useGameStore();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playerScores, setPlayerScores] = useState<Record<string, number>>(
     players.reduce((acc, p) => ({ ...acc, [p.id]: 0 }), {})
@@ -73,22 +73,30 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
       {/* Top Section: Player Avatars */}
       <div className="flex flex-wrap justify-center gap-4 p-4 mt-8">
         <AnimatePresence>
-          {players.map((player, i) => (
-            <motion.div
-              key={player.id}
-              initial={{ y: 100, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: i * 0.1 }}
-              ref={(el) => { playerRefs.current[player.id] = el; }}
-            >
-              <PlayerScoreCard
-                playerId={player.id}
-                username={player.username}
-                character={player.character}
-                score={playerScores[player.id] || 0}
-              />
-            </motion.div>
-          ))}
+          {players.map((player, i) => {
+            // Get the best challenge for this player from results
+            const playerResult = results?.find(r => r.player_id === player.id);
+            const bestChallenge = playerResult?.best_challenge;
+
+            return (
+              <motion.div
+                key={player.id}
+                initial={{ y: 100, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: i * 0.1 }}
+                ref={(el) => { playerRefs.current[player.id] = el; }}
+              >
+                <PlayerScoreCard
+                  playerId={player.id}
+                  username={player.username}
+                  character={player.character}
+                  score={playerScores[player.id] || 0}
+                  bestChallenge={bestChallenge}
+                  showChallenge={true}
+                />
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
       </div>
 
