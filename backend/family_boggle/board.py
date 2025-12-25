@@ -143,3 +143,69 @@ class BoggleBoard:
             used_cells.add((r, c))
 
         return True
+
+    def find_all_valid_words(self, dictionary_set: Set[str], prefix_set: Set[str] = None) -> List[str]:
+        """Find all valid words on the board using DFS.
+
+        Args:
+            dictionary_set: Set of valid words (uppercase).
+            prefix_set: Optional set of valid prefixes for early termination.
+
+        Returns:
+            List of all valid words found on the board.
+        """
+        found_words: Set[str] = set()
+
+        # Build prefix set if not provided (for early termination optimization)
+        if prefix_set is None:
+            prefix_set = set()
+            for word in dictionary_set:
+                for i in range(1, len(word) + 1):
+                    prefix_set.add(word[:i])
+
+        def dfs(row: int, col: int, path: str, visited: Set[Tuple[int, int]]) -> None:
+            # Check if current path could lead to a valid word
+            if path not in prefix_set:
+                return
+
+            # Check if we found a valid word (min 3 letters)
+            if len(path) >= 3 and path in dictionary_set:
+                found_words.add(path)
+
+            # Stop at reasonable length to prevent infinite loops
+            if len(path) >= 15:
+                return
+
+            # Explore all adjacent cells
+            for dr in [-1, 0, 1]:
+                for dc in [-1, 0, 1]:
+                    if dr == 0 and dc == 0:
+                        continue
+                    nr, nc = row + dr, col + dc
+                    if 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in visited:
+                        new_visited = visited | {(nr, nc)}
+                        new_path = path + self.grid[nr][nc]
+                        dfs(nr, nc, new_path, new_visited)
+
+        # Start DFS from each cell
+        for r in range(self.size):
+            for c in range(self.size):
+                dfs(r, c, self.grid[r][c], {(r, c)})
+
+        return list(found_words)
+
+    def find_longest_possible_word(self, dictionary_set: Set[str], prefix_set: Set[str] = None) -> str:
+        """Find the longest valid word that can be formed on this board.
+
+        Args:
+            dictionary_set: Set of valid words (uppercase).
+            prefix_set: Optional set of valid prefixes for early termination.
+
+        Returns:
+            The longest word found, or empty string if none.
+        """
+        all_words = self.find_all_valid_words(dictionary_set, prefix_set)
+        if not all_words:
+            return ""
+        # Return the longest word (tie-break alphabetically for consistency)
+        return max(all_words, key=lambda w: (len(w), w))

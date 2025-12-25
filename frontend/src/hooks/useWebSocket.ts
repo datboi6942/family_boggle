@@ -37,7 +37,7 @@ export const useWebSocket = (lobbyId: string | null, playerId: string | null) =>
           setGameEnd(message.data);
           break;
         case 'powerup_event':
-          setPowerup(message.data);
+          setPowerup(message.data, playerId || undefined);
           break;
         case 'error':
           console.error('Server error:', message.data);

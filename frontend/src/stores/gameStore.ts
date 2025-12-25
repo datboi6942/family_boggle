@@ -36,6 +36,14 @@ interface WordAward {
   }[];
 }
 
+interface LongestWordFound {
+  word: string;
+  length: number;
+  player_id: string;
+  username: string;
+  character: string;
+}
+
 interface ChallengeProgress {
   id: string;
   name: string;
@@ -72,6 +80,8 @@ interface GameState extends PersistedState {
   winner: PlayerResult | null;
   results: PlayerResult[] | null;
   wordAwards: WordAward[] | null;
+  longestWordFound: LongestWordFound | null;
+  longestPossibleWord: string | null;
   challenges: ChallengeDefinition[];
   blockedCells: [number, number][];
   isFrozen: boolean;
@@ -87,7 +97,7 @@ interface GameState extends PersistedState {
   updateFromGameState: (data: any) => void;
   setWordResult: (result: any) => void;
   setGameEnd: (data: any) => void;
-  setPowerup: (data: any) => void;
+  setPowerup: (data: any, myPlayerId?: string) => void;
   resetSession: () => void;
 }
 
@@ -109,6 +119,8 @@ export const useGameStore = create<GameState>()(
   winner: null,
   results: null,
   wordAwards: null,
+  longestWordFound: null,
+  longestPossibleWord: null,
   challenges: [],
   blockedCells: [],
   isFrozen: false,
@@ -151,15 +163,23 @@ export const useGameStore = create<GameState>()(
     status: 'summary',
     results: data.results,
     winner: data.winner,
-    wordAwards: data.word_awards
+    wordAwards: data.word_awards,
+    longestWordFound: data.longest_word_found || null,
+    longestPossibleWord: data.longest_possible_word || null
   }),
-  setPowerup: (data: any) => {
+  setPowerup: (data: any, myPlayerId?: string) => {
     if (data.type === 'freeze') {
-      set({ isFrozen: true });
-      setTimeout(() => set({ isFrozen: false }), 10000);
+      // Only freeze the player who activated it (they get time pause benefit)
+      if (data.by === myPlayerId) {
+        set({ isFrozen: true });
+        setTimeout(() => set({ isFrozen: false }), 10000);
+      }
     } else if (data.type === 'blowup') {
-      set({ blockedCells: data.blocked_cells });
-      setTimeout(() => set({ blockedCells: [] }), 8000);
+      // Blowup affects everyone EXCEPT the player who used it
+      if (data.by !== myPlayerId) {
+        set({ blockedCells: data.blocked_cells });
+        setTimeout(() => set({ blockedCells: [] }), 8000);
+      }
     }
   },
   resetSession: () => set({
@@ -175,6 +195,8 @@ export const useGameStore = create<GameState>()(
     winner: null,
     results: null,
     wordAwards: null,
+    longestWordFound: null,
+    longestPossibleWord: null,
     challenges: [],
     blockedCells: [],
     isFrozen: false,

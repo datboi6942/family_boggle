@@ -72,12 +72,25 @@ class DictionaryValidator:
 
     def is_valid_word(self, word: str) -> bool:
         """Checks if a word is in the dictionary.
-        
+
         Args:
             word: The word to check.
-            
+
         Returns:
             True if the word is valid and at least 3 letters long.
         """
         word = word.upper()
         return len(word) >= 3 and word in self._word_set
+
+    def get_word_set(self) -> Set[str]:
+        """Returns the set of all valid words."""
+        return self._word_set
+
+    def get_prefix_set(self) -> Set[str]:
+        """Returns a set of all valid prefixes for word lookup optimization."""
+        if not hasattr(self, '_prefix_set'):
+            self._prefix_set: Set[str] = set()
+            for word in self._word_set:
+                for i in range(1, len(word) + 1):
+                    self._prefix_set.add(word[:i])
+        return self._prefix_set

@@ -201,6 +201,31 @@ class GameEngine:
         # Sort words by length (shortest first) to build excitement
         word_awards.sort(key=lambda x: len(x["word"]))
 
+        # Find the longest word found by any player
+        longest_word_found = None
+        if word_data:
+            longest_word = max(word_data.keys(), key=len)
+            # Get the first finder of the longest word
+            finder = word_data[longest_word]["finders"][0]
+            longest_word_found = {
+                "word": longest_word,
+                "length": len(longest_word),
+                "player_id": finder["player_id"],
+                "username": finder["username"],
+                "character": finder["character"]
+            }
+
+        # Find the longest possible word on the board
+        longest_possible_word = ""
+        if self.board_gen:
+            try:
+                longest_possible_word = self.board_gen.find_longest_possible_word(
+                    self.validator.get_word_set(),
+                    self.validator.get_prefix_set()
+                )
+            except Exception as e:
+                logger.warning("failed_to_find_longest_word", error=str(e))
+
         # Recalculate final results for leaderboard
         final_results = []
         for p in lobby.players:
@@ -218,12 +243,16 @@ class GameEngine:
             )
             challenges_completed = sum(1 for c in all_challenges if c["completed"])
 
+            # Find the longest word this player found
+            player_longest = max(p.found_words, key=len) if p.found_words else ""
+
             final_results.append({
                 "username": p.username,
                 "character": p.character,
                 "player_id": p.id,
                 "score": p.score,
                 "words": p.found_words,
+                "longest_word": player_longest,
                 "best_challenge": best_challenge,
                 "all_challenges": all_challenges,
                 "challenges_completed": challenges_completed
@@ -255,7 +284,9 @@ class GameEngine:
         return {
             "results": final_results,
             "winner": winner,
-            "word_awards": word_awards
+            "word_awards": word_awards,
+            "longest_word_found": longest_word_found,
+            "longest_possible_word": longest_possible_word
         }
 
     def leave_lobby(self, lobby_id: str, player_id: str) -> bool:

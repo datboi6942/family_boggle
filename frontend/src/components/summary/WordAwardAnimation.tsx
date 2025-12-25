@@ -43,7 +43,7 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
     if (!wordAwards) return;
 
     const currentWord = wordAwards[currentIndex];
-    
+
     // Update local scores
     const newScores = { ...playerScores };
     currentWord.finders.forEach((finder) => {
@@ -51,11 +51,11 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
     });
     setPlayerScores(newScores);
 
-    // Move to next word or finish
+    // Move to next word or finish (fast transitions)
     if (currentIndex < wordAwards.length - 1) {
-      setTimeout(() => setCurrentIndex(currentIndex + 1), 400); // Small pause between words
+      setTimeout(() => setCurrentIndex(currentIndex + 1), 100);
     } else {
-      setTimeout(() => onAllCompleted(newScores), 1000);
+      setTimeout(() => onAllCompleted(newScores), 300);
     }
   };
 

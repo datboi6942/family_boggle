@@ -223,9 +223,14 @@ export const GameBoard = () => {
       <div className={`sticky top-0 z-30 py-3 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
-          <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
-            {isFrozen ? <Snowflake className="w-5 h-5 animate-spin" /> : <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />}
-            <span className="text-xl sm:text-2xl font-black font-mono tabular-nums">{formattedTimer}</span>
+          <div className={`frosted-glass px-3 py-2 flex flex-col items-center shrink-0 ${isFrozen ? 'border-blue-400 border-2 bg-blue-500/20' : ''}`}>
+            <div className="flex items-center space-x-2">
+              {isFrozen ? <Snowflake className="w-5 h-5 animate-spin text-blue-400" /> : <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />}
+              <span className={`text-xl sm:text-2xl font-black font-mono tabular-nums ${isFrozen ? 'text-blue-400' : ''}`}>{formattedTimer}</span>
+            </div>
+            {isFrozen && (
+              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Timer Paused!</span>
+            )}
           </div>
           
           {/* Current Word (center) */}
@@ -341,19 +346,34 @@ export const GameBoard = () => {
       </div>
 
       {/* Word Result Popup */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {lastWordResult && (
           <motion.div
-            key={Date.now()}
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: -50, opacity: 1 }}
-            exit={{ opacity: 0 }}
+            key={lastWordResult.valid ? `valid-${lastWordResult.points}` : `invalid-${lastWordResult.reason}`}
+            initial={{ y: 20, opacity: 0, scale: 0.8 }}
+            animate={{ y: -50, opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
             className={`
-              fixed left-1/2 bottom-32 -translate-x-1/2 px-6 py-2 rounded-full font-bold
+              fixed left-1/2 bottom-32 -translate-x-1/2 px-6 py-3 rounded-full font-bold z-50 flex flex-col items-center
               ${lastWordResult.valid ? 'bg-success text-white' : 'bg-error text-white'}
             `}
           >
-            {lastWordResult.valid ? `+${lastWordResult.points} POINTS!` : lastWordResult.reason}
+            <span>{lastWordResult.valid ? `+${lastWordResult.points} POINTS!` : lastWordResult.reason}</span>
+            {/* Powerup Earned Animation */}
+            {lastWordResult.powerup && (
+              <motion.div
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.2 }}
+                className="flex items-center gap-2 mt-1 bg-yellow-500 text-black px-3 py-1 rounded-full text-sm"
+              >
+                {lastWordResult.powerup === 'freeze' && <Snowflake className="w-4 h-4" />}
+                {lastWordResult.powerup === 'blowup' && <Bomb className="w-4 h-4" />}
+                {lastWordResult.powerup === 'shuffle' && <RotateCw className="w-4 h-4" />}
+                <span className="font-black uppercase text-xs">+1 {lastWordResult.powerup}!</span>
+              </motion.div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
