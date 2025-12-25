@@ -13,7 +13,7 @@ export const MONSTERS = [
   { name: 'Shadow', color: '#1f2937', animation: { scale: [1, 1.5, 1], opacity: [0.3, 0.7, 0.3] } },
 ];
 
-export const MonsterAvatar = ({ name, size = 100, isWinner = false }: { name: string, size?: number, isWinner?: boolean }) => {
+export const MonsterAvatar = ({ name, size = 100, isWinner = false, animated = true }: { name: string, size?: number, isWinner?: boolean, animated?: boolean }) => {
   const monster = MONSTERS.find(m => m.name === name) || MONSTERS[0];
   
   return (
@@ -31,8 +31,8 @@ export const MonsterAvatar = ({ name, size = 100, isWinner = false }: { name: st
         width={size}
         height={size}
         viewBox="0 0 100 100"
-        animate={monster.animation}
-        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        animate={animated ? monster.animation : undefined}
+        transition={animated ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : undefined}
       >
         <circle cx="50" cy="50" r="40" fill={monster.color} />
         <circle cx="35" cy="40" r="5" fill="white" />

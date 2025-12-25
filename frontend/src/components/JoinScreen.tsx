@@ -49,9 +49,9 @@ export const JoinScreen = () => {
             <button
               key={m.name}
               onClick={() => setCharacter(m.name)}
-              className={`p-1 rounded-lg border-2 transition-all ${character === m.name ? 'border-primary bg-primary/20 scale-110' : 'border-transparent'}`}
+              className={`aspect-square rounded-lg border-2 transition-all overflow-hidden flex items-center justify-center ${character === m.name ? 'border-primary bg-primary/20 scale-110' : 'border-transparent'}`}
             >
-              <MonsterAvatar name={m.name} size={40} />
+              <MonsterAvatar name={m.name} size={36} animated={false} />
             </button>
           ))}
         </div>
@@ -64,17 +64,17 @@ export const JoinScreen = () => {
             CREATE LOBBY
           </button>
           
-          <div className="flex items-center space-x-2">
+          <div className="flex items-stretch gap-2">
             <input
               type="text"
               placeholder="LOBBY CODE"
               value={lobbyInput}
               onChange={(e) => setLobbyInput(e.target.value)}
-              className="flex-1 p-4 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-center font-bold"
+              className="flex-1 min-w-0 p-4 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-center font-bold"
             />
             <button
               onClick={() => handleStart('join')}
-              className="px-6 py-4 bg-white/10 rounded-xl font-bold active:scale-95 transition-transform"
+              className="px-6 py-4 bg-white/10 rounded-xl font-bold active:scale-95 transition-transform shrink-0"
             >
               JOIN
             </button>
