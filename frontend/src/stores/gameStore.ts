@@ -88,6 +88,7 @@ interface GameState extends PersistedState {
   blockedCells: [number, number][];
   isFrozen: boolean;
   setTimer: (timer: number) => void;
+  updatePlayerScore: (playerId: string, score: number, powerup?: string) => void;
 
   // Actions
   setLobbyId: (id: string) => void;
@@ -136,6 +137,16 @@ export const useGameStore = create<GameState>()(
   isFrozen: false,
 
   setTimer: (timer) => set({ timer }),
+
+  updatePlayerScore: (targetPlayerId, score, powerup) => set((state) => ({
+    players: state.players.map(p => {
+      if (p.id === targetPlayerId) {
+        const newPowerups = powerup ? [...p.powerups, powerup] : p.powerups;
+        return { ...p, score, powerups: newPowerups };
+      }
+      return p;
+    })
+  })),
 
   setLobbyId: (id) => set({ lobbyId: id }),
   setPlayerId: (id) => set({ playerId: id }),

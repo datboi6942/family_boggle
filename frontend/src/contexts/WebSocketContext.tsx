@@ -74,7 +74,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
           setGameEnd(message.data);
           break;
         case 'powerup_event':
-          setPowerup(message.data);
+          setPowerup(message.data, playerId || undefined);
           break;
         case 'error':
           console.error('Server error:', message.data);
@@ -82,6 +82,12 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
           resetSession();
           break;
         case 'score_update':
+          // Update the player's score and add powerup to their inventory
+          useGameStore.getState().updatePlayerScore(
+            message.data.player_id,
+            message.data.score,
+            message.data.powerup
+          );
           break;
       }
     };

@@ -1,15 +1,15 @@
 /**
- * Audio controls component for muting/unmuting sounds and music.
+ * Audio controls component - collapsible side panel in bottom left.
  */
 
 import { useState, useCallback } from 'react';
-import { Volume2, VolumeX, Music, Music2 } from 'lucide-react';
+import { Volume2, VolumeX, Music, Music2, Settings, X } from 'lucide-react';
 import { useAudioContext } from '../contexts/AudioContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export function AudioControls() {
   const audio = useAudioContext();
-  const [showVolume, setShowVolume] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   // Stop propagation to prevent parent handlers from interfering
   const handleToggleMute = useCallback((e: React.MouseEvent) => {
@@ -38,58 +38,47 @@ export function AudioControls() {
 
   return (
     <div
-      className="fixed top-4 right-4 z-50 flex flex-col items-end gap-2"
+      className="fixed bottom-4 left-4 z-50"
       onClick={handleContainerClick}
       onTouchStart={handleContainerClick}
     >
-      <div className="flex gap-2">
-        {/* Volume slider toggle */}
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowVolume(!showVolume); }}
-          className="frosted-glass p-3 rounded-full hover:bg-white/10 transition-colors"
-          title="Volume settings"
-        >
-          <Volume2 className="w-5 h-5 text-white/70" />
-        </button>
+      {/* Toggle Button */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+        className={`frosted-glass p-3 rounded-full hover:bg-white/10 transition-all ${isOpen ? 'bg-primary/20' : ''}`}
+        title="Audio settings"
+      >
+        {isOpen ? (
+          <X className="w-5 h-5 text-white" />
+        ) : (
+          <Settings className="w-5 h-5 text-white/70" />
+        )}
+      </button>
 
-        {/* SFX Mute */}
-        <button
-          onClick={handleToggleMute}
-          className={`frosted-glass p-3 rounded-full hover:bg-white/10 transition-colors ${audio.isMuted ? 'bg-red-500/20' : ''}`}
-          title={audio.isMuted ? 'Unmute sounds' : 'Mute sounds'}
-        >
-          {audio.isMuted ? (
-            <VolumeX className="w-5 h-5 text-red-400" />
-          ) : (
-            <Volume2 className="w-5 h-5 text-white" />
-          )}
-        </button>
-
-        {/* Music Mute */}
-        <button
-          onClick={handleToggleMusicMute}
-          className={`frosted-glass p-3 rounded-full hover:bg-white/10 transition-colors ${audio.isMusicMuted ? 'bg-red-500/20' : ''}`}
-          title={audio.isMusicMuted ? 'Unmute music' : 'Mute music'}
-        >
-          {audio.isMusicMuted ? (
-            <Music className="w-5 h-5 text-red-400" />
-          ) : (
-            <Music2 className="w-5 h-5 text-white" />
-          )}
-        </button>
-      </div>
-
+      {/* Side Panel */}
       <AnimatePresence>
-        {showVolume && (
+        {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -10, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.9 }}
-            className="frosted-glass p-3 rounded-xl flex flex-col gap-3 mt-2"
+            initial={{ opacity: 0, x: -20, scale: 0.9 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -20, scale: 0.9 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+            className="absolute bottom-14 left-0 frosted-glass p-4 rounded-xl w-56"
           >
-            {/* SFX Volume */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-white/70 w-10">SFX</span>
+            <h3 className="text-xs font-bold text-white/50 uppercase tracking-wider mb-3">Audio Settings</h3>
+            
+            {/* SFX Section */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-bold text-white">Sound Effects</span>
+                <button
+                  onClick={handleToggleMute}
+                  className={`p-1.5 rounded-lg transition-colors ${audio.isMuted ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white'}`}
+                  title={audio.isMuted ? 'Unmute sounds' : 'Mute sounds'}
+                >
+                  {audio.isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                </button>
+              </div>
               <input
                 type="range"
                 min="0"
@@ -97,13 +86,26 @@ export function AudioControls() {
                 step="0.1"
                 value={audio.sfxVolume}
                 onChange={handleSfxVolumeChange}
-                className="w-24 accent-primary"
+                className="w-full accent-primary h-1.5"
+                disabled={audio.isMuted}
               />
-              <span className="text-xs text-white/50 w-8">{Math.round(audio.sfxVolume * 100)}%</span>
+              <div className="text-right text-xs text-white/40 mt-1">
+                {Math.round(audio.sfxVolume * 100)}%
+              </div>
             </div>
-            {/* Music Volume */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-white/70 w-10">Music</span>
+
+            {/* Music Section */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-bold text-white">Music</span>
+                <button
+                  onClick={handleToggleMusicMute}
+                  className={`p-1.5 rounded-lg transition-colors ${audio.isMusicMuted ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white'}`}
+                  title={audio.isMusicMuted ? 'Unmute music' : 'Mute music'}
+                >
+                  {audio.isMusicMuted ? <Music className="w-4 h-4" /> : <Music2 className="w-4 h-4" />}
+                </button>
+              </div>
               <input
                 type="range"
                 min="0"
@@ -111,9 +113,12 @@ export function AudioControls() {
                 step="0.1"
                 value={audio.musicVolume}
                 onChange={handleMusicVolumeChange}
-                className="w-24 accent-primary"
+                className="w-full accent-primary h-1.5"
+                disabled={audio.isMusicMuted}
               />
-              <span className="text-xs text-white/50 w-8">{Math.round(audio.musicVolume * 100)}%</span>
+              <div className="text-right text-xs text-white/40 mt-1">
+                {Math.round(audio.musicVolume * 100)}%
+              </div>
             </div>
           </motion.div>
         )}
