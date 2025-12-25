@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "2626:8000"
+    environment:
+      - BOGGLE_DEBUG=False
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "2727:80"
+    depends_on:
+      - backend
+    restart: always

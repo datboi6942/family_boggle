@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0a0a1a;
+  --color-primary: #8b5cf6;
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+  --background-image-navy-gradient: linear-gradient(to bottom, #0a0a1a, #1a1a3a);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-background text-white min-h-screen;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  overflow-y: scroll;
+  -webkit-overflow-scrolling: touch;
+}
+
+.frosted-glass {
+  @apply bg-white/10 backdrop-blur-md border border-white/20 rounded-xl shadow-lg;
+}
+
+.neon-glow {
+  box-shadow: 0 0 15px var(--color-primary);
+}
+
+.tile-flip {
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+
+.tile-selected {
+  @apply border-primary bg-primary/20 scale-105;
+  box-shadow: 0 0 10px var(--color-primary);
+}
+
+.game-board-container {
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-overflow-scrolling: auto;
+}

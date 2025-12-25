@@ -1,0 +1,86 @@
+import { useState } from 'react';
+import { useGameStore } from '../stores/gameStore';
+import { MONSTERS, MonsterAvatar } from './MonsterAvatar';
+import { motion } from 'framer-motion';
+
+export const JoinScreen = () => {
+  const { setUsername, setCharacter, setLobbyId, setPlayerId, setStatus, setMode, username, character } = useGameStore();
+  const [lobbyInput, setLobbyInput] = useState('');
+
+  const handleStart = (mode: 'create' | 'join') => {
+    if (!username) return;
+    
+    const pId = Math.random().toString(36).substring(7);
+    setPlayerId(pId);
+    setMode(mode);
+    
+    if (mode === 'create') {
+      const lId = Math.random().toString(36).substring(7).toUpperCase();
+      setLobbyId(lId);
+    } else {
+      if (!lobbyInput) return;
+      setLobbyId(lobbyInput.toUpperCase());
+    }
+    
+    setStatus('lobby');
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-start sm:justify-center h-full p-6 space-y-8 bg-navy-gradient min-h-screen pt-12 sm:pt-0">
+      <motion.h1 
+        initial={{ y: -100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-pink-500 italic"
+      >
+        FAMILY BOGGLE
+      </motion.h1>
+
+      <div className="w-full max-w-sm space-y-4 frosted-glass p-8">
+        <input
+          type="text"
+          placeholder="ENTER USERNAME"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          className="w-full p-4 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-center text-xl font-bold"
+        />
+
+        <div className="grid grid-cols-5 gap-2 py-4">
+          {MONSTERS.map((m) => (
+            <button
+              key={m.name}
+              onClick={() => setCharacter(m.name)}
+              className={`p-1 rounded-lg border-2 transition-all ${character === m.name ? 'border-primary bg-primary/20 scale-110' : 'border-transparent'}`}
+            >
+              <MonsterAvatar name={m.name} size={40} />
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-4">
+          <button
+            onClick={() => handleStart('create')}
+            className="w-full py-4 bg-primary rounded-xl font-black text-xl shadow-lg active:scale-95 transition-transform"
+          >
+            CREATE LOBBY
+          </button>
+          
+          <div className="flex items-center space-x-2">
+            <input
+              type="text"
+              placeholder="LOBBY CODE"
+              value={lobbyInput}
+              onChange={(e) => setLobbyInput(e.target.value)}
+              className="flex-1 p-4 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-center font-bold"
+            />
+            <button
+              onClick={() => handleStart('join')}
+              className="px-6 py-4 bg-white/10 rounded-xl font-bold active:scale-95 transition-transform"
+            >
+              JOIN
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
