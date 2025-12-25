@@ -29,11 +29,17 @@ export const GameSummary = () => {
 
   const totalFoundWords = foundWordsSet.size;
 
-  // Start summary music
+  // Start summary music when summary phase begins
   useEffect(() => {
     if (!musicStartedRef.current) {
-      audioRef.current.playSummaryMusic();
+      // Stop any existing music first (gameplay music)
+      audioRef.current.stopMusic();
+      // Small delay to ensure clean transition
+      const timeoutId = setTimeout(() => {
+        audioRef.current.playSummaryMusic();
+      }, 100);
       musicStartedRef.current = true;
+      return () => clearTimeout(timeoutId);
     }
   }, []);
 

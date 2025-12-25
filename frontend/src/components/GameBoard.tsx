@@ -359,8 +359,9 @@ export const GameBoard = () => {
 
   return (
     <div 
-      className="game-board-container flex flex-col h-full bg-navy-gradient min-h-screen text-white select-none"
+      className="game-board-container flex flex-col bg-navy-gradient text-white select-none overflow-hidden"
       style={{ 
+        height: '100dvh',
         paddingTop: 'env(safe-area-inset-top, 8px)', 
         paddingLeft: 'env(safe-area-inset-left, 8px)', 
         paddingRight: 'env(safe-area-inset-right, 8px)', 
@@ -368,7 +369,7 @@ export const GameBoard = () => {
       }}
     >
       {/* Header - Compact for mobile */}
-      <div className={`z-30 py-1.5 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
+      <div className={`flex-shrink-0 z-30 py-1.5 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
           <div className={`frosted-glass px-2 py-1 flex items-center gap-1.5 shrink-0 ${isFrozen ? 'border-blue-400 border-2 bg-blue-500/20' : ''}`}>
@@ -392,9 +393,9 @@ export const GameBoard = () => {
         </div>
       </div>
 
-      {/* The Board */}
-      <div className="flex-1 w-full max-h-[calc(100vh-140px)] aspect-square mx-auto mb-2 px-1">
-        {/* Grid of letters - this is the ref for position calculations */}
+      {/* The Board - Centered square that fits within available space */}
+      <div className="flex-1 flex items-center justify-center min-h-0 p-2">
+        {/* Grid of letters - square board that fits within container */}
         <div 
           ref={boardRef}
           onMouseDown={handleStart}
@@ -404,10 +405,15 @@ export const GameBoard = () => {
           onTouchStart={handleStart}
           onTouchMove={handleMove}
           onTouchEnd={handleEnd}
-          className="relative grid gap-2 w-full h-full"
+          className="relative grid gap-2"
           style={{ 
             gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
-            touchAction: 'none' 
+            gridTemplateRows: `repeat(${boardSize}, 1fr)`,
+            touchAction: 'none',
+            /* Square board sized to fit within available space */
+            width: 'min(100%, calc(100dvh - 160px))',
+            height: 'min(100%, calc(100dvh - 160px))',
+            aspectRatio: '1 / 1',
           }}
         >
           {/* SVG Overlay for connecting lines - positioned relative to grid */}
