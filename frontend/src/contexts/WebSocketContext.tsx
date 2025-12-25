@@ -41,9 +41,9 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       socketRef.current = null;
     }
 
-    // Use the same port as the frontend with /ws path (nginx will proxy)
+    // Connect directly to backend on port 2626
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host; // Uses same host:port as frontend
+    const host = `${window.location.hostname}:2626`;
     const url = `${protocol}//${host}/ws/${lobbyId}/${playerId}?username=${encodeURIComponent(username)}&character=${encodeURIComponent(character)}&mode=${mode || 'join'}`;
 
     console.log('Connecting to WebSocket:', url);
