@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useEffect, useRef } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useAudioContext } from '../contexts/AudioContext';
 import { motion } from 'framer-motion';
@@ -13,11 +13,17 @@ export const Countdown = () => {
   const audioRef = useRef(audio);
   audioRef.current = audio;
 
-  // Play countdown riser music when countdown starts
-  useLayoutEffect(() => {
+  // Stop any previous music and play countdown riser when countdown starts
+  useEffect(() => {
     if (!musicStartedRef.current) {
-      audioRef.current.playCountdownRiser();
+      // Stop lobby music first
+      audioRef.current.stopMusic();
+      // Small delay to ensure clean transition
+      const timeoutId = setTimeout(() => {
+        audioRef.current.playCountdownRiser();
+      }, 50);
       musicStartedRef.current = true;
+      return () => clearTimeout(timeoutId);
     }
   }, []);
 

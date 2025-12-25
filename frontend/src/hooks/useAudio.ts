@@ -55,12 +55,15 @@ const audioCache: Map<string, HTMLAudioElement> = new Map();
 // Track if audio has been unlocked (required on mobile)
 let audioUnlocked = false;
 
+// Callbacks to run after audio is unlocked
+const pendingAudioCallbacks: Array<() => void> = [];
+
 function unlockAudio(): void {
   if (audioUnlocked) return;
   
   // Create a silent audio context to unlock audio on mobile
   try {
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof window.AudioContext }).webkitAudioContext;
     if (AudioContext) {
       const ctx = new AudioContext();
       const buffer = ctx.createBuffer(1, 1, 22050);
@@ -70,10 +73,45 @@ function unlockAudio(): void {
       source.start(0);
       ctx.resume();
     }
+    
+    // Also try to play/pause all cached audio elements to unlock them
+    audioCache.forEach((audio) => {
+      const playPromise = audio.play();
+      if (playPromise) {
+        playPromise.then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+        }).catch(() => {
+          // Ignore - not all audio may be ready
+        });
+      }
+    });
+    
     audioUnlocked = true;
     console.log('Audio unlocked');
+    
+    // Run any pending audio callbacks
+    while (pendingAudioCallbacks.length > 0) {
+      const callback = pendingAudioCallbacks.shift();
+      if (callback) {
+        try {
+          callback();
+        } catch (e) {
+          console.warn('Pending audio callback failed:', e);
+        }
+      }
+    }
   } catch (e) {
     console.warn('Failed to unlock audio:', e);
+  }
+}
+
+// Add a callback to run after audio is unlocked
+function onAudioUnlocked(callback: () => void): void {
+  if (audioUnlocked) {
+    callback();
+  } else {
+    pendingAudioCallbacks.push(callback);
   }
 }
 
@@ -162,8 +200,12 @@ export function useAudio(): AudioManager {
 
   const [isMusicMuted, setIsMusicMuted] = useState(() => {
     const saved = localStorage.getItem('boggle-music-muted');
+    // Default to NOT muted if no preference saved
     return saved === 'true';
   });
+
+  // Track pending music to play after audio is unlocked
+  const pendingMusicRef = useRef<{ src: string; loop: boolean } | null>(null);
 
   const [sfxVolume, setSfxVolumeState] = useState(() => {
     const saved = localStorage.getItem('boggle-sfx-volume');
@@ -204,62 +246,88 @@ export function useAudio(): AudioManager {
   const playSfx = useCallback((src: string, volume?: number) => {
     if (isMuted) return;
 
-    // Ensure audio is unlocked
-    unlockAudio();
-
-    try {
-      const audio = getAudio(src);
-      audio.volume = volume ?? sfxVolume;
-      audio.currentTime = 0;
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((e) => {
-          // Try to unlock and play again
-          unlockAudio();
-          console.warn('Audio play failed:', e.message);
-        });
-      }
-    } catch (e) {
-      // Ignore audio errors
-    }
-  }, [isMuted, sfxVolume]);
-
-  const playMusic = useCallback((src: string, loop: boolean = true) => {
-    // Ensure audio is unlocked
-    unlockAudio();
-
-    try {
-      const audio = getAudio(src);
-
-      // If already playing this track, just update volume and return
-      if (currentMusicRef.current === audio && !audio.paused) {
-        audio.volume = isMusicMuted ? 0 : musicVolume;
-        return;
-      }
-
-      // Stop previous music if different track
-      if (currentMusicRef.current && currentMusicRef.current !== audio) {
-        currentMusicRef.current.pause();
-        currentMusicRef.current.currentTime = 0;
-      }
-
-      audio.loop = loop;
-      audio.volume = isMusicMuted ? 0 : musicVolume;
-
-      // Only reset if not already playing
-      if (audio.paused) {
+    const doPlaySfx = () => {
+      try {
+        const audio = getAudio(src);
+        audio.volume = volume ?? sfxVolume;
         audio.currentTime = 0;
         const playPromise = audio.play();
         if (playPromise !== undefined) {
           playPromise.catch((e) => {
-            console.warn('Music play failed:', e.message);
+            console.warn('Audio play failed:', e.message);
           });
         }
+      } catch (e) {
+        // Ignore audio errors
       }
+    };
 
-      currentMusicRef.current = audio;
-    } catch (e) {
-      // Ignore audio errors
+    // Try to unlock audio first
+    unlockAudio();
+    
+    // If audio is unlocked, play immediately
+    if (audioUnlocked) {
+      doPlaySfx();
+    } else {
+      // Queue to play after unlock (only for important sounds like countdown)
+      onAudioUnlocked(doPlaySfx);
+    }
+  }, [isMuted, sfxVolume]);
+
+  const playMusic = useCallback((src: string, loop: boolean = true) => {
+    const doPlayMusic = () => {
+      try {
+        const audio = getAudio(src);
+
+        // If already playing this track, just update volume and return
+        if (currentMusicRef.current === audio && !audio.paused) {
+          audio.volume = isMusicMuted ? 0 : musicVolume;
+          return;
+        }
+
+        // Stop previous music if different track
+        if (currentMusicRef.current && currentMusicRef.current !== audio) {
+          currentMusicRef.current.pause();
+          currentMusicRef.current.currentTime = 0;
+        }
+
+        audio.loop = loop;
+        audio.volume = isMusicMuted ? 0 : musicVolume;
+
+        // Only reset if not already playing
+        if (audio.paused) {
+          audio.currentTime = 0;
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch((e) => {
+              console.warn('Music play failed, will retry on unlock:', e.message);
+              // Queue retry for when audio is unlocked
+              pendingMusicRef.current = { src, loop };
+            });
+          }
+        }
+
+        currentMusicRef.current = audio;
+      } catch (e) {
+        // Queue retry for when audio is unlocked
+        pendingMusicRef.current = { src, loop };
+      }
+    };
+    
+    // Try to unlock audio first
+    unlockAudio();
+    
+    // If audio is unlocked, play immediately; otherwise queue it
+    if (audioUnlocked) {
+      doPlayMusic();
+    } else {
+      // Store pending music and queue callback
+      pendingMusicRef.current = { src, loop };
+      onAudioUnlocked(() => {
+        if (pendingMusicRef.current && pendingMusicRef.current.src === src) {
+          doPlayMusic();
+        }
+      });
     }
   }, [isMusicMuted, musicVolume]);
 

@@ -113,9 +113,16 @@ export const GameBoard = () => {
   // Start gameplay music when game begins (run once on mount)
   useEffect(() => {
     if (!musicStartedRef.current) {
+      // Stop countdown riser music first
+      audioRef.current.stopMusic();
+      // Play game start sound
       audioRef.current.playGameStart();
-      audioRef.current.playGameplayMusic();
+      // Small delay to ensure clean transition, then start gameplay loop
+      const timeoutId = setTimeout(() => {
+        audioRef.current.playGameplayMusic();
+      }, 100);
       musicStartedRef.current = true;
+      return () => clearTimeout(timeoutId);
     }
   }, []);
 
@@ -165,28 +172,38 @@ export const GameBoard = () => {
   }, [blockedCells]);
 
   // Get cell from coordinates relative to board
+  // Must account for CSS grid gap (gap-2 = 0.5rem = 8px at default font size)
   const getCellFromCoords = useCallback((clientX: number, clientY: number): { cell: [number, number] | null; localX: number; localY: number } => {
     const rect = boardRef.current?.getBoundingClientRect();
     if (!rect) return { cell: null, localX: 0, localY: 0 };
 
     const localX = clientX - rect.left;
     const localY = clientY - rect.top;
-    const cellSize = rect.width / boardSize;
+    
+    // Get the actual gap size from computed style
+    const computedStyle = boardRef.current ? getComputedStyle(boardRef.current) : null;
+    const gapSize = computedStyle ? parseFloat(computedStyle.gap) || 8 : 8;
+    
+    // Cell size accounting for gaps
+    const totalGapSpace = (boardSize - 1) * gapSize;
+    const cellSize = (rect.width - totalGapSpace) / boardSize;
+    const cellPlusGap = cellSize + gapSize;
 
-    const col = Math.floor(localX / cellSize);
-    const row = Math.floor(localY / cellSize);
+    // Find which cell we're in
+    const col = Math.floor(localX / cellPlusGap);
+    const row = Math.floor(localY / cellPlusGap);
 
     if (row < 0 || row >= boardSize || col < 0 || col >= boardSize) {
       return { cell: null, localX, localY };
     }
 
-    // Calculate cell center
-    const cellCenterX = col * cellSize + cellSize / 2;
-    const cellCenterY = row * cellSize + cellSize / 2;
+    // Calculate cell center accounting for gaps
+    const cellCenterX = col * cellPlusGap + cellSize / 2;
+    const cellCenterY = row * cellPlusGap + cellSize / 2;
 
     // Distance from touch to cell center (reduced sensitivity - must be closer to center)
     const distSq = (localX - cellCenterX) ** 2 + (localY - cellCenterY) ** 2;
-    const hitRadiusSq = (cellSize * 0.35) ** 2;
+    const hitRadiusSq = (cellSize * 0.4) ** 2;
 
     if (distSq <= hitRadiusSq) {
       return { cell: [row, col], localX, localY };
@@ -282,18 +299,27 @@ export const GameBoard = () => {
   }, [currentPath, board, send]);
 
   // Calculate line path with trailing line to touch position
+  // Must account for CSS grid gap (gap-2 = 0.5rem = 8px at default font size)
   const linePath = useMemo((): string => {
     if (currentPath.length === 0) return '';
 
     const rect = boardRef.current?.getBoundingClientRect();
     if (!rect) return '';
 
-    const cellSize = rect.width / boardSize;
+    // Get the actual gap size from computed style
+    const computedStyle = boardRef.current ? getComputedStyle(boardRef.current) : null;
+    const gapSize = computedStyle ? parseFloat(computedStyle.gap) || 8 : 8;
+    
+    // Total gap space = (boardSize - 1) * gapSize
+    // Cell size = (rect.width - totalGapSpace) / boardSize
+    const totalGapSpace = (boardSize - 1) * gapSize;
+    const cellSize = (rect.width - totalGapSpace) / boardSize;
 
     // Build path through all selected cells
+    // Cell center for index i = i * (cellSize + gapSize) + cellSize / 2
     let path = currentPath.map(([r, c], i) => {
-      const x = c * cellSize + cellSize / 2;
-      const y = r * cellSize + cellSize / 2;
+      const x = c * (cellSize + gapSize) + cellSize / 2;
+      const y = r * (cellSize + gapSize) + cellSize / 2;
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     }).join(' ');
 
@@ -333,9 +359,11 @@ export const GameBoard = () => {
 
   return (
     <div 
-      className="game-board-container flex flex-col bg-navy-gradient text-white select-none overflow-hidden"
+      className="game-board-container flex flex-col bg-navy-gradient text-white select-none"
       style={{ 
         height: '100dvh',
+        maxHeight: '100dvh',
+        overflow: 'hidden',
         paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)', 
         paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)', 
         paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)', 
@@ -343,7 +371,7 @@ export const GameBoard = () => {
       }}
     >
       {/* Header - Fixed height, always visible */}
-      <div className={`flex-shrink-0 flex justify-between items-center px-4 py-3 frosted-glass rounded-xl ${isFrozen ? 'border-2 border-blue-400' : ''}`}>
+      <div className={`flex-shrink-0 flex justify-between items-center px-4 py-2 frosted-glass rounded-xl mb-2 ${isFrozen ? 'border-2 border-blue-400' : ''}`}>
         {/* Timer */}
         <TimerDisplay formattedTimer={formattedTimer} isFrozen={isFrozen} />
 
@@ -362,44 +390,7 @@ export const GameBoard = () => {
       </div>
 
       {/* The Board - Flexible middle section */}
-      <div className="flex-1 flex items-center justify-center py-2 min-h-0 overflow-hidden">
-        <div 
-          className="relative aspect-square"
-          style={{
-            width: 'min(100%, calc(100dvh - 180px))',
-            height: 'min(100%, calc(100dvh - 180px))',
-            maxWidth: '100%',
-            maxHeight: '100%'
-          }}
-        >
-        {/* SVG Overlay for connecting lines */}
-        {linePath && (
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none z-20"
-            style={{ overflow: 'visible', willChange: 'contents' }}
-          >
-            {/* Glow effect (render first, behind main line) */}
-            <path
-              d={linePath}
-              fill="none"
-              stroke="rgba(139, 92, 246, 0.3)"
-              strokeWidth="14"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Main path line */}
-            <path
-              d={linePath}
-              fill="none"
-              stroke="#8B5CF6"
-              strokeWidth="5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
-
-        {/* Grid of letters */}
+      <div className="flex-1 flex items-center justify-center min-h-0 min-w-0 p-2 overflow-hidden">
         <div 
           ref={boardRef}
           onMouseDown={handleStart}
@@ -409,12 +400,45 @@ export const GameBoard = () => {
           onTouchStart={handleStart}
           onTouchMove={handleMove}
           onTouchEnd={handleEnd}
-          className="grid gap-2 w-full h-full"
+          className="relative grid gap-2"
           style={{ 
             gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
-            touchAction: 'none' 
+            gridTemplateRows: `repeat(${boardSize}, 1fr)`,
+            touchAction: 'none',
+            /* Square board: use aspect-ratio with height constraint */
+            aspectRatio: '1 / 1',
+            height: '100%',
+            maxWidth: '100%',
           }}
         >
+          {/* SVG Overlay for connecting lines */}
+          {linePath && (
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none z-20"
+              style={{ overflow: 'visible', willChange: 'contents' }}
+            >
+              {/* Glow effect (render first, behind main line) */}
+              <path
+                d={linePath}
+                fill="none"
+                stroke="rgba(139, 92, 246, 0.3)"
+                strokeWidth="14"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {/* Main path line */}
+              <path
+                d={linePath}
+                fill="none"
+                stroke="#8B5CF6"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+
+          {/* Grid cells */}
           {board.map((row, r) => row.map((letter, c) => {
             const key = `${r}-${c}`;
             const pathIndex = pathSet.get(key) ?? -1;
@@ -435,7 +459,6 @@ export const GameBoard = () => {
               />
             );
           }))}
-        </div>
         </div>
       </div>
 
