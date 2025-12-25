@@ -89,6 +89,9 @@ interface GameState extends PersistedState {
   isFrozen: boolean;
   setTimer: (timer: number) => void;
   updatePlayerScore: (playerId: string, score: number, powerup?: string) => void;
+  updatePlayerPowerups: (playerId: string, powerups: string[]) => void;
+  setBoard: (board: string[][]) => void;
+  addBonusTime: (seconds: number) => void;
 
   // Actions
   setLobbyId: (id: string) => void;
@@ -148,6 +151,16 @@ export const useGameStore = create<GameState>()(
     })
   })),
 
+  updatePlayerPowerups: (targetPlayerId, powerups) => set((state) => ({
+    players: state.players.map(p => 
+      p.id === targetPlayerId ? { ...p, powerups } : p
+    )
+  })),
+
+  setBoard: (board) => set({ board }),
+
+  addBonusTime: (seconds) => set((state) => ({ timer: state.timer + seconds })),
+
   setLobbyId: (id) => set({ lobbyId: id }),
   setPlayerId: (id) => set({ playerId: id }),
   setUsername: (name) => set({ username: name }),
@@ -195,10 +208,13 @@ export const useGameStore = create<GameState>()(
   }),
   setPowerup: (data: any, myPlayerId?: string) => {
     if (data.type === 'freeze') {
-      // Only freeze the player who activated it (they get time pause benefit)
+      // The player who used freeze gets bonus time
       if (data.by === myPlayerId) {
         if (freezeTimeout) clearTimeout(freezeTimeout);
-        set({ isFrozen: true });
+        set((state) => ({ 
+          isFrozen: true,
+          timer: state.timer + (data.bonus_time || 10)  // Add bonus time!
+        }));
         freezeTimeout = setTimeout(() => set({ isFrozen: false }), 10000);
       }
     } else if (data.type === 'blowup') {

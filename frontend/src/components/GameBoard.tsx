@@ -204,19 +204,27 @@ export const GameBoard = () => {
     }
   }, []);
 
+  // Keep blockedCells in a ref for use in handlers
+  const blockedCellsRef = useRef(blockedCells);
+  blockedCellsRef.current = blockedCells;
+
+  const isCellBlocked = useCallback((r: number, c: number): boolean => {
+    return blockedCellsRef.current.some(([br, bc]) => br === r && bc === c);
+  }, []);
+
   const handleStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault();
     const touch = 'touches' in e ? e.touches[0] : e;
     const { cell, localX, localY } = getCellFromCoords(touch.clientX, touch.clientY);
 
-    if (cell) {
+    if (cell && !isCellBlocked(cell[0], cell[1])) {
       setIsDragging(true);
       setCurrentPath([cell]);
       setTouchPos({ x: localX, y: localY });
       audioRef.current.playLetterSelect();
       prevPathLengthRef.current = 1;
     }
-  }, [getCellFromCoords]);
+  }, [getCellFromCoords, isCellBlocked]);
 
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isDragging) return;
@@ -229,6 +237,9 @@ export const GameBoard = () => {
     setTouchPos({ x: localX, y: localY });
 
     if (!cell) return;
+
+    // Don't allow selecting blocked cells
+    if (isCellBlocked(cell[0], cell[1])) return;
 
     setCurrentPath(prevPath => {
       const last = prevPath[prevPath.length - 1];
@@ -257,7 +268,7 @@ export const GameBoard = () => {
 
       return prevPath;
     });
-  }, [isDragging, getCellFromCoords, playChainSound]);
+  }, [isDragging, getCellFromCoords, playChainSound, isCellBlocked]);
 
   const handleEnd = useCallback(() => {
     if (currentPath.length >= 3) {

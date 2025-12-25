@@ -165,16 +165,30 @@ async def websocket_endpoint(
                 if player and powerup in player.powerups:
                     player.powerups.remove(powerup)
                     
+                    # Broadcast that the powerup was consumed
+                    await manager.broadcast(lobby_id, {
+                        "type": "powerup_consumed",
+                        "data": {
+                            "player_id": player_id,
+                            "powerups": list(player.powerups)
+                        }
+                    })
+                    
                     if powerup == "shuffle":
                         game_engine.board_gen.generate()
                         lobby.board = game_engine.board_gen.grid
+                        # Broadcast the new board
                         await manager.broadcast(lobby_id, {
-                            "type": "game_state",
-                            "data": lobby.model_dump()
+                            "type": "board_update",
+                            "data": {"board": lobby.board}
                         })
                     
                     from family_boggle.powerups import powerup_manager
                     effect = powerup_manager.apply_powerup(lobby_id, player_id, powerup, lobby.players)
+                    
+                    # For freeze, include bonus time info
+                    if powerup == "freeze":
+                        effect["bonus_time"] = 10  # 10 seconds bonus
                     
                     await manager.broadcast(lobby_id, {
                         "type": "powerup_event",

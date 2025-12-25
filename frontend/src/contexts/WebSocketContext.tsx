@@ -76,6 +76,17 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
         case 'powerup_event':
           setPowerup(message.data, playerId || undefined);
           break;
+        case 'powerup_consumed':
+          // Update the player's powerups after one was used
+          useGameStore.getState().updatePlayerPowerups(
+            message.data.player_id,
+            message.data.powerups
+          );
+          break;
+        case 'board_update':
+          // Update just the board (for shuffle)
+          useGameStore.getState().setBoard(message.data.board);
+          break;
         case 'error':
           console.error('Server error:', message.data);
           alert(message.data.message || 'Error connecting to lobby');
