@@ -1,6 +1,8 @@
+{
+    auto_https off
+}
+
 :2727 {
-    # Use manual TLS with self-signed cert for custom port
-    # Or get real cert if you have DNS challenge set up
     tls internal
     
     # Proxy WebSocket connections to backend
