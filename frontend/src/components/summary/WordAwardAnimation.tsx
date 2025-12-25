@@ -108,6 +108,7 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
             word={currentWord.word}
             points={currentWord.points}
             isUnique={currentWord.is_unique}
+            finders={currentWord.finders}
             targetPositions={currentTargets}
             onComplete={handleWordComplete}
           />
