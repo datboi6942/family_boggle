@@ -95,3 +95,4 @@ class DictionaryValidator:
                     self._prefix_set.add(word[:i])
         return self._prefix_set
 
+

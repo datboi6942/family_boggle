@@ -32,3 +32,4 @@ class WSMessage(BaseModel):
     type: str
     data: dict
 
+

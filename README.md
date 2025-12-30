@@ -31,3 +31,4 @@ Access the game at `http://<your-ip>` on your mobile browser.
 - **Frontend**: React, Vite, Tailwind CSS, Framer Motion, Zustand.
 - **Backend**: Python, FastAPI, WebSockets, NLTK.
 
+

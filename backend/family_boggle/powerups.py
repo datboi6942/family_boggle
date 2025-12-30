@@ -73,3 +73,4 @@ class PowerUpManager:
 
 powerup_manager = PowerUpManager()
 
+

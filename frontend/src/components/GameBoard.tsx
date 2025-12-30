@@ -31,7 +31,10 @@ const Cell = memo(({
   isFirst,
   isLast,
   isBlocked,
-  pathIndex
+  pathIndex,
+  row,
+  col,
+  onCellClick
 }: {
   letter: string;
   isSelected: boolean;
@@ -39,6 +42,9 @@ const Cell = memo(({
   isLast: boolean;
   isBlocked: boolean;
   pathIndex: number;
+  row: number;
+  col: number;
+  onCellClick: (row: number, col: number) => void;
 }) => {
   const points = LETTER_SCORES[letter.toUpperCase()] ?? 1;
   const isQU = letter.toUpperCase() === 'QU';
@@ -48,11 +54,17 @@ const Cell = memo(({
     <span>Q<span className="text-[0.7em]">u</span></span>
   ) : letter;
 
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onCellClick(row, col);
+  }, [row, col, onCellClick]);
+
   return (
     <div
+      onClick={handleClick}
       className={`
         aspect-square frosted-glass flex items-center justify-center font-black
-        relative rounded-xl transition-all duration-150 ease-out
+        relative rounded-xl transition-all duration-150 ease-out cursor-pointer
         ${isQU ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'}
         ${isSelected ? 'bg-primary/80 border-2 border-white scale-110 z-10' : 'bg-white/5 border border-white/10 scale-100'}
         ${isFirst ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-transparent' : ''}
@@ -105,6 +117,19 @@ export const GameBoard = () => {
   const lastTimerRef = useRef<number>(timer);
   const lastSoundTimeRef = useRef(0);
   const prevPathLengthRef = useRef(0);
+  
+  // Performance optimization: Use refs to avoid re-renders during drag
+  const touchPosRef = useRef<{ x: number; y: number } | null>(null);
+  const currentPathRef = useRef<[number, number][]>([]);
+  const rafIdRef = useRef<number | null>(null);
+  const boardDimensionsRef = useRef<{ cellSize: number; gapSize: number; totalGapSpace: number } | null>(null);
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const hasMovedRef = useRef(false);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    currentPathRef.current = currentPath;
+  }, [currentPath]);
 
   // Keep a ref to audio so effects can access latest version
   const audioRef = useRef(audio);
@@ -171,6 +196,20 @@ export const GameBoard = () => {
     }
   }, [blockedCells]);
 
+  // Cache board dimensions to avoid recalculating on every call
+  const updateBoardDimensions = useCallback(() => {
+    const rect = boardRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+
+    const computedStyle = boardRef.current ? getComputedStyle(boardRef.current) : null;
+    const gapSize = computedStyle ? parseFloat(computedStyle.gap) || 8 : 8;
+    const totalGapSpace = (boardSize - 1) * gapSize;
+    const cellSize = (rect.width - totalGapSpace) / boardSize;
+    
+    boardDimensionsRef.current = { cellSize, gapSize, totalGapSpace };
+    return boardDimensionsRef.current;
+  }, [boardSize]);
+
   // Get cell from coordinates relative to board
   // Must account for CSS grid gap (gap-2 = 0.5rem = 8px at default font size)
   const getCellFromCoords = useCallback((clientX: number, clientY: number): { cell: [number, number] | null; localX: number; localY: number } => {
@@ -180,13 +219,14 @@ export const GameBoard = () => {
     const localX = clientX - rect.left;
     const localY = clientY - rect.top;
     
-    // Get the actual gap size from computed style
-    const computedStyle = boardRef.current ? getComputedStyle(boardRef.current) : null;
-    const gapSize = computedStyle ? parseFloat(computedStyle.gap) || 8 : 8;
+    // Use cached dimensions or calculate if not available
+    let dims = boardDimensionsRef.current;
+    if (!dims) {
+      dims = updateBoardDimensions();
+      if (!dims) return { cell: null, localX, localY };
+    }
     
-    // Cell size accounting for gaps
-    const totalGapSpace = (boardSize - 1) * gapSize;
-    const cellSize = (rect.width - totalGapSpace) / boardSize;
+    const { cellSize, gapSize } = dims;
     const cellPlusGap = cellSize + gapSize;
 
     // Find which cell we're in
@@ -210,7 +250,7 @@ export const GameBoard = () => {
     }
 
     return { cell: null, localX, localY };
-  }, [boardSize]);
+  }, [boardSize, updateBoardDimensions]);
 
   // Play chain sound immediately when path grows
   const playChainSound = useCallback((pathLength: number) => {
@@ -235,14 +275,20 @@ export const GameBoard = () => {
     const { cell, localX, localY } = getCellFromCoords(touch.clientX, touch.clientY);
 
     if (cell && !isCellBlocked(cell[0], cell[1])) {
+      // Track initial position to distinguish clicks from drags
+      dragStartPosRef.current = { x: localX, y: localY };
+      hasMovedRef.current = false;
+      
       setIsDragging(true);
       setCurrentPath([cell]);
       setTouchPos({ x: localX, y: localY });
+      touchPosRef.current = { x: localX, y: localY };
       audioRef.current.playLetterSelect();
       prevPathLengthRef.current = 1;
     }
   }, [getCellFromCoords, isCellBlocked]);
 
+  // Optimized move handler using requestAnimationFrame for smooth updates
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isDragging) return;
     e.preventDefault();
@@ -250,34 +296,105 @@ export const GameBoard = () => {
     const touch = 'touches' in e ? e.touches[0] : e;
     const { cell, localX, localY } = getCellFromCoords(touch.clientX, touch.clientY);
 
-    // Always update touch position for smooth line
-    setTouchPos({ x: localX, y: localY });
+    // Track if user has moved (to distinguish click from drag)
+    if (dragStartPosRef.current) {
+      const dx = localX - dragStartPosRef.current.x;
+      const dy = localY - dragStartPosRef.current.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > 25) { // 5px threshold
+        hasMovedRef.current = true;
+      }
+    }
 
-    if (!cell) return;
+    // Update touch position in ref immediately for smooth rendering
+    touchPosRef.current = { x: localX, y: localY };
 
-    // Don't allow selecting blocked cells
-    if (isCellBlocked(cell[0], cell[1])) return;
+    // Cancel any pending animation frame
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+    }
 
-    setCurrentPath(prevPath => {
+    // Use requestAnimationFrame to batch updates and reduce re-renders
+    rafIdRef.current = requestAnimationFrame(() => {
+      // Update touch position state for rendering (throttled via RAF)
+      setTouchPos(touchPosRef.current);
+
+      if (!cell) return;
+
+      // Don't allow selecting blocked cells
+      if (isCellBlocked(cell[0], cell[1])) return;
+
+      // Use ref to get latest path without causing dependency issues
+      const prevPath = currentPathRef.current;
       const last = prevPath[prevPath.length - 1];
-      if (last[0] === cell[0] && last[1] === cell[1]) return prevPath;
+      if (!last || (last[0] === cell[0] && last[1] === cell[1])) return;
+
+      let newPath: [number, number][] = prevPath;
 
       // Check if backtracking
       if (prevPath.length >= 2) {
         const secondToLast = prevPath[prevPath.length - 2];
         if (secondToLast[0] === cell[0] && secondToLast[1] === cell[1]) {
+          newPath = prevPath.slice(0, -1);
+        }
+      }
+
+      // Check adjacency if not backtracking
+      if (newPath === prevPath) {
+        if (Math.abs(last[0] - cell[0]) <= 1 && Math.abs(last[1] - cell[1]) <= 1) {
+          const existingIndex = prevPath.findIndex(p => p[0] === cell[0] && p[1] === cell[1]);
+          if (existingIndex === -1) {
+            // Play sound immediately when adding new cell
+            playChainSound(prevPath.length + 1);
+            prevPathLengthRef.current = prevPath.length + 1;
+            newPath = [...prevPath, cell];
+          } else if (existingIndex < prevPath.length - 2) {
+            newPath = prevPath.slice(0, existingIndex + 1);
+          }
+        }
+      }
+
+      // Only update state if path actually changed
+      if (newPath !== prevPath) {
+        setCurrentPath(newPath);
+      }
+    });
+  }, [isDragging, getCellFromCoords, playChainSound, isCellBlocked]);
+
+  // Handle clicking individual cells to build path
+  const handleCellClick = useCallback((row: number, col: number) => {
+    // Don't allow clicking blocked cells
+    if (isCellBlocked(row, col)) return;
+
+    setCurrentPath(prevPath => {
+      // If no path exists, start a new one
+      if (prevPath.length === 0) {
+        audioRef.current.playLetterSelect();
+        prevPathLengthRef.current = 1;
+        return [[row, col]];
+      }
+
+      const last = prevPath[prevPath.length - 1];
+      
+      // If clicking the same cell, ignore
+      if (last[0] === row && last[1] === col) return prevPath;
+
+      // Check if backtracking
+      if (prevPath.length >= 2) {
+        const secondToLast = prevPath[prevPath.length - 2];
+        if (secondToLast[0] === row && secondToLast[1] === col) {
           return prevPath.slice(0, -1);
         }
       }
 
       // Check adjacency
-      if (Math.abs(last[0] - cell[0]) <= 1 && Math.abs(last[1] - cell[1]) <= 1) {
-        const existingIndex = prevPath.findIndex(p => p[0] === cell[0] && p[1] === cell[1]);
+      if (Math.abs(last[0] - row) <= 1 && Math.abs(last[1] - col) <= 1) {
+        const existingIndex = prevPath.findIndex(p => p[0] === row && p[1] === col);
         if (existingIndex === -1) {
-          // Play sound immediately when adding new cell
+          // Play sound when adding new cell
           playChainSound(prevPath.length + 1);
           prevPathLengthRef.current = prevPath.length + 1;
-          return [...prevPath, cell];
+          return [...prevPath, [row, col]];
         } else if (existingIndex < prevPath.length - 2) {
           return prevPath.slice(0, existingIndex + 1);
         }
@@ -285,35 +402,60 @@ export const GameBoard = () => {
 
       return prevPath;
     });
-  }, [isDragging, getCellFromCoords, playChainSound, isCellBlocked]);
+  }, [isCellBlocked, playChainSound]);
 
   const handleEnd = useCallback(() => {
-    if (currentPath.length >= 3) {
-      const word = currentPath.map(([r, c]) => board[r][c]).join('');
-      send('submit_word', { word, path: currentPath });
+    // Cancel any pending animation frame
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
     }
+
+    const path = currentPathRef.current;
+    const wasDragging = isDragging;
+    const hadMovement = hasMovedRef.current;
+    
+    // Reset drag state
     setIsDragging(false);
+    dragStartPosRef.current = null;
+    hasMovedRef.current = false;
+    
+    // Only submit if it was a drag (not a click) and path is valid
+    // Clicks are handled by handleCellClick, so we skip submission here if no movement
+    if (wasDragging && hadMovement && path.length >= 3) {
+      const word = path.map(([r, c]) => board[r][c]).join('');
+      send('submit_word', { word, path });
+    }
+    
+    // Clear path and touch position
     setCurrentPath([]);
     setTouchPos(null);
+    touchPosRef.current = null;
     prevPathLengthRef.current = 0;
-  }, [currentPath, board, send]);
+  }, [board, send, isDragging]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
 
   // Calculate smooth bezier curve path with trailing line to touch position
-  // Must account for CSS grid gap (gap-2 = 0.5rem = 8px at default font size)
+  // Optimized to use cached dimensions
   const linePath = useMemo((): string => {
     if (currentPath.length === 0) return '';
 
-    const rect = boardRef.current?.getBoundingClientRect();
-    if (!rect) return '';
+    // Use cached dimensions or calculate if needed
+    let dims = boardDimensionsRef.current;
+    if (!dims) {
+      dims = updateBoardDimensions();
+      if (!dims) return '';
+    }
 
-    // Get the actual gap size from computed style
-    const computedStyle = boardRef.current ? getComputedStyle(boardRef.current) : null;
-    const gapSize = computedStyle ? parseFloat(computedStyle.gap) || 8 : 8;
-    
-    // Total gap space = (boardSize - 1) * gapSize
-    // Cell size = (rect.width - totalGapSpace) / boardSize
-    const totalGapSpace = (boardSize - 1) * gapSize;
-    const cellSize = (rect.width - totalGapSpace) / boardSize;
+    const { cellSize, gapSize } = dims;
 
     // Convert path coordinates to pixel positions
     const points = currentPath.map(([r, c]) => {
@@ -373,7 +515,7 @@ export const GameBoard = () => {
     }
 
     return path;
-  }, [currentPath, boardSize, touchPos, isDragging]);
+  }, [currentPath, touchPos, isDragging, updateBoardDimensions]);
 
   // Memoize current word display
   const currentWord = useMemo(() => {
@@ -498,6 +640,9 @@ export const GameBoard = () => {
                 isLast={isLast}
                 isBlocked={isBlocked}
                 pathIndex={pathIndex}
+                row={r}
+                col={c}
+                onCellClick={handleCellClick}
               />
             );
           }))}
