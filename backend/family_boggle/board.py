@@ -141,3 +141,4 @@ class BoggleBoard:
         
         # Sort by length (longest first), then alphabetically
         return sorted(found_words, key=lambda w: (-len(w), w))
+

@@ -94,3 +94,4 @@ class DictionaryValidator:
                 for i in range(1, len(word) + 1):
                     self._prefix_set.add(word[:i])
         return self._prefix_set
+

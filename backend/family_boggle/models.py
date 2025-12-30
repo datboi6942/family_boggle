@@ -31,3 +31,4 @@ class WSMessage(BaseModel):
     """Generic WebSocket message model."""
     type: str
     data: dict
+

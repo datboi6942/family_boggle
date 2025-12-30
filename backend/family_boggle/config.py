@@ -16,3 +16,4 @@ class Settings(BaseSettings):
         env_prefix = "BOGGLE_"
 
 settings = Settings()
+

@@ -138,3 +138,4 @@ export const PlayerScoreCard: React.FC<PlayerScoreCardProps> = ({
     </motion.div>
   );
 };
+

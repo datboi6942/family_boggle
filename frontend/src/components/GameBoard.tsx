@@ -201,9 +201,9 @@ export const GameBoard = () => {
     const cellCenterX = col * cellPlusGap + cellSize / 2;
     const cellCenterY = row * cellPlusGap + cellSize / 2;
 
-    // Distance from touch to cell center (reduced sensitivity - must be closer to center)
+    // Distance from touch to cell center (increased safe area for easier selection)
     const distSq = (localX - cellCenterX) ** 2 + (localY - cellCenterY) ** 2;
-    const hitRadiusSq = (cellSize * 0.4) ** 2;
+    const hitRadiusSq = (cellSize * 0.65) ** 2;
 
     if (distSq <= hitRadiusSq) {
       return { cell: [row, col], localX, localY };
@@ -298,7 +298,7 @@ export const GameBoard = () => {
     prevPathLengthRef.current = 0;
   }, [currentPath, board, send]);
 
-  // Calculate line path with trailing line to touch position
+  // Calculate smooth bezier curve path with trailing line to touch position
   // Must account for CSS grid gap (gap-2 = 0.5rem = 8px at default font size)
   const linePath = useMemo((): string => {
     if (currentPath.length === 0) return '';
@@ -315,17 +315,61 @@ export const GameBoard = () => {
     const totalGapSpace = (boardSize - 1) * gapSize;
     const cellSize = (rect.width - totalGapSpace) / boardSize;
 
-    // Build path through all selected cells
-    // Cell center for index i = i * (cellSize + gapSize) + cellSize / 2
-    let path = currentPath.map(([r, c], i) => {
+    // Convert path coordinates to pixel positions
+    const points = currentPath.map(([r, c]) => {
       const x = c * (cellSize + gapSize) + cellSize / 2;
       const y = r * (cellSize + gapSize) + cellSize / 2;
-      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-    }).join(' ');
+      return { x, y };
+    });
 
-    // Add trailing line to current touch position
-    if (touchPos && isDragging) {
-      path += ` L ${touchPos.x} ${touchPos.y}`;
+    if (points.length === 0) return '';
+
+    // Build smooth bezier curve path using quadratic curves for fluid motion
+    let path = `M ${points[0].x} ${points[0].y}`;
+
+    if (points.length === 1) {
+      // Single point - smooth curve to touch position
+      if (touchPos && isDragging) {
+        const cpX = points[0].x + (touchPos.x - points[0].x) * 0.5;
+        const cpY = points[0].y + (touchPos.y - points[0].y) * 0.5;
+        path += ` Q ${cpX} ${cpY} ${touchPos.x} ${touchPos.y}`;
+      }
+    } else {
+      // Multiple points - use smooth quadratic bezier curves with optimized control points
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1];
+        const curr = points[i];
+        const next = i < points.length - 1 ? points[i + 1] : null;
+
+        if (next) {
+          // Calculate smooth control point that anticipates the next direction
+          // This creates a more natural, flowing curve
+          const midX = (curr.x + next.x) / 2;
+          const midY = (curr.y + next.y) / 2;
+          const cpX = (prev.x + midX) / 2;
+          const cpY = (prev.y + midY) / 2;
+          path += ` Q ${cpX} ${cpY} ${curr.x} ${curr.y}`;
+        } else {
+          // Last point - smooth curve approaching it
+          const dx = curr.x - prev.x;
+          const dy = curr.y - prev.y;
+          // Control point extends slightly past the current point for smoother finish
+          const cpX = curr.x - dx * 0.2;
+          const cpY = curr.y - dy * 0.2;
+          path += ` Q ${cpX} ${cpY} ${curr.x} ${curr.y}`;
+        }
+      }
+
+      // Add smooth trailing line to current touch position
+      if (touchPos && isDragging) {
+        const last = points[points.length - 1];
+        // Create a smooth curve that flows naturally from the last point
+        const dx = touchPos.x - last.x;
+        const dy = touchPos.y - last.y;
+        const cpX = last.x + dx * 0.5;
+        const cpY = last.y + dy * 0.5;
+        path += ` Q ${cpX} ${cpY} ${touchPos.x} ${touchPos.y}`;
+      }
     }
 
     return path;
@@ -527,3 +571,4 @@ export const GameBoard = () => {
     </div>
   );
 };
+

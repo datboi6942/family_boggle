@@ -72,3 +72,4 @@ class PowerUpManager:
         return set()
 
 powerup_manager = PowerUpManager()
+

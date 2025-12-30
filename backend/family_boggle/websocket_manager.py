@@ -57,3 +57,4 @@ class WebSocketManager:
             logger.error("send_personal_error", error=str(e))
 
 manager = WebSocketManager()
+

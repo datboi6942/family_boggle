@@ -44,3 +44,4 @@ def calculate_word_score(word: str, is_unique: bool = False) -> int:
         total_score = int(total_score * 1.5)
         
     return total_score
+

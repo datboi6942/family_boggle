@@ -24,3 +24,4 @@ RUN python -c "import nltk; nltk.download('words')"
 EXPOSE 8000
 
 CMD ["uvicorn", "family_boggle.main:app", "--host", "0.0.0.0", "--port", "8000"]
+

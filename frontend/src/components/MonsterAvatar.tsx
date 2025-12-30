@@ -322,3 +322,4 @@ export const MonsterAvatar = ({ name, size = 100, isWinner = false, animated = t
     </div>
   );
 };
+

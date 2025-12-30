@@ -115,3 +115,4 @@ export const FlyingWord: React.FC<FlyingWordProps> = ({
     </div>
   );
 };
+
