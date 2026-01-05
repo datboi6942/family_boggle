@@ -1172,6 +1172,243 @@ def generate_summary_music(duration_seconds: float = 45) -> np.ndarray:
     return result
 
 
+def generate_gameplay_intense(duration_seconds: float = 90) -> np.ndarray:
+    """Generate INTENSE Blue Monday style music - faster, more layers, higher energy!"""
+    # Faster tempo for intensity!
+    bm_bpm = 140  # Faster than normal 130
+    beat_dur = 60 / bm_bpm
+    bar_dur = beat_dur * 4
+    section_duration = 4 * bar_dur
+    num_sections = int(np.ceil(duration_seconds / section_duration))
+
+    result = np.zeros(int(SAMPLE_RATE * duration_seconds))
+
+    # Generate all drum sounds
+    kick = generate_blue_monday_kick()
+    snare = generate_blue_monday_snare()
+    hihat = generate_blue_monday_hihat()
+    clap = generate_blue_monday_clap()
+    tom_low = generate_blue_monday_tom(80)
+    tom_mid = generate_blue_monday_tom(120)
+    tom_high = generate_blue_monday_tom(160)
+    perc = generate_blue_monday_perc_hit()
+
+    sixteenth = beat_dur / 4
+    eighth = beat_dur / 2
+
+    # More aggressive bass pattern
+    d_root = 73.42 * 1.06  # Slightly higher key for tension
+    bass_pattern = [
+        # Relentless 16th note pattern
+        (d_root, sixteenth), (d_root, sixteenth), (d_root * 1.5, sixteenth), (d_root, sixteenth),
+        (d_root, sixteenth), (d_root * 2, sixteenth), (d_root * 1.5, sixteenth), (d_root, sixteenth),
+        (d_root, sixteenth), (d_root, sixteenth), (d_root * 1.5, sixteenth), (d_root * 2, sixteenth),
+        (d_root, sixteenth), (d_root * 1.5, sixteenth), (d_root * 2, sixteenth), (d_root * 1.5, sixteenth),
+        # Bar 2 - movement
+        (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth), (d_root * 0.89 * 1.5, sixteenth), (d_root * 0.89, sixteenth),
+        (d_root * 0.89, sixteenth), (d_root * 0.89 * 2, sixteenth), (d_root * 0.89, sixteenth), (d_root, sixteenth),
+        (d_root * 0.89, sixteenth), (d_root, sixteenth), (d_root * 0.89, sixteenth), (d_root * 0.89 * 1.5, sixteenth),
+        (d_root * 0.75, sixteenth), (d_root * 0.89, sixteenth), (d_root, sixteenth), (d_root * 1.5, sixteenth),
+        # Bar 3-4 - intense build
+        (d_root * 0.75, sixteenth), (d_root * 0.75, sixteenth), (d_root * 0.75 * 1.5, sixteenth), (d_root * 0.75, sixteenth),
+        (d_root * 0.75, sixteenth), (d_root * 0.75 * 2, sixteenth), (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth),
+        (d_root * 0.67, sixteenth), (d_root * 0.67, sixteenth), (d_root * 0.67 * 1.5, sixteenth), (d_root * 0.75, sixteenth),
+        (d_root * 0.75, sixteenth), (d_root * 0.89, sixteenth), (d_root, sixteenth), (d_root * 2, sixteenth),
+        # Bar 4 - climax
+        (d_root, sixteenth), (d_root * 1.5, sixteenth), (d_root * 2, sixteenth), (d_root * 1.5, sixteenth),
+        (d_root, sixteenth), (d_root * 2, sixteenth), (d_root * 1.5, sixteenth), (d_root, sixteenth),
+        (d_root * 0.89, sixteenth), (d_root, sixteenth), (d_root * 1.5, sixteenth), (d_root * 2, sixteenth),
+        (d_root, sixteenth), (d_root * 1.5, sixteenth), (d_root * 2, sixteenth), (d_root * 2.5, sixteenth),
+    ]
+
+    # Chords
+    dm_chord = [293.66 * 1.06, 349.23 * 1.06, 440.00 * 1.06]
+    c_chord = [261.63 * 1.06, 329.63 * 1.06, 392.00 * 1.06]
+    bb_chord = [233.08 * 1.06, 293.66 * 1.06, 349.23 * 1.06]
+    a_chord = [220.00 * 1.06, 277.18 * 1.06, 329.63 * 1.06]
+
+    # Higher pad voicings
+    dm_pad = [587.33 * 1.06, 698.46 * 1.06, 880.00 * 1.06]
+    c_pad = [523.25 * 1.06, 659.25 * 1.06, 783.99 * 1.06]
+    bb_pad = [466.16 * 1.06, 587.33 * 1.06, 698.46 * 1.06]
+    a_pad = [440.00 * 1.06, 554.37 * 1.06, 659.25 * 1.06]
+
+    # Fast arpeggios
+    dm_arp = [293.66 * 1.06, 349.23 * 1.06, 440.00 * 1.06, 587.33 * 1.06, 698.46 * 1.06, 587.33 * 1.06, 440.00 * 1.06, 349.23 * 1.06]
+    c_arp = [261.63 * 1.06, 329.63 * 1.06, 392.00 * 1.06, 523.25 * 1.06, 659.25 * 1.06, 523.25 * 1.06, 392.00 * 1.06, 329.63 * 1.06]
+    bb_arp = [233.08 * 1.06, 293.66 * 1.06, 349.23 * 1.06, 466.16 * 1.06, 587.33 * 1.06, 466.16 * 1.06, 349.23 * 1.06, 293.66 * 1.06]
+    a_arp = [220.00 * 1.06, 277.18 * 1.06, 329.63 * 1.06, 440.00 * 1.06, 554.37 * 1.06, 440.00 * 1.06, 329.63 * 1.06, 277.18 * 1.06]
+
+    for section in range(num_sections):
+        section_start = section * section_duration
+
+        # ===== INTENSE DRUMS =====
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+
+            # Double-time kick on every 8th note!
+            for i in range(8):
+                t = bar_start + i * eighth
+                pos = int(t * SAMPLE_RATE)
+                vol = 0.95 if i % 2 == 0 else 0.75
+                if pos + len(kick) < len(result):
+                    result[pos:pos + len(kick)] += kick * vol
+
+            # Snares with extra hits
+            snare_times = [1, 2.5, 3, 3.75] if bar % 2 == 0 else [1, 1.5, 3, 3.5]
+            for beat in snare_times:
+                t = bar_start + beat * beat_dur
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(snare) < len(result):
+                    result[pos:pos + len(snare)] += snare * 0.8
+
+            # Claps on every snare
+            for beat in [1, 3]:
+                t = bar_start + beat * beat_dur
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(clap) < len(result):
+                    result[pos:pos + len(clap)] += clap * 0.6
+
+            # CRAZY 16th note hi-hats
+            for i in range(16):
+                t = bar_start + i * sixteenth
+                pos = int(t * SAMPLE_RATE)
+                vol = 0.6 if i % 4 == 0 else (0.45 if i % 2 == 0 else 0.35)
+                if pos + len(hihat) < len(result):
+                    result[pos:pos + len(hihat)] += hihat * vol
+
+            # Extra percussion everywhere
+            for i in range(8):
+                t = bar_start + i * eighth + sixteenth
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(perc) < len(result):
+                    result[pos:pos + len(perc)] += perc * 0.35
+
+            # Tom rolls more frequently
+            if bar >= 2:
+                tom_times = [(2.5, tom_high), (2.75, tom_high), (3.0, tom_mid), (3.25, tom_mid), (3.5, tom_low), (3.75, tom_low)]
+                for beat, tom in tom_times:
+                    t = bar_start + beat * beat_dur
+                    pos = int(t * SAMPLE_RATE)
+                    if pos + len(tom) < len(result):
+                        result[pos:pos + len(tom)] += tom * 0.55
+
+        # ===== INTENSE BASS =====
+        bass_time = section_start
+        for freq, dur in bass_pattern:
+            pos = int(bass_time * SAMPLE_RATE)
+            note = generate_blue_monday_bass_note(freq, dur * 0.8)
+            if pos + len(note) < len(result):
+                result[pos:pos + len(note)] += note * 0.65
+            bass_time += dur
+
+        # ===== MORE SYNTH STABS =====
+        stab_chords = [dm_chord, c_chord, bb_chord, a_chord]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            # Stabs on every beat
+            for beat in range(4):
+                pos = int((bar_start + beat * beat_dur) * SAMPLE_RATE)
+                stab = generate_blue_monday_synth_stab(stab_chords[bar], beat_dur * 0.5)
+                vol = 0.5 if beat in [0, 2] else 0.35
+                if pos + len(stab) < len(result):
+                    result[pos:pos + len(stab)] += stab * vol
+
+            # Extra stabs on offbeats
+            for beat in [0.5, 1.5, 2.5, 3.5]:
+                pos = int((bar_start + beat * beat_dur) * SAMPLE_RATE)
+                stab = generate_blue_monday_synth_stab(stab_chords[bar], beat_dur * 0.3)
+                if pos + len(stab) < len(result):
+                    result[pos:pos + len(stab)] += stab * 0.25
+
+        # ===== FAST ARPEGGIOS =====
+        arp_patterns = [dm_arp, c_arp, bb_arp, a_arp]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            arp = arp_patterns[bar]
+            # 32nd note arpeggios for intensity!
+            thirty_second = sixteenth / 2
+            for i in range(32):
+                t = bar_start + i * thirty_second
+                pos = int(t * SAMPLE_RATE)
+                freq = arp[i % len(arp)]
+                note = generate_blue_monday_arp_note(freq, thirty_second * 0.7)
+                if pos + len(note) < len(result):
+                    result[pos:pos + len(note)] += note * 0.3
+
+        # ===== INTENSE PADS =====
+        pad_chords = [dm_pad, c_pad, bb_pad, a_pad]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            pos = int(bar_start * SAMPLE_RATE)
+            pad = generate_blue_monday_string_pad(pad_chords[bar], bar_dur)
+            end = min(pos + len(pad), len(result))
+            if end > pos:
+                result[pos:end] += pad[:end - pos] * 0.35
+
+        # ===== LEAD MELODY EVERY SECTION =====
+        lead_melody = [
+            (587.33 * 1.06, sixteenth * 2), (698.46 * 1.06, sixteenth * 2),
+            (587.33 * 1.06, sixteenth), (523.25 * 1.06, sixteenth), (587.33 * 1.06, sixteenth * 2),
+            (698.46 * 1.06, sixteenth * 4), (587.33 * 1.06, sixteenth * 2), (523.25 * 1.06, sixteenth * 2),
+        ]
+        lead_time = section_start + bar_dur
+        for freq, dur in lead_melody:
+            pos = int(lead_time * SAMPLE_RATE)
+            note = generate_blue_monday_lead(freq, dur * 0.85)
+            if pos + len(note) < len(result):
+                result[pos:pos + len(note)] += note * 0.4
+            lead_time += dur
+
+    # More aggressive delay
+    delayed = delay(result, delay_time=beat_dur * 0.5, feedback=0.3)
+    result = result * 0.75 + delayed * 0.25
+
+    # Master processing - louder!
+    result = np.clip(result, -1, 1)
+    result = low_pass_filter(result, cutoff=16000)
+    result = normalize(result, target_db=-2)
+
+    # Crossfade for seamless loop
+    crossfade_samples = int(SAMPLE_RATE * 0.5)
+    fade_out_curve = np.linspace(1, 0, crossfade_samples)
+    fade_in_curve = np.linspace(0, 1, crossfade_samples)
+    result[-crossfade_samples:] *= fade_out_curve
+    result[:crossfade_samples] *= fade_in_curve
+    result[:crossfade_samples] += result[-crossfade_samples:] * fade_in_curve
+
+    return result
+
+
+def create_seamless_loop(track: np.ndarray, crossfade_seconds: float = 1.0) -> np.ndarray:
+    """Apply crossfade to make a track loop seamlessly."""
+    crossfade_samples = int(SAMPLE_RATE * crossfade_seconds)
+
+    # Ensure we have enough samples
+    if len(track) < crossfade_samples * 3:
+        return track
+
+    result = track.copy()
+
+    # Create crossfade curves
+    fade_out = np.linspace(1, 0, crossfade_samples) ** 0.5  # Square root for smoother fade
+    fade_in = np.linspace(0, 1, crossfade_samples) ** 0.5
+
+    # Copy the beginning for crossfade
+    beginning = result[:crossfade_samples].copy()
+
+    # Apply fade out at the end
+    result[-crossfade_samples:] *= fade_out
+
+    # Mix in faded beginning at the end
+    result[-crossfade_samples:] += beginning * fade_in
+
+    # Also fade in the very start slightly
+    result[:crossfade_samples] *= fade_in
+
+    return result
+
+
 def generate_all_music(output_dir: str = "output/music"):
     """Generate all music tracks."""
     import os
@@ -1179,19 +1416,28 @@ def generate_all_music(output_dir: str = "output/music"):
 
     print("Generating music tracks (this may take a moment)...")
 
-    # Gameplay loop - 60 seconds that can loop seamlessly
-    print("  Generating gameplay loop...")
-    gameplay = generate_gameplay_loop(60)
+    # Gameplay loop - 120 seconds for less repetition, with seamless crossfade
+    print("  Generating gameplay loop (120s)...")
+    gameplay = generate_gameplay_loop(120)
+    gameplay = create_seamless_loop(gameplay, crossfade_seconds=1.5)
     save_wav(gameplay, f"{output_dir}/gameplay_loop.wav")
 
-    # Menu/lobby music - 30 seconds
-    print("  Generating menu music...")
-    menu = generate_menu_music(30)
+    # INTENSE gameplay loop - for final 30 seconds
+    print("  Generating intense gameplay loop (90s)...")
+    gameplay_intense = generate_gameplay_intense(90)
+    gameplay_intense = create_seamless_loop(gameplay_intense, crossfade_seconds=1.0)
+    save_wav(gameplay_intense, f"{output_dir}/gameplay_intense.wav")
+
+    # Menu/lobby music - 60 seconds for less repetition
+    print("  Generating menu music (60s)...")
+    menu = generate_menu_music(60)
+    menu = create_seamless_loop(menu, crossfade_seconds=1.5)
     save_wav(menu, f"{output_dir}/menu_loop.wav")
 
-    # Summary/results music - 45 seconds
-    print("  Generating summary music...")
-    summary = generate_summary_music(45)
+    # Summary/results music - 60 seconds
+    print("  Generating summary music (60s)...")
+    summary = generate_summary_music(60)
+    summary = create_seamless_loop(summary, crossfade_seconds=1.0)
     save_wav(summary, f"{output_dir}/summary_loop.wav")
 
     # Build-up riser for countdown

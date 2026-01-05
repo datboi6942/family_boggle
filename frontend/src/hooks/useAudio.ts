@@ -44,6 +44,7 @@ const CELEBRATION = {
 
 const MUSIC = {
   gameplay: `${AUDIO_BASE}/music/gameplay_loop.wav`,
+  gameplayIntense: `${AUDIO_BASE}/music/gameplay_intense.wav`,
   menu: `${AUDIO_BASE}/music/menu_loop.wav`,
   summary: `${AUDIO_BASE}/music/summary_loop.wav`,
   countdownRiser: `${AUDIO_BASE}/music/countdown_riser.wav`,
@@ -184,6 +185,7 @@ export interface AudioManager {
 
   // Music
   playGameplayMusic: () => void;
+  playGameplayIntenseMusic: () => void;
   playMenuMusic: () => void;
   playSummaryMusic: () => void;
   playCountdownRiser: () => void;
@@ -392,6 +394,7 @@ export function useAudio(): AudioManager {
 
     // Music
     playGameplayMusic: () => playMusic(MUSIC.gameplay),
+    playGameplayIntenseMusic: () => playMusic(MUSIC.gameplayIntense),
     playMenuMusic: () => playMusic(MUSIC.menu),
     playSummaryMusic: () => playMusic(MUSIC.summary),
     playCountdownRiser: () => playMusic(MUSIC.countdownRiser, false),

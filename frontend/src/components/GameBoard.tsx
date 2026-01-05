@@ -384,9 +384,17 @@ export const GameBoard = () => {
     }
   }, []);
 
-  // Timer sounds
+  // Track if intense mode has been activated
+  const intenseActivatedRef = useRef(false);
+
+  // Timer sounds and intense mode trigger
   useEffect(() => {
     if (timer !== lastTimerRef.current) {
+      // Switch to INTENSE music when timer hits 30 seconds!
+      if (timer === 30 && !intenseActivatedRef.current) {
+        intenseActivatedRef.current = true;
+        audioRef.current.playGameplayIntenseMusic();
+      }
       // Timer warning when 10 seconds or less
       if (timer <= 10 && timer > 0) {
         audioRef.current.playTimerWarning();
