@@ -718,14 +718,14 @@ export const GameBoard = () => {
 
   return (
     <div
-      className="game-board-container flex flex-col min-h-screen bg-navy-gradient text-white select-none p-2"
+      className="game-board-container flex flex-col h-screen bg-navy-gradient text-white select-none p-2 overflow-hidden"
       style={{
         paddingTop: 'env(safe-area-inset-top, 8px)',
         paddingBottom: 'env(safe-area-inset-bottom, 8px)'
       }}
     >
       {/* Header */}
-      <div className={`py-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
+      <div className={`py-2 flex-shrink-0 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
           <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
@@ -750,24 +750,25 @@ export const GameBoard = () => {
         </div>
       </div>
 
-      {/* The Board - Bulletproof square aspect ratio using padding-bottom technique */}
-      <div className="w-full flex-shrink-0 my-2 relative" style={{ paddingBottom: '100%' }}>
-        {/* Grid of letters - absolutely positioned to fill the square container */}
-        <div
-          ref={boardRef}
-          onMouseDown={handleStart}
-          onMouseMove={handleMove}
-          onMouseUp={handleEnd}
-          onMouseLeave={handleEnd}
-          onTouchStart={handleStart}
-          onTouchMove={handleMove}
-          onTouchEnd={handleEnd}
-          className="game-board-grid absolute inset-0 grid gap-2 w-full h-full"
-          style={{
-            gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
-            touchAction: 'none'
-          }}
-        >
+      {/* The Board - Constrained square container that fits in viewport */}
+      <div className="flex-1 flex items-center justify-center my-2 overflow-hidden">
+        <div className="relative w-full max-w-[100vw]" style={{ paddingBottom: 'min(100%, calc(100vh - 220px))', maxHeight: 'calc(100vh - 220px)' }}>
+          {/* Grid of letters - absolutely positioned to fill the square container */}
+          <div
+            ref={boardRef}
+            onMouseDown={handleStart}
+            onMouseMove={handleMove}
+            onMouseUp={handleEnd}
+            onMouseLeave={handleEnd}
+            onTouchStart={handleStart}
+            onTouchMove={handleMove}
+            onTouchEnd={handleEnd}
+            className="game-board-grid absolute inset-0 grid gap-2 w-full h-full"
+            style={{
+              gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
+              touchAction: 'none'
+            }}
+          >
           {/* Canvas overlay for butter-smooth 60fps trail rendering */}
           <canvas
             ref={canvasRef}
@@ -795,10 +796,11 @@ export const GameBoard = () => {
             );
           }))}
         </div>
+        </div>
       </div>
 
       {/* Power-ups */}
-      <div className="flex justify-center space-x-4 py-3">
+      <div className="flex justify-center space-x-4 py-3 flex-shrink-0">
         {['freeze', 'blowup', 'shuffle'].map(p => {
           const count = me?.powerups?.filter(x => x === p).length || 0;
           return (
