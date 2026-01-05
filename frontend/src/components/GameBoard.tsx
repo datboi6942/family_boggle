@@ -24,66 +24,43 @@ const TimerDisplay = memo(({ formattedTimer, isFrozen }: { formattedTimer: strin
 ));
 TimerDisplay.displayName = 'TimerDisplay';
 
-// Memoized cell component to prevent unnecessary re-renders
+// Static cell component - NO dynamic props during drag, uses data attributes for styling
 const Cell = memo(({
   letter,
-  isSelected,
-  isFirst,
-  isLast,
   isBlocked,
-  pathIndex,
   row,
   col,
-  onCellClick
+  cellRef
 }: {
   letter: string;
-  isSelected: boolean;
-  isFirst: boolean;
-  isLast: boolean;
   isBlocked: boolean;
-  pathIndex: number;
   row: number;
   col: number;
-  onCellClick: (row: number, col: number) => void;
+  cellRef: (el: HTMLDivElement | null) => void;
 }) => {
   const points = LETTER_SCORES[letter.toUpperCase()] ?? 1;
   const isQU = letter.toUpperCase() === 'QU';
 
-  // Display "Qu" with smaller 'u' for the QU tile
   const displayLetter = isQU ? (
     <span>Q<span className="text-[0.7em]">u</span></span>
   ) : letter;
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    onCellClick(row, col);
-  }, [row, col, onCellClick]);
-
   return (
     <div
-      onClick={handleClick}
+      ref={cellRef}
+      data-row={row}
+      data-col={col}
       className={`
-        aspect-square frosted-glass flex items-center justify-center font-black
-        relative rounded-xl transition-all duration-150 ease-out cursor-pointer
+        cell aspect-square frosted-glass flex items-center justify-center font-black
+        relative rounded-xl cursor-pointer select-none
         ${isQU ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'}
-        ${isSelected ? 'bg-primary/80 border-2 border-white scale-110 z-10' : 'bg-white/5 border border-white/10 scale-100'}
-        ${isFirst ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-transparent' : ''}
-        ${isLast && !isFirst ? 'bg-white text-primary' : ''}
-        ${isBlocked ? 'opacity-20 grayscale border-red-500' : ''}
+        bg-white/5 border border-white/10
+        ${isBlocked ? 'opacity-20 grayscale border-red-500 pointer-events-none' : ''}
       `}
-      style={{
-        boxShadow: isSelected ? '0 0 20px rgba(139, 92, 246, 0.5)' : undefined,
-        transform: isSelected ? 'scale(1.1)' : 'scale(1)',
-      }}
     >
-      {isSelected && (
-        <span className="absolute top-0.5 left-1 text-[8px] sm:text-[10px] font-bold text-white/70">
-          {pathIndex + 1}
-        </span>
-      )}
+      <span className="cell-index absolute top-0.5 left-1 text-[8px] sm:text-[10px] font-bold text-white/70 hidden" />
       {displayLetter}
-      {/* Letter point value */}
-      <span className={`absolute bottom-0.5 right-1 text-[8px] sm:text-[10px] font-bold ${isSelected || (isLast && !isFirst) ? 'text-white/70' : 'text-primary/70'}`}>
+      <span className="cell-points absolute bottom-0.5 right-1 text-[8px] sm:text-[10px] font-bold text-primary/70">
         {points}
       </span>
       {isBlocked && (
@@ -95,6 +72,27 @@ const Cell = memo(({
   );
 });
 Cell.displayName = 'Cell';
+
+// CSS for cell states - applied via direct DOM manipulation
+const CELL_STYLES = `
+  .cell.selected {
+    background: rgba(139, 92, 246, 0.8) !important;
+    border: 2px solid white !important;
+    transform: scale(1.1);
+    z-index: 10;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+  }
+  .cell.selected .cell-index { display: block !important; }
+  .cell.selected .cell-points { color: rgba(255,255,255,0.7) !important; }
+  .cell.first {
+    box-shadow: 0 0 0 2px #4ade80, 0 0 20px rgba(139, 92, 246, 0.5) !important;
+  }
+  .cell.last:not(.first) {
+    background: white !important;
+    color: #8B5CF6 !important;
+  }
+  .cell.last:not(.first) .cell-points { color: rgba(139, 92, 246, 0.7) !important; }
+`;
 
 export const GameBoard = () => {
   const playerId = useGameStore(state => state.playerId);
@@ -109,8 +107,8 @@ export const GameBoard = () => {
   const { send } = useWebSocketContext();
   const audio = useAudioContext();
 
-  const [currentPath, setCurrentPath] = useState<[number, number][]>([]);
-  const [isDragging, setIsDragging] = useState(false);
+  // Minimal React state - only for things that MUST trigger re-render
+  const [currentWord, setCurrentWord] = useState('');
   const boardRef = useRef<HTMLDivElement>(null);
   const musicStartedRef = useRef(false);
   const lastTimerRef = useRef<number>(timer);
@@ -121,46 +119,81 @@ export const GameBoard = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
-  // Performance optimization: Use refs to avoid re-renders during drag
+  // Cell DOM refs for direct manipulation - NO REACT RE-RENDERS
+  const cellRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // All path state in refs - NO React state during drag
   const touchPosRef = useRef<{ x: number; y: number } | null>(null);
   const currentPathRef = useRef<[number, number][]>([]);
-  const isDraggingRef = useRef(false); // Ref version for RAF callback
+  const isDraggingRef = useRef(false);
   const rafIdRef = useRef<number | null>(null);
   const boardDimensionsRef = useRef<{ cellSize: number; gapSize: number; totalGapSpace: number } | null>(null);
-  const boardRectRef = useRef<DOMRect | null>(null); // Cache board rect during drag
+  const boardRectRef = useRef<DOMRect | null>(null);
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const hasMovedRef = useRef(false);
   const pathPointsRef = useRef<{ x: number; y: number }[]>([]); // Cached pixel positions
   
-  // Update path points when currentPath changes
+  // Inject cell styles once on mount
   useEffect(() => {
-    currentPathRef.current = currentPath;
+    const styleId = 'cell-highlight-styles';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = CELL_STYLES;
+      document.head.appendChild(style);
+    }
+  }, []);
 
-    if (currentPath.length === 0) {
-      pathPointsRef.current = [];
-      // Clear canvas
-      const ctx = ctxRef.current;
-      const canvas = canvasRef.current;
-      if (ctx && canvas) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Direct DOM manipulation for cell highlighting - NO REACT
+  const updateCellHighlights = useCallback(() => {
+    const path = currentPathRef.current;
+    const cellRefs = cellRefsMap.current;
+
+    // Clear all highlights first
+    cellRefs.forEach((el) => {
+      el.classList.remove('selected', 'first', 'last');
+      const indexEl = el.querySelector('.cell-index') as HTMLElement;
+      if (indexEl) indexEl.textContent = '';
+    });
+
+    // Apply highlights to path cells
+    path.forEach(([r, c], i) => {
+      const key = `${r}-${c}`;
+      const el = cellRefs.get(key);
+      if (el) {
+        el.classList.add('selected');
+        if (i === 0) el.classList.add('first');
+        if (i === path.length - 1) el.classList.add('last');
+        const indexEl = el.querySelector('.cell-index') as HTMLElement;
+        if (indexEl) indexEl.textContent = String(i + 1);
       }
+    });
+
+    // Update current word display
+    if (path.length > 0) {
+      const word = path.map(([r, c]) => board[r]?.[c] ?? '').join('');
+      setCurrentWord(word);
+    } else {
+      setCurrentWord('');
+    }
+  }, [board]);
+
+  // Update path pixel positions for canvas drawing
+  const updatePathPoints = useCallback(() => {
+    const path = currentPathRef.current;
+    const dims = boardDimensionsRef.current;
+
+    if (path.length === 0 || !dims) {
+      pathPointsRef.current = [];
       return;
     }
 
-    const dims = boardDimensionsRef.current;
-    if (!dims) return;
-
     const { cellSize, gapSize } = dims;
-    pathPointsRef.current = currentPath.map(([r, c]) => ({
+    pathPointsRef.current = path.map(([r, c]) => ({
       x: c * (cellSize + gapSize) + cellSize / 2,
       y: r * (cellSize + gapSize) + cellSize / 2,
     }));
-
-    // Redraw immediately for click-based selection
-    if (!isDraggingRef.current) {
-      drawTrail();
-    }
-  }, [currentPath]);
+  }, []);
 
   // Canvas drawing function - pure pixel operations, no DOM
   const drawTrail = useCallback(() => {
@@ -440,10 +473,11 @@ export const GameBoard = () => {
       hasMovedRef.current = false;
       touchPosRef.current = { x: localX, y: localY };
 
-      // Set dragging state (both React state for UI and ref for RAF)
+      // Set path in ref only - NO React state update
       isDraggingRef.current = true;
-      setIsDragging(true);
-      setCurrentPath([cell]);
+      currentPathRef.current = [cell];
+      updatePathPoints();
+      updateCellHighlights();
 
       // Start the animation loop - canvas redraws at 60fps
       const animate = () => {
@@ -456,9 +490,9 @@ export const GameBoard = () => {
       audioRef.current.playLetterSelect();
       prevPathLengthRef.current = 1;
     }
-  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, drawTrail]);
+  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, drawTrail, updatePathPoints, updateCellHighlights]);
 
-  // Simplified move handler - just updates refs, animation loop handles rendering
+  // Simplified move handler - updates refs only, NO React state
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isDraggingRef.current) return;
     e.preventDefault();
@@ -470,7 +504,7 @@ export const GameBoard = () => {
     const localX = touch.clientX - rect.left;
     const localY = touch.clientY - rect.top;
 
-    // Update touch position ref - animation loop will pick this up
+    // Update touch position ref - animation loop picks this up
     touchPosRef.current = { x: localX, y: localY };
 
     // Track if user has moved (to distinguish click from drag)
@@ -482,7 +516,7 @@ export const GameBoard = () => {
       }
     }
 
-    // Check for cell changes (this is the only part that needs path state updates)
+    // Check for cell changes
     const dims = boardDimensionsRef.current;
     if (!dims) return;
 
@@ -507,70 +541,37 @@ export const GameBoard = () => {
     const last = prevPath[prevPath.length - 1];
     if (!last || (last[0] === cell[0] && last[1] === cell[1])) return;
 
+    let pathChanged = false;
+
     // Check if backtracking
     if (prevPath.length >= 2) {
       const secondToLast = prevPath[prevPath.length - 2];
       if (secondToLast[0] === cell[0] && secondToLast[1] === cell[1]) {
-        setCurrentPath(prevPath.slice(0, -1));
-        return;
+        currentPathRef.current = prevPath.slice(0, -1);
+        pathChanged = true;
       }
     }
 
     // Check adjacency
-    if (Math.abs(last[0] - cell[0]) <= 1 && Math.abs(last[1] - cell[1]) <= 1) {
+    if (!pathChanged && Math.abs(last[0] - cell[0]) <= 1 && Math.abs(last[1] - cell[1]) <= 1) {
       const existingIndex = prevPath.findIndex(p => p[0] === cell[0] && p[1] === cell[1]);
       if (existingIndex === -1) {
         playChainSound(prevPath.length + 1);
         prevPathLengthRef.current = prevPath.length + 1;
-        setCurrentPath([...prevPath, cell]);
+        currentPathRef.current = [...prevPath, cell];
+        pathChanged = true;
       } else if (existingIndex < prevPath.length - 2) {
-        setCurrentPath(prevPath.slice(0, existingIndex + 1));
+        currentPathRef.current = prevPath.slice(0, existingIndex + 1);
+        pathChanged = true;
       }
     }
-  }, [boardSize, playChainSound, isCellBlocked]);
 
-  // Handle clicking individual cells to build path
-  const handleCellClick = useCallback((row: number, col: number) => {
-    // Don't allow clicking blocked cells
-    if (isCellBlocked(row, col)) return;
-
-    setCurrentPath(prevPath => {
-      // If no path exists, start a new one
-      if (prevPath.length === 0) {
-        audioRef.current.playLetterSelect();
-        prevPathLengthRef.current = 1;
-        return [[row, col]];
-      }
-
-      const last = prevPath[prevPath.length - 1];
-      
-      // If clicking the same cell, ignore
-      if (last[0] === row && last[1] === col) return prevPath;
-
-      // Check if backtracking
-      if (prevPath.length >= 2) {
-        const secondToLast = prevPath[prevPath.length - 2];
-        if (secondToLast[0] === row && secondToLast[1] === col) {
-          return prevPath.slice(0, -1);
-        }
-      }
-
-      // Check adjacency
-      if (Math.abs(last[0] - row) <= 1 && Math.abs(last[1] - col) <= 1) {
-        const existingIndex = prevPath.findIndex(p => p[0] === row && p[1] === col);
-        if (existingIndex === -1) {
-          // Play sound when adding new cell
-          playChainSound(prevPath.length + 1);
-          prevPathLengthRef.current = prevPath.length + 1;
-          return [...prevPath, [row, col]];
-        } else if (existingIndex < prevPath.length - 2) {
-          return prevPath.slice(0, existingIndex + 1);
-        }
-      }
-
-      return prevPath;
-    });
-  }, [isCellBlocked, playChainSound]);
+    // Update DOM directly if path changed - NO React re-render
+    if (pathChanged) {
+      updatePathPoints();
+      updateCellHighlights();
+    }
+  }, [boardSize, playChainSound, isCellBlocked, updatePathPoints, updateCellHighlights]);
 
   const handleEnd = useCallback(() => {
     // Stop the animation loop first
@@ -583,25 +584,26 @@ export const GameBoard = () => {
     }
 
     const path = currentPathRef.current;
-    const wasDragging = isDragging;
     const hadMovement = hasMovedRef.current;
 
     // Reset drag state
-    setIsDragging(false);
     dragStartPosRef.current = null;
     hasMovedRef.current = false;
     boardRectRef.current = null;
     touchPosRef.current = null;
 
     // Only submit if it was a drag (not a click) and path is valid
-    if (wasDragging && hadMovement && path.length >= 3) {
+    if (hadMovement && path.length >= 3) {
       const word = path.map(([r, c]) => board[r][c]).join('');
       send('submit_word', { word, path });
     }
 
-    // Clear path state
-    setCurrentPath([]);
+    // Clear path and update DOM
+    currentPathRef.current = [];
+    pathPointsRef.current = [];
     prevPathLengthRef.current = 0;
+    updateCellHighlights();
+    setCurrentWord('');
 
     // Clear canvas
     const ctx = ctxRef.current;
@@ -609,7 +611,7 @@ export const GameBoard = () => {
     if (ctx && canvas) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-  }, [board, send, isDragging]);
+  }, [board, send, updateCellHighlights]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -619,19 +621,6 @@ export const GameBoard = () => {
       }
     };
   }, []);
-
-  // Memoize current word display
-  const currentWord = useMemo(() => {
-    if (currentPath.length === 0 || !board.length) return '';
-    return currentPath.map(([r, c]) => board[r]?.[c] ?? '').join('');
-  }, [currentPath, board]);
-
-  // Create a Set for O(1) path lookups
-  const pathSet = useMemo(() => {
-    const set = new Map<string, number>();
-    currentPath.forEach(([r, c], i) => set.set(`${r}-${c}`, i));
-    return set;
-  }, [currentPath]);
 
   // Create a Set for O(1) blocked cell lookups
   const blockedSet = useMemo(() => {
@@ -707,24 +696,22 @@ export const GameBoard = () => {
           />
           {board.map((row, r) => row.map((letter, c) => {
             const key = `${r}-${c}`;
-            const pathIndex = pathSet.get(key) ?? -1;
-            const isSelected = pathIndex !== -1;
-            const isFirst = pathIndex === 0;
-            const isLast = pathIndex === currentPath.length - 1 && currentPath.length > 0;
             const isBlocked = blockedSet.has(key);
 
             return (
               <Cell
                 key={key}
                 letter={letter}
-                isSelected={isSelected}
-                isFirst={isFirst}
-                isLast={isLast}
                 isBlocked={isBlocked}
-                pathIndex={pathIndex}
                 row={r}
                 col={c}
-                onCellClick={handleCellClick}
+                cellRef={(el) => {
+                  if (el) {
+                    cellRefsMap.current.set(key, el);
+                  } else {
+                    cellRefsMap.current.delete(key);
+                  }
+                }}
               />
             );
           }))}
