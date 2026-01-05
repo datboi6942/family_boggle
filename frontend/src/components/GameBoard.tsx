@@ -717,43 +717,52 @@ export const GameBoard = () => {
   const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
   return (
-    <div 
-      className="game-board-container flex flex-col h-full bg-navy-gradient min-h-screen text-white select-none"
-      style={{ 
-        paddingTop: 'env(safe-area-inset-top, 12px)', 
-        paddingLeft: 'env(safe-area-inset-left, 12px)', 
-        paddingRight: 'env(safe-area-inset-right, 12px)', 
-        paddingBottom: 'env(safe-area-inset-bottom, 12px)' 
+    <div
+      className="game-board-container flex flex-col bg-navy-gradient text-white select-none overflow-hidden"
+      style={{
+        height: '100dvh', /* Use dynamic viewport height for mobile */
+        paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+        paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)',
+        paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)',
+        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)'
       }}
     >
-      {/* Header - Fixed position for visibility */}
-      <div className={`sticky top-0 z-30 py-3 px-2 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
+      {/* Header - Compact, never overlaps board */}
+      <div className={`shrink-0 py-2 px-1 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
-          <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
-            {isFrozen ? <Snowflake className="w-5 h-5 animate-spin" /> : <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />}
-            <span className="text-xl sm:text-2xl font-black font-mono tabular-nums">{formattedTimer}</span>
+          <div className={`frosted-glass px-2 py-1.5 flex items-center space-x-1.5 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
+            {isFrozen ? <Snowflake className="w-4 h-4 animate-spin" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+            <span className="text-lg sm:text-xl font-black font-mono tabular-nums">{formattedTimer}</span>
           </div>
-          
+
           {/* Current Word (center) */}
           <div className="flex-1 text-center min-w-0 overflow-hidden">
             {currentWord && (
-              <div className="text-lg sm:text-2xl font-black tracking-wider text-primary animate-pulse truncate">
+              <div className="text-base sm:text-xl font-black tracking-wider text-primary animate-pulse truncate">
                 {currentWord}
               </div>
             )}
           </div>
-          
+
           {/* Score */}
-          <div className="frosted-glass px-3 py-2 text-right shrink-0">
-            <p className="text-[10px] sm:text-xs text-white/50 uppercase font-bold leading-none">Score</p>
-            <p className="text-xl sm:text-2xl font-black text-primary leading-none">{me?.score || 0}</p>
+          <div className="frosted-glass px-2 py-1.5 text-right shrink-0">
+            <p className="text-[9px] sm:text-xs text-white/50 uppercase font-bold leading-none">Score</p>
+            <p className="text-lg sm:text-xl font-black text-primary leading-none">{me?.score || 0}</p>
           </div>
         </div>
       </div>
 
-      {/* The Board - Simple w-full aspect-square that works on mobile */}
-      <div className="w-full aspect-square mb-4 mt-2 px-1">
+      {/* The Board - Flexibly sized to fill available space */}
+      <div className="flex-1 flex items-center justify-center min-h-0 py-1 px-1">
+        <div
+          className="w-full h-full"
+          style={{
+            maxWidth: 'min(100%, calc(100dvh - 140px))', /* Ensure board is square and fits */
+            maxHeight: 'min(100%, calc(100dvh - 140px))',
+            aspectRatio: '1 / 1'
+          }}
+        >
         {/* Grid of letters */}
         <div
           ref={boardRef}
@@ -797,10 +806,11 @@ export const GameBoard = () => {
             );
           }))}
         </div>
+        </div>
       </div>
 
-      {/* Power-ups */}
-      <div className="flex justify-center space-x-4">
+      {/* Power-ups - Compact footer */}
+      <div className="shrink-0 flex justify-center space-x-3 py-2">
         {['freeze', 'blowup', 'shuffle'].map(p => {
           const count = me?.powerups?.filter(x => x === p).length || 0;
           return (
@@ -814,15 +824,15 @@ export const GameBoard = () => {
                 }
               }}
               className={`
-                relative p-4 rounded-2xl frosted-glass transition-all
+                relative p-3 rounded-xl frosted-glass transition-all
                 ${count > 0 ? 'bg-primary/20 border-primary animate-pulse' : 'opacity-50'}
               `}
             >
-              {p === 'freeze' && <Snowflake />}
-              {p === 'blowup' && <Bomb />}
-              {p === 'shuffle' && <RotateCw />}
+              {p === 'freeze' && <Snowflake className="w-5 h-5" />}
+              {p === 'blowup' && <Bomb className="w-5 h-5" />}
+              {p === 'shuffle' && <RotateCw className="w-5 h-5" />}
               {count > 0 && (
-                <span className="absolute -top-2 -right-2 bg-primary w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold">
+                <span className="absolute -top-1.5 -right-1.5 bg-primary w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold">
                   {count}
                 </span>
               )}

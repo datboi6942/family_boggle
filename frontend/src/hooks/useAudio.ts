@@ -140,6 +140,13 @@ function getAudio(src: string): HTMLAudioElement {
   return audioCache.get(src)!;
 }
 
+// Preload an audio file so it's ready to play instantly
+function preloadAudio(src: string): void {
+  const audio = getAudio(src);
+  // Force the browser to start loading
+  audio.load();
+}
+
 export interface AudioManager {
   // Settings
   isMuted: boolean;
@@ -186,6 +193,7 @@ export interface AudioManager {
   // Music
   playGameplayMusic: () => void;
   playGameplayIntenseMusic: () => void;
+  preloadGameplayIntenseMusic: () => void;
   playMenuMusic: () => void;
   playSummaryMusic: () => void;
   playCountdownRiser: () => void;
@@ -295,30 +303,32 @@ export function useAudio(): AudioManager {
 
         audio.loop = loop;
         audio.volume = isMusicMuted ? 0 : musicVolume;
+        audio.currentTime = 0;
 
-        // Only reset if not already playing
-        if (audio.paused) {
-          audio.currentTime = 0;
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch((e) => {
-              console.warn('Music play failed, will retry on unlock:', e.message);
-              // Queue retry for when audio is unlocked
-              pendingMusicRef.current = { src, loop };
-            });
-          }
+        // Always try to play
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((e) => {
+            console.warn('Music play failed:', e.message);
+            // Try loading and playing again
+            audio.load();
+            setTimeout(() => {
+              audio.play().catch(() => {});
+            }, 100);
+          });
         }
 
         currentMusicRef.current = audio;
       } catch (e) {
+        console.warn('Music error:', e);
         // Queue retry for when audio is unlocked
         pendingMusicRef.current = { src, loop };
       }
     };
-    
+
     // Try to unlock audio first
     unlockAudio();
-    
+
     // If audio is unlocked, play immediately; otherwise queue it
     if (audioUnlocked) {
       doPlayMusic();
@@ -332,6 +342,11 @@ export function useAudio(): AudioManager {
       });
     }
   }, [isMusicMuted, musicVolume]);
+
+  // Preload a music track so it's ready to play
+  const preloadMusicTrack = useCallback((src: string) => {
+    preloadAudio(src);
+  }, []);
 
   const stopMusic = useCallback(() => {
     if (currentMusicRef.current) {
@@ -393,8 +408,13 @@ export function useAudio(): AudioManager {
     playButtonHover: () => playSfx(CELEBRATION.buttonHover, 0.3),
 
     // Music
-    playGameplayMusic: () => playMusic(MUSIC.gameplay),
+    playGameplayMusic: () => {
+      playMusic(MUSIC.gameplay);
+      // Preload intense track so it's ready when timer hits 30s
+      preloadMusicTrack(MUSIC.gameplayIntense);
+    },
     playGameplayIntenseMusic: () => playMusic(MUSIC.gameplayIntense),
+    preloadGameplayIntenseMusic: () => preloadMusicTrack(MUSIC.gameplayIntense),
     playMenuMusic: () => playMusic(MUSIC.menu),
     playSummaryMusic: () => playMusic(MUSIC.summary),
     playCountdownRiser: () => playMusic(MUSIC.countdownRiser, false),
