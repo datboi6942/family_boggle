@@ -111,28 +111,107 @@ export const GameBoard = () => {
 
   const [currentPath, setCurrentPath] = useState<[number, number][]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [touchPos, setTouchPos] = useState<{ x: number; y: number } | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const musicStartedRef = useRef(false);
   const lastTimerRef = useRef<number>(timer);
   const lastSoundTimeRef = useRef(0);
   const prevPathLengthRef = useRef(0);
-  
+
+  // Direct DOM refs for SVG paths - bypasses React for smooth 60fps updates
+  const trailPathRef = useRef<SVGPathElement>(null);
+  const trailGlowRef = useRef<SVGPathElement>(null);
+
   // Performance optimization: Use refs to avoid re-renders during drag
   const touchPosRef = useRef<{ x: number; y: number } | null>(null);
   const currentPathRef = useRef<[number, number][]>([]);
+  const isDraggingRef = useRef(false); // Ref version for RAF callback
   const rafIdRef = useRef<number | null>(null);
-  const rafPendingRef = useRef(false); // Track if RAF is already scheduled
-  const lastMoveTimeRef = useRef(0); // Throttle move events
   const boardDimensionsRef = useRef<{ cellSize: number; gapSize: number; totalGapSpace: number } | null>(null);
   const boardRectRef = useRef<DOMRect | null>(null); // Cache board rect during drag
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const hasMovedRef = useRef(false);
+  const stablePathRef = useRef<string>(''); // Cache the stable path string
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   
-  // Update refs when state changes
+  // Update refs when state changes and recalculate stable path
   useEffect(() => {
     currentPathRef.current = currentPath;
+
+    // Recalculate stable path when currentPath changes
+    if (currentPath.length === 0) {
+      stablePathRef.current = '';
+      lastPointRef.current = null;
+      return;
+    }
+
+    const dims = boardDimensionsRef.current;
+    if (!dims) return;
+
+    const { cellSize, gapSize } = dims;
+    const points = currentPath.map(([r, c]) => ({
+      x: c * (cellSize + gapSize) + cellSize / 2,
+      y: r * (cellSize + gapSize) + cellSize / 2,
+    }));
+
+    let path = `M ${points[0].x} ${points[0].y}`;
+    if (points.length > 1) {
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1];
+        const curr = points[i];
+        const next = i < points.length - 1 ? points[i + 1] : null;
+        if (next) {
+          const midX = (curr.x + next.x) / 2;
+          const midY = (curr.y + next.y) / 2;
+          const cpX = (prev.x + midX) / 2;
+          const cpY = (prev.y + midY) / 2;
+          path += ` Q ${cpX} ${cpY} ${curr.x} ${curr.y}`;
+        } else {
+          const dx = curr.x - prev.x;
+          const dy = curr.y - prev.y;
+          const cpX = curr.x - dx * 0.2;
+          const cpY = curr.y - dy * 0.2;
+          path += ` Q ${cpX} ${cpY} ${curr.x} ${curr.y}`;
+        }
+      }
+    }
+
+    stablePathRef.current = path;
+    lastPointRef.current = points[points.length - 1];
+
+    // Immediately update SVG if not dragging (for click-based selection)
+    if (!isDraggingRef.current) {
+      if (trailPathRef.current) trailPathRef.current.setAttribute('d', path);
+      if (trailGlowRef.current) trailGlowRef.current.setAttribute('d', path);
+    }
   }, [currentPath]);
+
+  // Direct DOM update function - bypasses React entirely for 60fps smoothness
+  const updateTrailPath = useCallback(() => {
+    const stablePath = stablePathRef.current;
+    const lastPoint = lastPointRef.current;
+    const touchPos = touchPosRef.current;
+
+    if (!stablePath) {
+      if (trailPathRef.current) trailPathRef.current.setAttribute('d', '');
+      if (trailGlowRef.current) trailGlowRef.current.setAttribute('d', '');
+      return;
+    }
+
+    let fullPath = stablePath;
+
+    // Add trailing line to touch position
+    if (touchPos && lastPoint && isDraggingRef.current) {
+      const dx = touchPos.x - lastPoint.x;
+      const dy = touchPos.y - lastPoint.y;
+      const cpX = lastPoint.x + dx * 0.5;
+      const cpY = lastPoint.y + dy * 0.5;
+      fullPath += ` Q ${cpX} ${cpY} ${touchPos.x} ${touchPos.y}`;
+    }
+
+    // Direct DOM manipulation - no React re-render!
+    if (trailPathRef.current) trailPathRef.current.setAttribute('d', fullPath);
+    if (trailGlowRef.current) trailGlowRef.current.setAttribute('d', fullPath);
+  }, []);
 
   // Keep a ref to audio so effects can access latest version
   const audioRef = useRef(audio);
@@ -296,124 +375,96 @@ export const GameBoard = () => {
       // Track initial position to distinguish clicks from drags
       dragStartPosRef.current = { x: localX, y: localY };
       hasMovedRef.current = false;
+      touchPosRef.current = { x: localX, y: localY };
 
+      // Set dragging state (both React state for UI and ref for RAF)
+      isDraggingRef.current = true;
       setIsDragging(true);
       setCurrentPath([cell]);
-      setTouchPos({ x: localX, y: localY });
-      touchPosRef.current = { x: localX, y: localY };
+
+      // Start the animation loop
+      const animate = () => {
+        if (!isDraggingRef.current) return;
+        updateTrailPath();
+        rafIdRef.current = requestAnimationFrame(animate);
+      };
+      rafIdRef.current = requestAnimationFrame(animate);
+
       audioRef.current.playLetterSelect();
       prevPathLengthRef.current = 1;
     }
-  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions]);
+  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, updateTrailPath]);
 
-  // Optimized move handler with proper throttling and batched RAF updates
+  // Simplified move handler - just updates refs, animation loop handles rendering
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!isDraggingRef.current) return;
     e.preventDefault();
 
-    // Time-based throttle: skip if less than ~8ms since last move (cap at ~120fps)
-    const now = performance.now();
-    if (now - lastMoveTimeRef.current < 8) {
-      return;
-    }
-    lastMoveTimeRef.current = now;
-
     const touch = 'touches' in e ? e.touches[0] : e;
-
-    // Use cached rect during drag - no DOM measurement!
     const rect = boardRectRef.current;
     if (!rect) return;
 
     const localX = touch.clientX - rect.left;
     const localY = touch.clientY - rect.top;
 
+    // Update touch position ref - animation loop will pick this up
+    touchPosRef.current = { x: localX, y: localY };
+
     // Track if user has moved (to distinguish click from drag)
     if (dragStartPosRef.current) {
       const dx = localX - dragStartPosRef.current.x;
       const dy = localY - dragStartPosRef.current.y;
-      const distSq = dx * dx + dy * dy;
-      if (distSq > 25) { // 5px threshold
+      if (dx * dx + dy * dy > 25) {
         hasMovedRef.current = true;
       }
     }
 
-    // Update touch position ref immediately
-    touchPosRef.current = { x: localX, y: localY };
+    // Check for cell changes (this is the only part that needs path state updates)
+    const dims = boardDimensionsRef.current;
+    if (!dims) return;
 
-    // Use pending flag pattern instead of cancel/reschedule
-    // This ensures RAF actually fires and doesn't get starved
-    if (!rafPendingRef.current) {
-      rafPendingRef.current = true;
+    const { cellSize, gapSize } = dims;
+    const cellPlusGap = cellSize + gapSize;
+    const col = Math.floor(localX / cellPlusGap);
+    const row = Math.floor(localY / cellPlusGap);
 
-      rafIdRef.current = requestAnimationFrame(() => {
-        rafPendingRef.current = false;
+    if (row < 0 || row >= boardSize || col < 0 || col >= boardSize) return;
 
-        // Batch both state updates together
-        const newTouchPos = touchPosRef.current;
+    const cellCenterX = col * cellPlusGap + cellSize / 2;
+    const cellCenterY = row * cellPlusGap + cellSize / 2;
+    const distSq = (localX - cellCenterX) ** 2 + (localY - cellCenterY) ** 2;
+    const hitRadiusSq = (cellSize * 0.65) ** 2;
 
-        // Get cell from cached coordinates (using cached dimensions too)
-        const dims = boardDimensionsRef.current;
-        if (!dims || !newTouchPos) {
-          setTouchPos(newTouchPos);
-          return;
-        }
+    if (distSq > hitRadiusSq) return;
 
-        const { cellSize, gapSize } = dims;
-        const cellPlusGap = cellSize + gapSize;
-        const col = Math.floor(newTouchPos.x / cellPlusGap);
-        const row = Math.floor(newTouchPos.y / cellPlusGap);
+    const cell: [number, number] = [row, col];
+    if (isCellBlocked(cell[0], cell[1])) return;
 
-        let cell: [number, number] | null = null;
-        if (row >= 0 && row < boardSize && col >= 0 && col < boardSize) {
-          const cellCenterX = col * cellPlusGap + cellSize / 2;
-          const cellCenterY = row * cellPlusGap + cellSize / 2;
-          const distSq = (newTouchPos.x - cellCenterX) ** 2 + (newTouchPos.y - cellCenterY) ** 2;
-          const hitRadiusSq = (cellSize * 0.65) ** 2;
-          if (distSq <= hitRadiusSq) {
-            cell = [row, col];
-          }
-        }
+    const prevPath = currentPathRef.current;
+    const last = prevPath[prevPath.length - 1];
+    if (!last || (last[0] === cell[0] && last[1] === cell[1])) return;
 
-        // Calculate new path if cell is valid
-        let newPath: [number, number][] | null = null;
-
-        if (cell && !isCellBlocked(cell[0], cell[1])) {
-          const prevPath = currentPathRef.current;
-          const last = prevPath[prevPath.length - 1];
-
-          if (last && !(last[0] === cell[0] && last[1] === cell[1])) {
-            // Check if backtracking
-            if (prevPath.length >= 2) {
-              const secondToLast = prevPath[prevPath.length - 2];
-              if (secondToLast[0] === cell[0] && secondToLast[1] === cell[1]) {
-                newPath = prevPath.slice(0, -1);
-              }
-            }
-
-            // Check adjacency if not backtracking
-            if (!newPath) {
-              if (Math.abs(last[0] - cell[0]) <= 1 && Math.abs(last[1] - cell[1]) <= 1) {
-                const existingIndex = prevPath.findIndex(p => p[0] === cell[0] && p[1] === cell[1]);
-                if (existingIndex === -1) {
-                  playChainSound(prevPath.length + 1);
-                  prevPathLengthRef.current = prevPath.length + 1;
-                  newPath = [...prevPath, cell];
-                } else if (existingIndex < prevPath.length - 2) {
-                  newPath = prevPath.slice(0, existingIndex + 1);
-                }
-              }
-            }
-          }
-        }
-
-        // Batch state updates - React 18+ batches these automatically
-        setTouchPos(newTouchPos);
-        if (newPath) {
-          setCurrentPath(newPath);
-        }
-      });
+    // Check if backtracking
+    if (prevPath.length >= 2) {
+      const secondToLast = prevPath[prevPath.length - 2];
+      if (secondToLast[0] === cell[0] && secondToLast[1] === cell[1]) {
+        setCurrentPath(prevPath.slice(0, -1));
+        return;
+      }
     }
-  }, [isDragging, boardSize, playChainSound, isCellBlocked]);
+
+    // Check adjacency
+    if (Math.abs(last[0] - cell[0]) <= 1 && Math.abs(last[1] - cell[1]) <= 1) {
+      const existingIndex = prevPath.findIndex(p => p[0] === cell[0] && p[1] === cell[1]);
+      if (existingIndex === -1) {
+        playChainSound(prevPath.length + 1);
+        prevPathLengthRef.current = prevPath.length + 1;
+        setCurrentPath([...prevPath, cell]);
+      } else if (existingIndex < prevPath.length - 2) {
+        setCurrentPath(prevPath.slice(0, existingIndex + 1));
+      }
+    }
+  }, [boardSize, playChainSound, isCellBlocked]);
 
   // Handle clicking individual cells to build path
   const handleCellClick = useCallback((row: number, col: number) => {
@@ -459,12 +510,14 @@ export const GameBoard = () => {
   }, [isCellBlocked, playChainSound]);
 
   const handleEnd = useCallback(() => {
+    // Stop the animation loop first
+    isDraggingRef.current = false;
+
     // Cancel any pending animation frame
     if (rafIdRef.current !== null) {
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     }
-    rafPendingRef.current = false;
 
     const path = currentPathRef.current;
     const wasDragging = isDragging;
@@ -474,20 +527,22 @@ export const GameBoard = () => {
     setIsDragging(false);
     dragStartPosRef.current = null;
     hasMovedRef.current = false;
-    boardRectRef.current = null; // Clear cached rect
+    boardRectRef.current = null;
+    touchPosRef.current = null;
 
     // Only submit if it was a drag (not a click) and path is valid
-    // Clicks are handled by handleCellClick, so we skip submission here if no movement
     if (wasDragging && hadMovement && path.length >= 3) {
       const word = path.map(([r, c]) => board[r][c]).join('');
       send('submit_word', { word, path });
     }
 
-    // Clear path and touch position
+    // Clear path state and SVG
     setCurrentPath([]);
-    setTouchPos(null);
-    touchPosRef.current = null;
     prevPathLengthRef.current = 0;
+
+    // Clear SVG paths directly
+    if (trailPathRef.current) trailPathRef.current.setAttribute('d', '');
+    if (trailGlowRef.current) trailGlowRef.current.setAttribute('d', '');
   }, [board, send, isDragging]);
 
   // Cleanup on unmount
@@ -498,76 +553,6 @@ export const GameBoard = () => {
       }
     };
   }, []);
-
-  // Memoize the stable cell-to-cell path separately from the volatile trailing line
-  // This prevents recalculating bezier curves when only touch position changes
-  const { stablePath, lastPoint } = useMemo(() => {
-    if (currentPath.length === 0) return { stablePath: '', lastPoint: null };
-
-    // Use cached dimensions or calculate if needed
-    let dims = boardDimensionsRef.current;
-    if (!dims) {
-      dims = updateBoardDimensions();
-      if (!dims) return { stablePath: '', lastPoint: null };
-    }
-
-    const { cellSize, gapSize } = dims;
-
-    // Convert path coordinates to pixel positions
-    const points = currentPath.map(([r, c]) => {
-      const x = c * (cellSize + gapSize) + cellSize / 2;
-      const y = r * (cellSize + gapSize) + cellSize / 2;
-      return { x, y };
-    });
-
-    if (points.length === 0) return { stablePath: '', lastPoint: null };
-
-    // Build smooth bezier curve path using quadratic curves for fluid motion
-    let path = `M ${points[0].x} ${points[0].y}`;
-
-    if (points.length > 1) {
-      // Multiple points - use smooth quadratic bezier curves with optimized control points
-      for (let i = 1; i < points.length; i++) {
-        const prev = points[i - 1];
-        const curr = points[i];
-        const next = i < points.length - 1 ? points[i + 1] : null;
-
-        if (next) {
-          // Calculate smooth control point that anticipates the next direction
-          const midX = (curr.x + next.x) / 2;
-          const midY = (curr.y + next.y) / 2;
-          const cpX = (prev.x + midX) / 2;
-          const cpY = (prev.y + midY) / 2;
-          path += ` Q ${cpX} ${cpY} ${curr.x} ${curr.y}`;
-        } else {
-          // Last point - smooth curve approaching it
-          const dx = curr.x - prev.x;
-          const dy = curr.y - prev.y;
-          const cpX = curr.x - dx * 0.2;
-          const cpY = curr.y - dy * 0.2;
-          path += ` Q ${cpX} ${cpY} ${curr.x} ${curr.y}`;
-        }
-      }
-    }
-
-    return { stablePath: path, lastPoint: points[points.length - 1] };
-  }, [currentPath, updateBoardDimensions]);
-
-  // Combine stable path with trailing line (only this recalculates on touchPos change)
-  const linePath = useMemo((): string => {
-    if (!stablePath) return '';
-
-    // Add trailing line to current touch position
-    if (touchPos && isDragging && lastPoint) {
-      const dx = touchPos.x - lastPoint.x;
-      const dy = touchPos.y - lastPoint.y;
-      const cpX = lastPoint.x + dx * 0.5;
-      const cpY = lastPoint.y + dy * 0.5;
-      return stablePath + ` Q ${cpX} ${cpY} ${touchPos.x} ${touchPos.y}`;
-    }
-
-    return stablePath;
-  }, [stablePath, lastPoint, touchPos, isDragging]);
 
   // Memoize current word display
   const currentWord = useMemo(() => {
@@ -649,32 +634,30 @@ export const GameBoard = () => {
             touchAction: 'none' 
           }}
         >
-          {/* SVG Overlay for connecting lines - inside grid for correct alignment */}
-          {linePath && (
-            <svg 
-              className="absolute inset-0 w-full h-full pointer-events-none z-20"
-              style={{ overflow: 'visible' }}
-            >
-              {/* Glow effect (render first, behind main line) */}
-              <path
-                d={linePath}
-                fill="none"
-                stroke="rgba(139, 92, 246, 0.3)"
-                strokeWidth="14"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              {/* Main path line */}
-              <path
-                d={linePath}
-                fill="none"
-                stroke="#8B5CF6"
-                strokeWidth="5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          )}
+          {/* SVG Overlay for connecting lines - uses refs for direct DOM manipulation (60fps) */}
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none z-20"
+            style={{ overflow: 'visible' }}
+          >
+            {/* Glow effect (render first, behind main line) */}
+            <path
+              ref={trailGlowRef}
+              fill="none"
+              stroke="rgba(139, 92, 246, 0.3)"
+              strokeWidth="14"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Main path line */}
+            <path
+              ref={trailPathRef}
+              fill="none"
+              stroke="#8B5CF6"
+              strokeWidth="5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
           {board.map((row, r) => row.map((letter, c) => {
             const key = `${r}-${c}`;
             const pathIndex = pathSet.get(key) ?? -1;
