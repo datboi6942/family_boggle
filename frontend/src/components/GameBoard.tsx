@@ -117,9 +117,9 @@ export const GameBoard = () => {
   const lastSoundTimeRef = useRef(0);
   const prevPathLengthRef = useRef(0);
 
-  // Direct DOM refs for SVG paths - bypasses React for smooth 60fps updates
-  const trailPathRef = useRef<SVGPathElement>(null);
-  const trailGlowRef = useRef<SVGPathElement>(null);
+  // Canvas ref for butter-smooth 60fps trail rendering
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   // Performance optimization: Use refs to avoid re-renders during drag
   const touchPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -130,17 +130,20 @@ export const GameBoard = () => {
   const boardRectRef = useRef<DOMRect | null>(null); // Cache board rect during drag
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const hasMovedRef = useRef(false);
-  const stablePathRef = useRef<string>(''); // Cache the stable path string
-  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const pathPointsRef = useRef<{ x: number; y: number }[]>([]); // Cached pixel positions
   
-  // Update refs when state changes and recalculate stable path
+  // Update path points when currentPath changes
   useEffect(() => {
     currentPathRef.current = currentPath;
 
-    // Recalculate stable path when currentPath changes
     if (currentPath.length === 0) {
-      stablePathRef.current = '';
-      lastPointRef.current = null;
+      pathPointsRef.current = [];
+      // Clear canvas
+      const ctx = ctxRef.current;
+      const canvas = canvasRef.current;
+      if (ctx && canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
       return;
     }
 
@@ -148,69 +151,93 @@ export const GameBoard = () => {
     if (!dims) return;
 
     const { cellSize, gapSize } = dims;
-    const points = currentPath.map(([r, c]) => ({
+    pathPointsRef.current = currentPath.map(([r, c]) => ({
       x: c * (cellSize + gapSize) + cellSize / 2,
       y: r * (cellSize + gapSize) + cellSize / 2,
     }));
 
-    let path = `M ${points[0].x} ${points[0].y}`;
-    if (points.length > 1) {
+    // Redraw immediately for click-based selection
+    if (!isDraggingRef.current) {
+      drawTrail();
+    }
+  }, [currentPath]);
+
+  // Canvas drawing function - pure pixel operations, no DOM
+  const drawTrail = useCallback(() => {
+    const ctx = ctxRef.current;
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const points = pathPointsRef.current;
+    const touchPos = touchPosRef.current;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (points.length === 0) return;
+
+    // Scale for device pixel ratio
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    // Build the path
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+
+    if (points.length === 1) {
+      // Single point with trailing line
+      if (touchPos && isDraggingRef.current) {
+        const cpX = points[0].x + (touchPos.x - points[0].x) * 0.5;
+        const cpY = points[0].y + (touchPos.y - points[0].y) * 0.5;
+        ctx.quadraticCurveTo(cpX, cpY, touchPos.x, touchPos.y);
+      }
+    } else {
+      // Multiple points - smooth curves
       for (let i = 1; i < points.length; i++) {
         const prev = points[i - 1];
         const curr = points[i];
         const next = i < points.length - 1 ? points[i + 1] : null;
+
         if (next) {
           const midX = (curr.x + next.x) / 2;
           const midY = (curr.y + next.y) / 2;
           const cpX = (prev.x + midX) / 2;
           const cpY = (prev.y + midY) / 2;
-          path += ` Q ${cpX} ${cpY} ${curr.x} ${curr.y}`;
+          ctx.quadraticCurveTo(cpX, cpY, curr.x, curr.y);
         } else {
           const dx = curr.x - prev.x;
           const dy = curr.y - prev.y;
           const cpX = curr.x - dx * 0.2;
           const cpY = curr.y - dy * 0.2;
-          path += ` Q ${cpX} ${cpY} ${curr.x} ${curr.y}`;
+          ctx.quadraticCurveTo(cpX, cpY, curr.x, curr.y);
         }
+      }
+
+      // Trailing line to touch position
+      if (touchPos && isDraggingRef.current) {
+        const last = points[points.length - 1];
+        const dx = touchPos.x - last.x;
+        const dy = touchPos.y - last.y;
+        const cpX = last.x + dx * 0.5;
+        const cpY = last.y + dy * 0.5;
+        ctx.quadraticCurveTo(cpX, cpY, touchPos.x, touchPos.y);
       }
     }
 
-    stablePathRef.current = path;
-    lastPointRef.current = points[points.length - 1];
+    // Draw glow (thicker, semi-transparent)
+    ctx.strokeStyle = 'rgba(139, 92, 246, 0.3)';
+    ctx.lineWidth = 14;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
 
-    // Immediately update SVG if not dragging (for click-based selection)
-    if (!isDraggingRef.current) {
-      if (trailPathRef.current) trailPathRef.current.setAttribute('d', path);
-      if (trailGlowRef.current) trailGlowRef.current.setAttribute('d', path);
-    }
-  }, [currentPath]);
+    // Draw main line
+    ctx.strokeStyle = '#8B5CF6';
+    ctx.lineWidth = 5;
+    ctx.stroke();
 
-  // Direct DOM update function - bypasses React entirely for 60fps smoothness
-  const updateTrailPath = useCallback(() => {
-    const stablePath = stablePathRef.current;
-    const lastPoint = lastPointRef.current;
-    const touchPos = touchPosRef.current;
-
-    if (!stablePath) {
-      if (trailPathRef.current) trailPathRef.current.setAttribute('d', '');
-      if (trailGlowRef.current) trailGlowRef.current.setAttribute('d', '');
-      return;
-    }
-
-    let fullPath = stablePath;
-
-    // Add trailing line to touch position
-    if (touchPos && lastPoint && isDraggingRef.current) {
-      const dx = touchPos.x - lastPoint.x;
-      const dy = touchPos.y - lastPoint.y;
-      const cpX = lastPoint.x + dx * 0.5;
-      const cpY = lastPoint.y + dy * 0.5;
-      fullPath += ` Q ${cpX} ${cpY} ${touchPos.x} ${touchPos.y}`;
-    }
-
-    // Direct DOM manipulation - no React re-render!
-    if (trailPathRef.current) trailPathRef.current.setAttribute('d', fullPath);
-    if (trailGlowRef.current) trailGlowRef.current.setAttribute('d', fullPath);
+    ctx.restore();
   }, []);
 
   // Keep a ref to audio so effects can access latest version
@@ -220,6 +247,42 @@ export const GameBoard = () => {
   // Scroll to top when game starts to prevent header from obscuring the board
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
+  // Initialize canvas context and handle resize
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const board = boardRef.current;
+    if (!canvas || !board) return;
+
+    const setupCanvas = () => {
+      const rect = board.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+
+      // Set canvas size accounting for device pixel ratio for crisp lines
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+
+      // Get and cache context
+      const ctx = canvas.getContext('2d', { alpha: true });
+      if (ctx) {
+        ctxRef.current = ctx;
+      }
+    };
+
+    // Initial setup with small delay to ensure board is rendered
+    const timeoutId = setTimeout(setupCanvas, 50);
+
+    // Handle resize
+    const resizeObserver = new ResizeObserver(setupCanvas);
+    resizeObserver.observe(board);
+
+    return () => {
+      clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+    };
   }, []);
 
   // Start gameplay music when game begins (run once on mount)
@@ -382,10 +445,10 @@ export const GameBoard = () => {
       setIsDragging(true);
       setCurrentPath([cell]);
 
-      // Start the animation loop
+      // Start the animation loop - canvas redraws at 60fps
       const animate = () => {
         if (!isDraggingRef.current) return;
-        updateTrailPath();
+        drawTrail();
         rafIdRef.current = requestAnimationFrame(animate);
       };
       rafIdRef.current = requestAnimationFrame(animate);
@@ -393,7 +456,7 @@ export const GameBoard = () => {
       audioRef.current.playLetterSelect();
       prevPathLengthRef.current = 1;
     }
-  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, updateTrailPath]);
+  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, drawTrail]);
 
   // Simplified move handler - just updates refs, animation loop handles rendering
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
@@ -536,13 +599,16 @@ export const GameBoard = () => {
       send('submit_word', { word, path });
     }
 
-    // Clear path state and SVG
+    // Clear path state
     setCurrentPath([]);
     prevPathLengthRef.current = 0;
 
-    // Clear SVG paths directly
-    if (trailPathRef.current) trailPathRef.current.setAttribute('d', '');
-    if (trailGlowRef.current) trailGlowRef.current.setAttribute('d', '');
+    // Clear canvas
+    const ctx = ctxRef.current;
+    const canvas = canvasRef.current;
+    if (ctx && canvas) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
   }, [board, send, isDragging]);
 
   // Cleanup on unmount
@@ -634,30 +700,11 @@ export const GameBoard = () => {
             touchAction: 'none' 
           }}
         >
-          {/* SVG Overlay for connecting lines - uses refs for direct DOM manipulation (60fps) */}
-          <svg
+          {/* Canvas overlay for butter-smooth 60fps trail rendering */}
+          <canvas
+            ref={canvasRef}
             className="absolute inset-0 w-full h-full pointer-events-none z-20"
-            style={{ overflow: 'visible' }}
-          >
-            {/* Glow effect (render first, behind main line) */}
-            <path
-              ref={trailGlowRef}
-              fill="none"
-              stroke="rgba(139, 92, 246, 0.3)"
-              strokeWidth="14"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Main path line */}
-            <path
-              ref={trailPathRef}
-              fill="none"
-              stroke="#8B5CF6"
-              strokeWidth="5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          />
           {board.map((row, r) => row.map((letter, c) => {
             const key = `${r}-${c}`;
             const pathIndex = pathSet.get(key) ?? -1;
