@@ -466,8 +466,103 @@ def generate_blue_monday_string_pad(freqs: list, duration: float) -> np.ndarray:
     return result
 
 
+def generate_blue_monday_clap() -> np.ndarray:
+    """Generate that iconic 80s electronic clap."""
+    duration = 0.15
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # Multiple noise bursts for clap texture
+    clap = np.zeros(len(t))
+
+    # Layer multiple short bursts
+    for offset in [0, 0.01, 0.02, 0.025]:
+        burst_start = int(offset * SAMPLE_RATE)
+        burst_len = int(0.03 * SAMPLE_RATE)
+        if burst_start + burst_len < len(clap):
+            burst = noise(0.03, amplitude=0.4)
+            burst = high_pass_filter(burst, cutoff=1000)
+            burst = low_pass_filter(burst, cutoff=6000)
+            clap[burst_start:burst_start + len(burst)] += burst
+
+    clap *= np.exp(-20 * t)
+    return normalize(clap) * 0.55
+
+
+def generate_blue_monday_tom(freq: float = 100) -> np.ndarray:
+    """Generate electronic tom drum."""
+    duration = 0.25
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # Pitch drops
+    pitch = freq * np.exp(-15 * t) + freq * 0.5
+    tom = np.zeros(len(t))
+    phase = 0
+    for i in range(len(t)):
+        tom[i] = np.sin(phase)
+        phase += 2 * np.pi * pitch[i] / SAMPLE_RATE
+
+    tom *= np.exp(-12 * t)
+    tom = low_pass_filter(tom, cutoff=300)
+
+    return normalize(tom) * 0.6
+
+
+def generate_blue_monday_arp_note(freq: float, duration: float) -> np.ndarray:
+    """Generate arpeggiated synth note - that shimmery New Order arp."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+
+    # Bright, glassy sound
+    note = pulse_wave(freq, duration, duty=0.3, amplitude=0.2)
+    note += sawtooth_wave(freq, duration, amplitude=0.15)
+    note += triangle_wave(freq * 2, duration, amplitude=0.08)  # Octave shimmer
+
+    # Quick, plucky envelope
+    env = adsr_envelope(duration, attack=0.002, decay=0.08, sustain=0.3, release=0.05)
+    note = note[:len(env)] * env
+
+    note = low_pass_filter(note, cutoff=4500)
+
+    return note
+
+
+def generate_blue_monday_lead(freq: float, duration: float) -> np.ndarray:
+    """Generate that singing synth lead sound."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+
+    # PWM-style lead
+    lead = pulse_wave(freq, duration, duty=0.4, amplitude=0.25)
+    lead += pulse_wave(freq * 1.002, duration, duty=0.35, amplitude=0.2)
+    lead += sawtooth_wave(freq * 0.998, duration, amplitude=0.15)
+
+    # Smooth envelope
+    env = adsr_envelope(duration, attack=0.02, decay=0.1, sustain=0.7, release=0.15)
+    lead = lead[:len(env)] * env
+
+    lead = low_pass_filter(lead, cutoff=3500)
+    lead = chorus(lead, depth=0.003, rate=1.2)
+
+    return lead
+
+
+def generate_blue_monday_perc_hit() -> np.ndarray:
+    """Generate percussion hit - like cowbell/woodblock."""
+    duration = 0.1
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # High metallic tone
+    hit = sine_wave(800, duration, amplitude=0.3)
+    hit += sine_wave(1200, duration, amplitude=0.2)
+    hit += sine_wave(2400, duration, amplitude=0.1)
+
+    hit *= np.exp(-30 * t)
+
+    return normalize(hit) * 0.35
+
+
 def generate_gameplay_loop(duration_seconds: float = 60) -> np.ndarray:
-    """Generate Blue Monday style gameplay music - iconic 80s synth-pop."""
+    """Generate Blue Monday style gameplay music - iconic 80s synth-pop with all the layers."""
     # Blue Monday tempo: ~130 BPM
     bm_bpm = 130
     beat_dur = 60 / bm_bpm
@@ -477,35 +572,38 @@ def generate_gameplay_loop(duration_seconds: float = 60) -> np.ndarray:
 
     result = np.zeros(int(SAMPLE_RATE * duration_seconds))
 
-    # Generate drum sounds - authentic DMX style
+    # Generate all drum sounds - authentic DMX style
     kick = generate_blue_monday_kick()
     snare = generate_blue_monday_snare()
     hihat = generate_blue_monday_hihat()
+    clap = generate_blue_monday_clap()
+    tom_low = generate_blue_monday_tom(80)
+    tom_mid = generate_blue_monday_tom(120)
+    tom_high = generate_blue_monday_tom(160)
+    perc = generate_blue_monday_perc_hit()
 
     sixteenth = beat_dur / 4
     eighth = beat_dur / 2
 
     # THE ICONIC BLUE MONDAY BASS RIFF
-    # In D minor (original key), that driving sequenced pattern
     d_root = 73.42  # D2
-    # The actual Blue Monday bass pattern - driving 16th notes with pitch changes
     bass_pattern = [
-        # Bar 1-2: Driving D minor groove
+        # Bar 1: Driving D groove with jumps
         (d_root, sixteenth), (d_root, sixteenth), (d_root, sixteenth), (d_root, sixteenth),
         (d_root, sixteenth), (d_root, sixteenth), (d_root * 1.5, sixteenth), (d_root, sixteenth),
         (d_root, sixteenth), (d_root, sixteenth), (d_root, sixteenth), (d_root * 1.5, sixteenth),
         (d_root, sixteenth), (d_root, sixteenth), (d_root * 2, sixteenth), (d_root * 1.5, sixteenth),
-        # Bar 2
+        # Bar 2: Movement to C
         (d_root, sixteenth), (d_root, sixteenth), (d_root, sixteenth), (d_root, sixteenth),
         (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth), (d_root, sixteenth), (d_root, sixteenth),
         (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth), (d_root, sixteenth),
         (d_root * 0.75, sixteenth), (d_root * 0.75, sixteenth), (d_root * 0.89, sixteenth), (d_root, sixteenth),
-        # Bar 3-4: Movement pattern
+        # Bar 3: Bb section
         (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth),
         (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth), (d_root * 0.89 * 1.5, sixteenth), (d_root * 0.89, sixteenth),
         (d_root * 0.75, sixteenth), (d_root * 0.75, sixteenth), (d_root * 0.75, sixteenth), (d_root * 0.75, sixteenth),
         (d_root * 0.75, sixteenth), (d_root * 0.75, sixteenth), (d_root * 0.89, sixteenth), (d_root, sixteenth),
-        # Bar 4: Build back
+        # Bar 4: A section and build
         (d_root * 0.67, sixteenth), (d_root * 0.67, sixteenth), (d_root * 0.67, sixteenth), (d_root * 0.67, sixteenth),
         (d_root * 0.67, sixteenth), (d_root * 0.75, sixteenth), (d_root * 0.75, sixteenth), (d_root * 0.75, sixteenth),
         (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth), (d_root * 0.89, sixteenth),
@@ -513,76 +611,112 @@ def generate_gameplay_loop(duration_seconds: float = 60) -> np.ndarray:
     ]
 
     # Synth stab chords (Dm, C, Bb, A)
-    dm_chord = [293.66, 349.23, 440.00]   # D minor
-    c_chord = [261.63, 329.63, 392.00]    # C major
-    bb_chord = [233.08, 293.66, 349.23]   # Bb major
-    a_chord = [220.00, 277.18, 329.63]    # A major
+    dm_chord = [293.66, 349.23, 440.00]
+    c_chord = [261.63, 329.63, 392.00]
+    bb_chord = [233.08, 293.66, 349.23]
+    a_chord = [220.00, 277.18, 329.63]
 
-    # String pad chords (higher voicing)
+    # Pad chords (higher voicing)
     dm_pad = [587.33, 698.46, 880.00]
     c_pad = [523.25, 659.25, 783.99]
     bb_pad = [466.16, 587.33, 698.46]
     a_pad = [440.00, 554.37, 659.25]
 
+    # Arpeggio notes for each chord
+    dm_arp = [293.66, 349.23, 440.00, 587.33, 440.00, 349.23]
+    c_arp = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63]
+    bb_arp = [233.08, 293.66, 349.23, 466.16, 349.23, 293.66]
+    a_arp = [220.00, 277.18, 329.63, 440.00, 329.63, 277.18]
+
+    # Lead melody (simple but catchy)
+    lead_melody = [
+        (587.33, eighth), (0, eighth), (523.25, eighth), (587.33, eighth),
+        (698.46, beat_dur), (587.33, eighth), (523.25, eighth),
+        (466.16, beat_dur), (440.00, eighth), (466.16, eighth),
+        (523.25, beat_dur), (0, beat_dur),
+    ]
+
     for section in range(num_sections):
         section_start = section * section_duration
 
-        # DRUMS - Blue Monday style with that driving groove
+        # ===== DRUMS =====
         for bar in range(4):
             bar_start = section_start + bar * bar_dur
 
-            # Kick pattern - four on the floor with some syncopation
-            kick_times = [0, 1, 2, 3]  # Basic 4/4
+            # Kick - four on floor with variations
+            kick_times = [0, 1, 2, 3]
             if bar % 2 == 1:
-                kick_times = [0, 0.75, 1.5, 2, 3, 3.5]  # Syncopated variation
+                kick_times = [0, 0.75, 1.5, 2, 3, 3.5]
             for beat in kick_times:
                 t = bar_start + beat * beat_dur
                 pos = int(t * SAMPLE_RATE)
                 if pos + len(kick) < len(result):
-                    result[pos:pos + len(kick)] += kick * 0.85
+                    result[pos:pos + len(kick)] += kick * 0.9
 
-            # Snare on 2 and 4 (crisp DMX snare)
+            # Snare on 2 and 4
             for beat in [1, 3]:
                 t = bar_start + beat * beat_dur
                 pos = int(t * SAMPLE_RATE)
                 if pos + len(snare) < len(result):
-                    result[pos:pos + len(snare)] += snare * 0.8
+                    result[pos:pos + len(snare)] += snare * 0.75
 
-            # Hi-hat pattern - 16th notes with accents (that driving Blue Monday groove)
+            # Clap layered with snare
+            for beat in [1, 3]:
+                t = bar_start + beat * beat_dur
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(clap) < len(result):
+                    result[pos:pos + len(clap)] += clap * 0.5
+
+            # Hi-hats - 16th note pattern
             for i in range(16):
                 t = bar_start + i * sixteenth
                 pos = int(t * SAMPLE_RATE)
-                # Accent pattern for groove
                 if i % 4 == 0:
-                    vol = 0.55  # Downbeat accent
+                    vol = 0.5
                 elif i % 2 == 0:
-                    vol = 0.4   # Eighth note
+                    vol = 0.35
                 else:
-                    vol = 0.3   # Off-beat 16ths
+                    vol = 0.25
                 if pos + len(hihat) < len(result):
                     result[pos:pos + len(hihat)] += hihat * vol
 
-        # BASS RIFF - the iconic sequenced pattern
+            # Percussion hits on offbeats
+            for i in [2, 6, 10, 14]:
+                t = bar_start + i * sixteenth
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(perc) < len(result):
+                    result[pos:pos + len(perc)] += perc * 0.3
+
+            # Tom fills on bar 4
+            if bar == 3:
+                tom_times = [(3.0, tom_high), (3.25, tom_mid), (3.5, tom_low), (3.75, tom_low)]
+                for beat, tom in tom_times:
+                    t = bar_start + beat * beat_dur
+                    pos = int(t * SAMPLE_RATE)
+                    if pos + len(tom) < len(result):
+                        result[pos:pos + len(tom)] += tom * 0.5
+
+        # ===== BASS RIFF =====
         bass_time = section_start
         for freq, dur in bass_pattern:
             pos = int(bass_time * SAMPLE_RATE)
             note = generate_blue_monday_bass_note(freq, dur * 0.85)
             if pos + len(note) < len(result):
-                result[pos:pos + len(note)] += note * 0.6
+                result[pos:pos + len(note)] += note * 0.55
             bass_time += dur
 
-        # SYNTH STABS - punchy, on-beat stabs
+        # ===== SYNTH STABS =====
         stab_chords = [dm_chord, c_chord, bb_chord, a_chord]
         for bar in range(4):
             bar_start = section_start + bar * bar_dur
 
-            # Main stab on beat 1
+            # Stab on beat 1
             pos = int(bar_start * SAMPLE_RATE)
             stab = generate_blue_monday_synth_stab(stab_chords[bar], beat_dur * 0.6)
             if pos + len(stab) < len(result):
-                result[pos:pos + len(stab)] += stab * 0.5
+                result[pos:pos + len(stab)] += stab * 0.45
 
-            # Stab on the "and" of 2
+            # Stab on "and" of 2
             pos2 = int((bar_start + 1.5 * beat_dur) * SAMPLE_RATE)
             stab2 = generate_blue_monday_synth_stab(stab_chords[bar], beat_dur * 0.4)
             if pos2 + len(stab2) < len(result):
@@ -592,9 +726,24 @@ def generate_gameplay_loop(duration_seconds: float = 60) -> np.ndarray:
             pos3 = int((bar_start + 3 * beat_dur) * SAMPLE_RATE)
             stab3 = generate_blue_monday_synth_stab(stab_chords[bar], beat_dur * 0.5)
             if pos3 + len(stab3) < len(result):
-                result[pos3:pos3 + len(stab3)] += stab3 * 0.4
+                result[pos3:pos3 + len(stab3)] += stab3 * 0.35
 
-        # SHIMMERY STRING PAD - that atmospheric 80s sound
+        # ===== ARPEGGIOS =====
+        arp_patterns = [dm_arp, c_arp, bb_arp, a_arp]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            arp = arp_patterns[bar]
+
+            # 16th note arpeggios
+            for i in range(16):
+                t = bar_start + i * sixteenth
+                pos = int(t * SAMPLE_RATE)
+                freq = arp[i % len(arp)]
+                note = generate_blue_monday_arp_note(freq, sixteenth * 0.8)
+                if pos + len(note) < len(result):
+                    result[pos:pos + len(note)] += note * 0.25
+
+        # ===== STRING PADS =====
         pad_chords = [dm_pad, c_pad, bb_pad, a_pad]
         for bar in range(4):
             bar_start = section_start + bar * bar_dur
@@ -603,12 +752,27 @@ def generate_gameplay_loop(duration_seconds: float = 60) -> np.ndarray:
             pad = generate_blue_monday_string_pad(pad_chords[bar], bar_dur)
             end = min(pos + len(pad), len(result))
             if end > pos:
-                result[pos:end] += pad[:end - pos] * 0.3
+                result[pos:end] += pad[:end - pos] * 0.25
+
+        # ===== LEAD MELODY (every other section) =====
+        if section % 2 == 1:
+            lead_time = section_start
+            for freq, dur in lead_melody:
+                if freq > 0:
+                    pos = int(lead_time * SAMPLE_RATE)
+                    note = generate_blue_monday_lead(freq, dur * 0.9)
+                    if pos + len(note) < len(result):
+                        result[pos:pos + len(note)] += note * 0.35
+                lead_time += dur
+
+    # Add delay effect to the whole mix for that 80s feel
+    delayed = delay(result, delay_time=beat_dur * 0.75, feedback=0.2)
+    result = result * 0.85 + delayed * 0.15
 
     # Master processing
     result = np.clip(result, -1, 1)
     result = low_pass_filter(result, cutoff=15000)
-    result = normalize(result, target_db=-4)
+    result = normalize(result, target_db=-3)
     result = fade_in(result, 0.1)
     result = fade_out(result, 0.1)
 
@@ -658,10 +822,61 @@ def generate_lobby_synth_stab(freq: float, duration: float) -> np.ndarray:
     return stab
 
 
+def generate_lobby_arp_note(freq: float, duration: float) -> np.ndarray:
+    """Generate sparkly arpeggio note for lobby."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+
+    note = pulse_wave(freq, duration, duty=0.25, amplitude=0.2)
+    note += sawtooth_wave(freq, duration, amplitude=0.15)
+    note += sine_wave(freq * 2, duration, amplitude=0.1)  # Sparkle
+
+    env = adsr_envelope(duration, attack=0.002, decay=0.05, sustain=0.4, release=0.03)
+    note = note[:len(env)] * env
+    note = low_pass_filter(note, cutoff=5000)
+
+    return note
+
+
+def generate_lobby_pad(freqs: list, duration: float) -> np.ndarray:
+    """Generate warm pad for lobby."""
+    num_samples = int(SAMPLE_RATE * duration)
+    result = np.zeros(num_samples)
+
+    for freq in freqs:
+        tone = sawtooth_wave(freq, duration, amplitude=0.08)
+        tone += sawtooth_wave(freq * 1.005, duration, amplitude=0.06)
+        tone += triangle_wave(freq, duration, amplitude=0.04)
+        result += tone
+
+    env = adsr_envelope(duration, attack=0.2, decay=0.15, sustain=0.6, release=0.3)
+    result = result[:len(env)] * env
+    result = low_pass_filter(result, cutoff=2500)
+    result = chorus(result, depth=0.004, rate=0.7)
+
+    return result
+
+
+def generate_lobby_lead(freq: float, duration: float) -> np.ndarray:
+    """Generate catchy lead synth for lobby."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+
+    lead = pulse_wave(freq, duration, duty=0.35, amplitude=0.3)
+    lead += sawtooth_wave(freq * 1.002, duration, amplitude=0.2)
+    lead += sine_wave(freq * 2, duration, amplitude=0.1)
+
+    env = adsr_envelope(duration, attack=0.01, decay=0.08, sustain=0.6, release=0.1)
+    lead = lead[:len(env)] * env
+    lead = low_pass_filter(lead, cutoff=4000)
+
+    return lead
+
+
 def generate_menu_music(duration_seconds: float = 30) -> np.ndarray:
-    """Generate upbeat, catchy, head-banging lobby music."""
+    """Generate EPIC upbeat, catchy, head-banging lobby music with all the layers!"""
     # FAST tempo for head-banging energy!
-    lobby_bpm = 128
+    lobby_bpm = 132  # Even faster!
     beat_dur = 60 / lobby_bpm
     bar_dur = beat_dur * 4
     section_duration = 4 * bar_dur
@@ -669,83 +884,160 @@ def generate_menu_music(duration_seconds: float = 30) -> np.ndarray:
 
     result = np.zeros(int(SAMPLE_RATE * duration_seconds))
 
+    # Generate all drums
     kick = generate_lobby_kick()
     snare = generate_snare()
     hihat = generate_hihat_closed()
-
-    # Catchy synth riff - think electro/synth-pop hook
-    # E minor pentatonic riff that's super catchy
-    root = 164.81  # E3
-    riff_notes = [
-        (root * 2, 0.5),      # E4
-        (root * 2 * 1.5, 0.25),  # B4
-        (root * 2, 0.25),      # E4
-        (root * 1.5, 0.5),     # B3
-        (root * 2 * 1.335, 0.5),  # G4
-        (root * 2, 0.25),      # E4
-        (root * 1.5, 0.25),    # B3
-        (root, 0.5),           # E3
-    ]
+    hihat_o = generate_hihat_open()
+    clap = generate_blue_monday_clap()
+    perc = generate_blue_monday_perc_hit()
 
     sixteenth = beat_dur / 4
+    eighth = beat_dur / 2
+
+    # E minor - energetic key
+    root = 164.81  # E3
+
+    # SUPER catchy riff!
+    riff_notes = [
+        (root * 2, 0.5),           # E4
+        (root * 2 * 1.5, 0.25),    # B4
+        (root * 2, 0.25),          # E4
+        (root * 1.5, 0.5),         # B3
+        (root * 2 * 1.335, 0.5),   # G4
+        (root * 2, 0.25),          # E4
+        (root * 1.5, 0.25),        # B3
+        (root, 0.5),               # E3
+    ]
+
+    # Counter melody
+    counter_melody = [
+        (root * 4, eighth), (0, eighth), (root * 3, eighth), (root * 4, eighth),
+        (root * 3, beat_dur), (root * 2.67, eighth), (root * 2, eighth),
+    ]
+
+    # Arpeggio pattern (Em chord)
+    em_arp = [164.81, 196.00, 246.94, 329.63, 246.94, 196.00]
+    g_arp = [196.00, 246.94, 293.66, 392.00, 293.66, 246.94]
+    c_arp = [130.81, 164.81, 196.00, 261.63, 196.00, 164.81]
+    d_arp = [146.83, 185.00, 220.00, 293.66, 220.00, 185.00]
+
+    # Pad chords
+    em_pad = [329.63, 392.00, 493.88]
+    g_pad = [392.00, 493.88, 587.33]
+    c_pad = [261.63, 329.63, 392.00]
+    d_pad = [293.66, 369.99, 440.00]
 
     for section in range(num_sections):
         section_start = section * section_duration
 
+        # ===== DRUMS =====
         for bar in range(4):
             bar_start = section_start + bar * bar_dur
 
-            # FOUR-ON-THE-FLOOR kick pattern - essential for head-banging!
-            for beat in range(4):
+            # FOUR-ON-THE-FLOOR kick with extra hits
+            kick_times = [0, 1, 2, 3]
+            if bar % 2 == 1:
+                kick_times = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]  # Double time feel
+            for beat in kick_times:
                 t = bar_start + beat * beat_dur
                 pos = int(t * SAMPLE_RATE)
+                vol = 0.95 if beat in [0, 1, 2, 3] else 0.7
                 if pos + len(kick) < len(result):
-                    result[pos:pos + len(kick)] += kick * 0.9
+                    result[pos:pos + len(kick)] += kick * vol
 
             # Snare on 2 and 4
             for beat in [1, 3]:
                 t = bar_start + beat * beat_dur
                 pos = int(t * SAMPLE_RATE)
                 if pos + len(snare) < len(result):
-                    result[pos:pos + len(snare)] += snare * 0.7
+                    result[pos:pos + len(snare)] += snare * 0.75
 
-            # Driving 16th note hi-hats
+            # Claps layered
+            for beat in [1, 3]:
+                t = bar_start + beat * beat_dur
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(clap) < len(result):
+                    result[pos:pos + len(clap)] += clap * 0.5
+
+            # Driving 16th note hi-hats with open hats
             for i in range(16):
                 t = bar_start + i * sixteenth
                 pos = int(t * SAMPLE_RATE)
-                # Accent on beat
-                vol = 0.5 if i % 4 == 0 else 0.3
-                if pos + len(hihat) < len(result):
-                    result[pos:pos + len(hihat)] += hihat * vol
+                if i in [4, 12]:  # Open hats
+                    hat = hihat_o
+                    vol = 0.4
+                else:
+                    hat = hihat
+                    vol = 0.55 if i % 4 == 0 else 0.35
+                if pos + len(hat) < len(result):
+                    result[pos:pos + len(hat)] += hat * vol
 
-        # Catchy synth riff
+            # Percussion accents
+            for i in [2, 6, 10, 14]:
+                t = bar_start + i * sixteenth
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(perc) < len(result):
+                    result[pos:pos + len(perc)] += perc * 0.25
+
+        # ===== MAIN SYNTH RIFF =====
         riff_time = section_start
         for freq, dur in riff_notes:
             pos = int(riff_time * SAMPLE_RATE)
             note_dur = dur * beat_dur
             stab = generate_lobby_synth_stab(freq, note_dur)
-
             if pos + len(stab) < len(result):
-                result[pos:pos + len(stab)] += stab * 0.6
-
+                result[pos:pos + len(stab)] += stab * 0.55
             riff_time += note_dur
 
-        # Repeat riff in second half of section
+        # Repeat riff with variation
         riff_time = section_start + 2 * bar_dur
         for freq, dur in riff_notes:
             pos = int(riff_time * SAMPLE_RATE)
             note_dur = dur * beat_dur
-            stab = generate_lobby_synth_stab(freq * 1.0595, note_dur)  # Slight pitch up for variation
-
+            stab = generate_lobby_synth_stab(freq * 1.0595, note_dur)
             if pos + len(stab) < len(result):
-                result[pos:pos + len(stab)] += stab * 0.55
-
+                result[pos:pos + len(stab)] += stab * 0.5
             riff_time += note_dur
 
-    # Add pumping bass
-    bass_result = np.zeros(len(result))
+        # ===== COUNTER MELODY (every other section) =====
+        if section % 2 == 1:
+            melody_time = section_start + bar_dur
+            for freq, dur in counter_melody:
+                if freq > 0:
+                    pos = int(melody_time * SAMPLE_RATE)
+                    note = generate_lobby_lead(freq, dur * 0.9)
+                    if pos + len(note) < len(result):
+                        result[pos:pos + len(note)] += note * 0.3
+                melody_time += dur
+
+        # ===== ARPEGGIOS =====
+        arp_patterns = [em_arp, g_arp, c_arp, d_arp]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            arp = arp_patterns[bar % len(arp_patterns)]
+
+            for i in range(16):
+                t = bar_start + i * sixteenth
+                pos = int(t * SAMPLE_RATE)
+                freq = arp[i % len(arp)]
+                note = generate_lobby_arp_note(freq, sixteenth * 0.75)
+                if pos + len(note) < len(result):
+                    result[pos:pos + len(note)] += note * 0.2
+
+        # ===== PADS =====
+        pad_chords = [em_pad, g_pad, c_pad, d_pad]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            pos = int(bar_start * SAMPLE_RATE)
+            pad = generate_lobby_pad(pad_chords[bar % len(pad_chords)], bar_dur)
+            end = min(pos + len(pad), len(result))
+            if end > pos:
+                result[pos:end] += pad[:end - pos] * 0.2
+
+    # ===== PUMPING BASS =====
     bass_root = 82.41  # E2
-    bass_pattern = [1, 1, 1.5, 1, 1.335, 1, 1.5, 1]  # Root, root, 5th, root pattern
+    bass_pattern = [1, 1, 1.5, 1, 1.335, 1, 1.5, 2]
 
     for section in range(num_sections):
         section_start = section * section_duration
@@ -754,31 +1046,34 @@ def generate_menu_music(duration_seconds: float = 30) -> np.ndarray:
             bar_start = section_start + bar * bar_dur
 
             for i in range(8):
-                t = bar_start + i * (beat_dur / 2)
+                t = bar_start + i * eighth
                 pos = int(t * SAMPLE_RATE)
 
                 freq = bass_root * bass_pattern[i % len(bass_pattern)]
-                note_dur = beat_dur / 2 * 0.9
+                note_dur = eighth * 0.85
 
-                bass = sawtooth_wave(freq, note_dur, amplitude=0.4)
-                bass += sine_wave(freq * 0.5, note_dur, amplitude=0.3)  # Sub
+                bass = sawtooth_wave(freq, note_dur, amplitude=0.45)
+                bass += sawtooth_wave(freq * 1.003, note_dur, amplitude=0.3)
+                bass += sine_wave(freq * 0.5, note_dur, amplitude=0.35)
 
-                env = adsr_envelope(note_dur, attack=0.005, decay=0.05, sustain=0.5, release=0.05)
+                env = adsr_envelope(note_dur, attack=0.003, decay=0.04, sustain=0.6, release=0.04)
                 bass = bass[:len(env)] * env
-                bass = low_pass_filter(bass, cutoff=600)
-                bass = distortion(bass, drive=1.2)
+                bass = low_pass_filter(bass, cutoff=700)
+                bass = np.tanh(bass * 1.5) * 0.8
 
-                if pos + len(bass) < len(bass_result):
-                    bass_result[pos:pos + len(bass)] += bass
+                if pos + len(bass) < len(result):
+                    result[pos:pos + len(bass)] += bass * 0.45
 
-    result = result + bass_result * 0.5
+    # Add energy with delay
+    delayed = delay(result, delay_time=beat_dur * 0.5, feedback=0.25)
+    result = result * 0.8 + delayed * 0.2
 
     # Master processing
     result = np.clip(result, -1, 1)
     result = low_pass_filter(result, cutoff=16000)
-    result = normalize(result, target_db=-5)
-    result = fade_in(result, 0.2)
-    result = fade_out(result, 0.3)
+    result = normalize(result, target_db=-4)
+    result = fade_in(result, 0.15)
+    result = fade_out(result, 0.25)
 
     return result
 

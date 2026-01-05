@@ -74,11 +74,17 @@ const Cell = memo(({
 Cell.displayName = 'Cell';
 
 // CSS for cell states - applied via direct DOM manipulation
+// Uses GPU-accelerated transforms and will-change for smooth 60fps performance
 const CELL_STYLES = `
+  .cell {
+    will-change: transform, background-color;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
   .cell.selected {
     background: rgba(139, 92, 246, 0.8) !important;
     border: 2px solid white !important;
-    transform: scale(1.1);
+    transform: translateZ(0) scale(1.1);
     z-index: 10;
     box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
   }
@@ -92,6 +98,14 @@ const CELL_STYLES = `
     color: #8B5CF6 !important;
   }
   .cell.last:not(.first) .cell-points { color: rgba(139, 92, 246, 0.7) !important; }
+  .game-board-grid {
+    contain: layout style paint;
+    will-change: contents;
+  }
+  .trail-canvas {
+    will-change: transform;
+    transform: translateZ(0);
+  }
 `;
 
 export const GameBoard = () => {
@@ -282,11 +296,16 @@ export const GameBoard = () => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
-  // Initialize canvas context and handle resize
+  // Pre-computed cell centers for ultra-fast hit detection
+  const cellCentersRef = useRef<{ x: number; y: number }[][]>([]);
+
+  // Initialize canvas context and handle resize with throttling
   useEffect(() => {
     const canvas = canvasRef.current;
     const board = boardRef.current;
     if (!canvas || !board) return;
+
+    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const setupCanvas = () => {
       const rect = board.getBoundingClientRect();
@@ -298,25 +317,56 @@ export const GameBoard = () => {
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
 
-      // Get and cache context
-      const ctx = canvas.getContext('2d', { alpha: true });
+      // Get and cache context with optimized settings
+      const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
       if (ctx) {
         ctxRef.current = ctx;
       }
+
+      // Update board dimensions
+      const computedStyle = getComputedStyle(board);
+      const gapSize = parseFloat(computedStyle.gap) || 8;
+      const totalGapSpace = (boardSize - 1) * gapSize;
+      const cellSize = (rect.width - totalGapSpace) / boardSize;
+      const cellPlusGap = cellSize + gapSize;
+
+      boardDimensionsRef.current = { cellSize, gapSize, totalGapSpace };
+
+      // Pre-compute all cell centers for O(1) hit detection
+      const centers: { x: number; y: number }[][] = [];
+      for (let r = 0; r < boardSize; r++) {
+        centers[r] = [];
+        for (let c = 0; c < boardSize; c++) {
+          centers[r][c] = {
+            x: c * cellPlusGap + cellSize / 2,
+            y: r * cellPlusGap + cellSize / 2
+          };
+        }
+      }
+      cellCentersRef.current = centers;
     };
 
-    // Initial setup with small delay to ensure board is rendered
-    const timeoutId = setTimeout(setupCanvas, 50);
+    // Throttled resize handler
+    const throttledSetup = () => {
+      if (resizeTimeout) return;
+      resizeTimeout = setTimeout(() => {
+        setupCanvas();
+        resizeTimeout = null;
+      }, 100);
+    };
 
-    // Handle resize
-    const resizeObserver = new ResizeObserver(setupCanvas);
+    // Initial setup
+    setupCanvas();
+
+    // Handle resize with throttling
+    const resizeObserver = new ResizeObserver(throttledSetup);
     resizeObserver.observe(board);
 
     return () => {
-      clearTimeout(timeoutId);
+      if (resizeTimeout) clearTimeout(resizeTimeout);
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [boardSize]);
 
   // Start gameplay music when game begins (run once on mount)
   useEffect(() => {
@@ -492,7 +542,7 @@ export const GameBoard = () => {
     }
   }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, drawTrail, updatePathPoints, updateCellHighlights]);
 
-  // Simplified move handler - updates refs only, NO React state
+  // Ultra-optimized move handler - uses pre-computed cell centers, minimal allocations
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isDraggingRef.current) return;
     e.preventDefault();
@@ -508,61 +558,84 @@ export const GameBoard = () => {
     touchPosRef.current = { x: localX, y: localY };
 
     // Track if user has moved (to distinguish click from drag)
-    if (dragStartPosRef.current) {
-      const dx = localX - dragStartPosRef.current.x;
-      const dy = localY - dragStartPosRef.current.y;
+    const startPos = dragStartPosRef.current;
+    if (startPos && !hasMovedRef.current) {
+      const dx = localX - startPos.x;
+      const dy = localY - startPos.y;
       if (dx * dx + dy * dy > 25) {
         hasMovedRef.current = true;
       }
     }
 
-    // Check for cell changes
+    // Use pre-computed dimensions
     const dims = boardDimensionsRef.current;
-    if (!dims) return;
+    const centers = cellCentersRef.current;
+    if (!dims || centers.length === 0) return;
 
     const { cellSize, gapSize } = dims;
     const cellPlusGap = cellSize + gapSize;
     const col = Math.floor(localX / cellPlusGap);
     const row = Math.floor(localY / cellPlusGap);
 
+    // Bounds check
     if (row < 0 || row >= boardSize || col < 0 || col >= boardSize) return;
 
-    const cellCenterX = col * cellPlusGap + cellSize / 2;
-    const cellCenterY = row * cellPlusGap + cellSize / 2;
-    const distSq = (localX - cellCenterX) ** 2 + (localY - cellCenterY) ** 2;
+    // Use pre-computed cell center for O(1) lookup
+    const center = centers[row]?.[col];
+    if (!center) return;
+
+    const dx = localX - center.x;
+    const dy = localY - center.y;
+    const distSq = dx * dx + dy * dy;
     const hitRadiusSq = (cellSize * 0.65) ** 2;
 
     if (distSq > hitRadiusSq) return;
-
-    const cell: [number, number] = [row, col];
-    if (isCellBlocked(cell[0], cell[1])) return;
+    if (isCellBlocked(row, col)) return;
 
     const prevPath = currentPathRef.current;
-    const last = prevPath[prevPath.length - 1];
-    if (!last || (last[0] === cell[0] && last[1] === cell[1])) return;
+    const pathLen = prevPath.length;
+    if (pathLen === 0) return;
+
+    const last = prevPath[pathLen - 1];
+    if (last[0] === row && last[1] === col) return;
 
     let pathChanged = false;
 
-    // Check if backtracking
-    if (prevPath.length >= 2) {
-      const secondToLast = prevPath[prevPath.length - 2];
-      if (secondToLast[0] === cell[0] && secondToLast[1] === cell[1]) {
+    // Check if backtracking (going back to previous cell)
+    if (pathLen >= 2) {
+      const secondToLast = prevPath[pathLen - 2];
+      if (secondToLast[0] === row && secondToLast[1] === col) {
         currentPathRef.current = prevPath.slice(0, -1);
         pathChanged = true;
       }
     }
 
-    // Check adjacency
-    if (!pathChanged && Math.abs(last[0] - cell[0]) <= 1 && Math.abs(last[1] - cell[1]) <= 1) {
-      const existingIndex = prevPath.findIndex(p => p[0] === cell[0] && p[1] === cell[1]);
-      if (existingIndex === -1) {
-        playChainSound(prevPath.length + 1);
-        prevPathLengthRef.current = prevPath.length + 1;
-        currentPathRef.current = [...prevPath, cell];
-        pathChanged = true;
-      } else if (existingIndex < prevPath.length - 2) {
-        currentPathRef.current = prevPath.slice(0, existingIndex + 1);
-        pathChanged = true;
+    // Check adjacency for new cell
+    if (!pathChanged) {
+      const rowDiff = Math.abs(last[0] - row);
+      const colDiff = Math.abs(last[1] - col);
+
+      if (rowDiff <= 1 && colDiff <= 1) {
+        // Check if cell already in path
+        let existingIndex = -1;
+        for (let i = 0; i < pathLen; i++) {
+          if (prevPath[i][0] === row && prevPath[i][1] === col) {
+            existingIndex = i;
+            break;
+          }
+        }
+
+        if (existingIndex === -1) {
+          // New cell - add to path
+          playChainSound(pathLen + 1);
+          prevPathLengthRef.current = pathLen + 1;
+          currentPathRef.current = [...prevPath, [row, col] as [number, number]];
+          pathChanged = true;
+        } else if (existingIndex < pathLen - 2) {
+          // Backtrack to earlier cell
+          currentPathRef.current = prevPath.slice(0, existingIndex + 1);
+          pathChanged = true;
+        }
       }
     }
 
@@ -674,7 +747,7 @@ export const GameBoard = () => {
       {/* The Board - Simple w-full aspect-square that works on mobile */}
       <div className="w-full aspect-square mb-4 mt-2 px-1">
         {/* Grid of letters */}
-        <div 
+        <div
           ref={boardRef}
           onMouseDown={handleStart}
           onMouseMove={handleMove}
@@ -683,16 +756,16 @@ export const GameBoard = () => {
           onTouchStart={handleStart}
           onTouchMove={handleMove}
           onTouchEnd={handleEnd}
-          className="relative grid gap-2 w-full h-full"
-          style={{ 
+          className="game-board-grid relative grid gap-2 w-full h-full"
+          style={{
             gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
-            touchAction: 'none' 
+            touchAction: 'none'
           }}
         >
           {/* Canvas overlay for butter-smooth 60fps trail rendering */}
           <canvas
             ref={canvasRef}
-            className="absolute inset-0 w-full h-full pointer-events-none z-20"
+            className="trail-canvas absolute inset-0 w-full h-full pointer-events-none z-20"
           />
           {board.map((row, r) => row.map((letter, c) => {
             const key = `${r}-${c}`;
