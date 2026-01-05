@@ -280,92 +280,415 @@ def generate_fx_riser(duration: float = 4.0) -> np.ndarray:
     return normalize(riser)
 
 
+def generate_blue_monday_kick() -> np.ndarray:
+    """Generate an Oberheim DMX style kick - punchy 80s drum machine."""
+    duration = 0.25
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # DMX kick: punchy, tight, with that 80s thump
+    freq = 160 * np.exp(-25 * t) + 45
+    kick = np.zeros(len(t))
+    phase = 0
+    for i in range(len(t)):
+        kick[i] = np.sin(phase)
+        phase += 2 * np.pi * freq[i] / SAMPLE_RATE
+
+    # Sharp click for attack
+    click = noise(0.012, amplitude=0.4)
+    click = low_pass_filter(click, cutoff=2500)
+    kick[:len(click)] += click
+
+    kick *= np.exp(-12 * t)
+    kick = low_pass_filter(kick, cutoff=180)
+    kick = distortion(kick, drive=1.15)
+
+    return normalize(kick) * 0.9
+
+
+def generate_blue_monday_snare() -> np.ndarray:
+    """Generate DMX style snare - tight and punchy."""
+    duration = 0.18
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # Tonal body
+    tone = sine_wave(180, duration, amplitude=0.35)
+    tone *= np.exp(-25 * t)
+
+    # Noise burst
+    noise_part = noise(duration, amplitude=0.55)
+    noise_part = high_pass_filter(noise_part, cutoff=1500)
+    noise_part = low_pass_filter(noise_part, cutoff=6500)
+    noise_part *= np.exp(-18 * t)
+
+    snare = tone + noise_part
+    snare = distortion(snare, drive=1.1)
+
+    return normalize(snare) * 0.65
+
+
+def generate_blue_monday_bass_note(freq: float, duration: float) -> np.ndarray:
+    """Generate the iconic Blue Monday bass synth sound."""
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # Moog-style bass: detuned oscillators for thickness
+    bass = sawtooth_wave(freq, duration, amplitude=0.45)
+    bass += sawtooth_wave(freq * 1.004, duration, amplitude=0.35)  # Slight detune
+    bass += square_wave(freq * 0.5, duration, amplitude=0.25)  # Sub octave
+
+    # Filter envelope - opens then closes (that squelchy sound)
+    filter_env = 1500 + 2000 * np.exp(-8 * t)
+
+    # Apply time-varying filter (simplified)
+    bass = low_pass_filter(bass, cutoff=1800)
+
+    # Punchy envelope
+    env = adsr_envelope(duration, attack=0.008, decay=0.1, sustain=0.6, release=0.08)
+    bass = bass[:len(env)] * env
+
+    bass = distortion(bass, drive=1.15)
+
+    return bass
+
+
+def generate_blue_monday_synth_stab(freqs: list, duration: float) -> np.ndarray:
+    """Generate the Blue Monday synth stab chord."""
+    result = np.zeros(int(SAMPLE_RATE * duration))
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    for freq in freqs:
+        # Bright, cutting synth
+        tone = sawtooth_wave(freq, duration, amplitude=0.12)
+        tone += pulse_wave(freq, duration, duty=0.4, amplitude=0.08)
+        result += tone
+
+    # Sharp attack, quick decay
+    env = adsr_envelope(duration, attack=0.003, decay=0.15, sustain=0.2, release=0.1)
+    result = result[:len(env)] * env
+
+    result = low_pass_filter(result, cutoff=5000)
+    result = chorus(result, depth=0.002, rate=1.5)
+
+    return result
+
+
 def generate_gameplay_loop(duration_seconds: float = 60) -> np.ndarray:
-    """Generate the main gameplay music loop."""
-    # Calculate how many 4-bar sections we need
-    section_duration = 4 * BAR_DURATION
+    """Generate Blue Monday style gameplay music - iconic 80s synth-pop."""
+    # Blue Monday tempo: ~130 BPM
+    bm_bpm = 130
+    beat_dur = 60 / bm_bpm
+    bar_dur = beat_dur * 4
+    section_duration = 4 * bar_dur
     num_sections = int(np.ceil(duration_seconds / section_duration))
 
-    # Generate base patterns
-    drums = generate_drum_pattern(4)
-    bass = generate_bass_line(4)
-    arp = generate_arp_synth(4)
-    pad = generate_pad(4)
-
-    # Loop everything
-    drums = loop(drums, num_sections)
-    bass = loop(bass, num_sections)
-    arp = loop(arp, num_sections)
-    pad = loop(pad, num_sections)
-
-    # Mix tracks
-    track = mix_tracks(
-        [drums, bass, arp, pad],
-        [0.35, 0.25, 0.22, 0.18]
-    )
-
-    # Trim to exact duration
-    target_samples = int(duration_seconds * SAMPLE_RATE)
-    track = track[:target_samples]
-
-    # Apply master processing
-    track = low_pass_filter(track, cutoff=15000)
-    track = normalize(track, target_db=-6)
-
-    # Add fade in/out for seamless looping
-    track = fade_in(track, 0.1)
-    track = fade_out(track, 0.1)
-
-    return track
-
-
-def generate_menu_music(duration_seconds: float = 30) -> np.ndarray:
-    """Generate calmer menu/lobby music."""
-    section_duration = 4 * BAR_DURATION
-    num_sections = int(np.ceil(duration_seconds / section_duration))
-
-    # Slower tempo for menu (just use longer notes)
-    pad = generate_pad(4)
-    pad = loop(pad, num_sections)
-
-    # Sparse arp at half speed feel
     result = np.zeros(int(SAMPLE_RATE * duration_seconds))
 
-    eighth = BEAT_DURATION / 2
-    root = 523.25
+    # Generate drum sounds
+    kick = generate_blue_monday_kick()
+    snare = generate_blue_monday_snare()
+    hihat_c = generate_hihat_closed()
+    hihat_o = generate_hihat_open()
+
+    sixteenth = beat_dur / 4
+    eighth = beat_dur / 2
+
+    # THE ICONIC BLUE MONDAY BASS RIFF
+    # In F minor, that driving descending pattern
+    f_root = 87.31  # F2
+    bass_pattern = [
+        # Bar 1: Driving F notes
+        (f_root, eighth), (f_root, eighth), (f_root, eighth), (f_root, eighth),
+        (f_root, eighth), (f_root, eighth), (f_root, eighth), (f_root, eighth),
+        # Bar 2: F with movement to Eb
+        (f_root, eighth), (f_root, eighth), (f_root, eighth), (f_root, eighth),
+        (f_root * 0.944, eighth), (f_root * 0.944, eighth),  # Eb
+        (f_root * 0.944, eighth), (f_root * 0.944, eighth),
+        # Bar 3: Db down
+        (f_root * 0.841, eighth), (f_root * 0.841, eighth),  # Db
+        (f_root * 0.841, eighth), (f_root * 0.841, eighth),
+        (f_root * 0.841, eighth), (f_root * 0.841, eighth),
+        (f_root * 0.841, eighth), (f_root * 0.841, eighth),
+        # Bar 4: C then back up
+        (f_root * 0.749, eighth), (f_root * 0.749, eighth),  # C
+        (f_root * 0.749, eighth), (f_root * 0.749, eighth),
+        (f_root * 0.841, eighth), (f_root * 0.841, eighth),  # Db
+        (f_root * 0.944, eighth), (f_root, eighth),  # Eb, F
+    ]
+
+    # Synth stab chords (Fm, Eb, Db, C)
+    fm_chord = [174.61, 207.65, 261.63]  # F minor
+    eb_chord = [155.56, 185.00, 233.08]  # Eb
+    db_chord = [138.59, 174.61, 207.65]  # Db
+    c_chord = [130.81, 164.81, 196.00]   # C minor
 
     for section in range(num_sections):
         section_start = section * section_duration
-        bar_root = root * [1, 0.89, 0.79, 0.75][section % 4]
 
-        for i in range(0, 16, 2):  # Every other 16th = 8th notes
-            t = section_start + i * (BEAT_DURATION / 4)
-            freq = bar_root * [1, 1.5, 1.19, 2][i % 4]
+        # DRUMS - Blue Monday style
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
 
-            pos = int(t * SAMPLE_RATE)
-            note_dur = BEAT_DURATION
+            # Kick on every beat (four-on-the-floor)
+            for beat in range(4):
+                t = bar_start + beat * beat_dur
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(kick) < len(result):
+                    result[pos:pos + len(kick)] += kick
 
-            note = sine_wave(freq, note_dur, amplitude=0.2)
-            note += triangle_wave(freq, note_dur, amplitude=0.1)
+            # Snare on 2 and 4
+            for beat in [1, 3]:
+                t = bar_start + beat * beat_dur
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(snare) < len(result):
+                    result[pos:pos + len(snare)] += snare * 0.75
 
-            env = adsr_envelope(note_dur, attack=0.1, decay=0.2, sustain=0.4, release=0.3)
-            note = note[:len(env)] * env
+            # Hi-hat pattern - Blue Monday has that distinctive 16th note pattern
+            # with accents creating a driving groove
+            for i in range(16):
+                t = bar_start + i * sixteenth
+                pos = int(t * SAMPLE_RATE)
+                # Open hat on certain offbeats for that Blue Monday feel
+                if i in [2, 6, 10, 14]:  # Offbeat opens
+                    hat = hihat_o
+                    vol = 0.35
+                else:
+                    hat = hihat_c
+                    vol = 0.4 if i % 4 == 0 else 0.25
+                if pos + len(hat) < len(result):
+                    result[pos:pos + len(hat)] += hat * vol
 
-            end = min(pos + len(note), len(result))
-            result[pos:end] += note[:end-pos]
+        # BASS RIFF
+        bass_time = section_start
+        for freq, dur in bass_pattern:
+            pos = int(bass_time * SAMPLE_RATE)
+            note = generate_blue_monday_bass_note(freq, dur * 0.9)
+            if pos + len(note) < len(result):
+                result[pos:pos + len(note)] += note * 0.55
+            bass_time += dur
 
-    result = delay(result, delay_time=0.3, feedback=0.4)
+        # SYNTH STABS - on beat 1 of each bar
+        stab_chords = [fm_chord, eb_chord, db_chord, c_chord]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            pos = int(bar_start * SAMPLE_RATE)
+            stab = generate_blue_monday_synth_stab(stab_chords[bar], beat_dur * 0.8)
+            if pos + len(stab) < len(result):
+                result[pos:pos + len(stab)] += stab * 0.45
 
-    # Mix with pad
-    track = mix_tracks([pad[:len(result)], result], [0.5, 0.5])
-    track = track[:int(duration_seconds * SAMPLE_RATE)]
+            # Secondary stab on beat 3
+            pos2 = int((bar_start + 2 * beat_dur) * SAMPLE_RATE)
+            stab2 = generate_blue_monday_synth_stab(stab_chords[bar], beat_dur * 0.5)
+            if pos2 + len(stab2) < len(result):
+                result[pos2:pos2 + len(stab2)] += stab2 * 0.3
 
-    track = reverb(track, room_size=0.6)
-    track = normalize(track, target_db=-8)
-    track = fade_in(track, 0.5)
-    track = fade_out(track, 0.5)
+    # Add atmospheric synth pad
+    pad_result = np.zeros(len(result))
+    pad_chords = [
+        [174.61 * 2, 207.65 * 2, 261.63 * 2],  # Fm high
+        [155.56 * 2, 185.00 * 2, 233.08 * 2],  # Eb high
+        [138.59 * 2, 174.61 * 2, 207.65 * 2],  # Db high
+        [130.81 * 2, 164.81 * 2, 196.00 * 2],  # Cm high
+    ]
 
-    return track
+    for section in range(num_sections):
+        section_start = section * section_duration
+
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            pos = int(bar_start * SAMPLE_RATE)
+
+            pad = np.zeros(int(SAMPLE_RATE * bar_dur))
+            for freq in pad_chords[bar]:
+                tone = sawtooth_wave(freq, bar_dur, amplitude=0.06)
+                tone += sawtooth_wave(freq * 1.003, bar_dur, amplitude=0.04)
+                pad += tone
+
+            env = adsr_envelope(bar_dur, attack=0.15, decay=0.2, sustain=0.5, release=0.3)
+            pad = pad[:len(env)] * env
+            pad = low_pass_filter(pad, cutoff=2500)
+            pad = chorus(pad, depth=0.003, rate=0.6)
+
+            end = min(pos + len(pad), len(pad_result))
+            if end > pos:
+                pad_result[pos:end] += pad[:end - pos]
+
+    result = result + pad_result * 0.35
+
+    # Master processing
+    result = np.clip(result, -1, 1)
+    result = low_pass_filter(result, cutoff=14000)
+    result = normalize(result, target_db=-5)
+    result = fade_in(result, 0.15)
+    result = fade_out(result, 0.15)
+
+    return result
+
+
+def generate_lobby_kick() -> np.ndarray:
+    """Generate a punchy lobby kick drum."""
+    duration = 0.15
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # Higher pitch, punchier kick
+    freq = 180 * np.exp(-35 * t) + 55
+    kick = np.zeros(len(t))
+    phase = 0
+    for i in range(len(t)):
+        kick[i] = np.sin(phase)
+        phase += 2 * np.pi * freq[i] / SAMPLE_RATE
+
+    # Sharp click transient
+    click = noise(0.008, amplitude=0.6)
+    click = low_pass_filter(click, cutoff=4000)
+    kick[:len(click)] += click
+    kick *= np.exp(-10 * t)
+    kick = distortion(kick, drive=1.3)
+
+    return normalize(kick) * 0.85
+
+
+def generate_lobby_synth_stab(freq: float, duration: float) -> np.ndarray:
+    """Generate a punchy synth stab for the lobby."""
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # Detuned saws for fat sound
+    stab = sawtooth_wave(freq, duration, amplitude=0.3)
+    stab += sawtooth_wave(freq * 1.005, duration, amplitude=0.25)
+    stab += sawtooth_wave(freq * 0.995, duration, amplitude=0.25)
+    stab += square_wave(freq * 0.5, duration, amplitude=0.15)  # Sub octave
+
+    # Punchy envelope
+    env = adsr_envelope(duration, attack=0.005, decay=0.08, sustain=0.3, release=0.1)
+    stab = stab[:len(env)] * env
+
+    # Filter sweep down
+    stab = low_pass_filter(stab, cutoff=3500)
+
+    return stab
+
+
+def generate_menu_music(duration_seconds: float = 30) -> np.ndarray:
+    """Generate upbeat, catchy, head-banging lobby music."""
+    # FAST tempo for head-banging energy!
+    lobby_bpm = 128
+    beat_dur = 60 / lobby_bpm
+    bar_dur = beat_dur * 4
+    section_duration = 4 * bar_dur
+    num_sections = int(np.ceil(duration_seconds / section_duration))
+
+    result = np.zeros(int(SAMPLE_RATE * duration_seconds))
+
+    kick = generate_lobby_kick()
+    snare = generate_snare()
+    hihat = generate_hihat_closed()
+
+    # Catchy synth riff - think electro/synth-pop hook
+    # E minor pentatonic riff that's super catchy
+    root = 164.81  # E3
+    riff_notes = [
+        (root * 2, 0.5),      # E4
+        (root * 2 * 1.5, 0.25),  # B4
+        (root * 2, 0.25),      # E4
+        (root * 1.5, 0.5),     # B3
+        (root * 2 * 1.335, 0.5),  # G4
+        (root * 2, 0.25),      # E4
+        (root * 1.5, 0.25),    # B3
+        (root, 0.5),           # E3
+    ]
+
+    sixteenth = beat_dur / 4
+
+    for section in range(num_sections):
+        section_start = section * section_duration
+
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+
+            # FOUR-ON-THE-FLOOR kick pattern - essential for head-banging!
+            for beat in range(4):
+                t = bar_start + beat * beat_dur
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(kick) < len(result):
+                    result[pos:pos + len(kick)] += kick * 0.9
+
+            # Snare on 2 and 4
+            for beat in [1, 3]:
+                t = bar_start + beat * beat_dur
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(snare) < len(result):
+                    result[pos:pos + len(snare)] += snare * 0.7
+
+            # Driving 16th note hi-hats
+            for i in range(16):
+                t = bar_start + i * sixteenth
+                pos = int(t * SAMPLE_RATE)
+                # Accent on beat
+                vol = 0.5 if i % 4 == 0 else 0.3
+                if pos + len(hihat) < len(result):
+                    result[pos:pos + len(hihat)] += hihat * vol
+
+        # Catchy synth riff
+        riff_time = section_start
+        for freq, dur in riff_notes:
+            pos = int(riff_time * SAMPLE_RATE)
+            note_dur = dur * beat_dur
+            stab = generate_lobby_synth_stab(freq, note_dur)
+
+            if pos + len(stab) < len(result):
+                result[pos:pos + len(stab)] += stab * 0.6
+
+            riff_time += note_dur
+
+        # Repeat riff in second half of section
+        riff_time = section_start + 2 * bar_dur
+        for freq, dur in riff_notes:
+            pos = int(riff_time * SAMPLE_RATE)
+            note_dur = dur * beat_dur
+            stab = generate_lobby_synth_stab(freq * 1.0595, note_dur)  # Slight pitch up for variation
+
+            if pos + len(stab) < len(result):
+                result[pos:pos + len(stab)] += stab * 0.55
+
+            riff_time += note_dur
+
+    # Add pumping bass
+    bass_result = np.zeros(len(result))
+    bass_root = 82.41  # E2
+    bass_pattern = [1, 1, 1.5, 1, 1.335, 1, 1.5, 1]  # Root, root, 5th, root pattern
+
+    for section in range(num_sections):
+        section_start = section * section_duration
+
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+
+            for i in range(8):
+                t = bar_start + i * (beat_dur / 2)
+                pos = int(t * SAMPLE_RATE)
+
+                freq = bass_root * bass_pattern[i % len(bass_pattern)]
+                note_dur = beat_dur / 2 * 0.9
+
+                bass = sawtooth_wave(freq, note_dur, amplitude=0.4)
+                bass += sine_wave(freq * 0.5, note_dur, amplitude=0.3)  # Sub
+
+                env = adsr_envelope(note_dur, attack=0.005, decay=0.05, sustain=0.5, release=0.05)
+                bass = bass[:len(env)] * env
+                bass = low_pass_filter(bass, cutoff=600)
+                bass = distortion(bass, drive=1.2)
+
+                if pos + len(bass) < len(bass_result):
+                    bass_result[pos:pos + len(bass)] += bass
+
+    result = result + bass_result * 0.5
+
+    # Master processing
+    result = np.clip(result, -1, 1)
+    result = low_pass_filter(result, cutoff=16000)
+    result = normalize(result, target_db=-5)
+    result = fade_in(result, 0.2)
+    result = fade_out(result, 0.3)
+
+    return result
 
 
 def generate_summary_music(duration_seconds: float = 45) -> np.ndarray:
