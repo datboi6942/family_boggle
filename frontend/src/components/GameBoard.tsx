@@ -779,11 +779,14 @@ export const GameBoard = () => {
     }
 
     // THROTTLE: Skip expensive cell detection if called too frequently
-    const now = performance.now();
-    if (now - lastMoveProcessTimeRef.current < MOVE_THROTTLE_MS) {
-      return; // Skip this frame, touch position is already updated for canvas
+    // iOS: no throttle needed - SVG updates are cheap and we want responsive cell detection
+    if (!IS_IOS) {
+      const now = performance.now();
+      if (now - lastMoveProcessTimeRef.current < MOVE_THROTTLE_MS) {
+        return; // Skip this frame, touch position is already updated for canvas
+      }
+      lastMoveProcessTimeRef.current = now;
     }
-    lastMoveProcessTimeRef.current = now;
 
     // Use pre-computed dimensions
     const dims = boardDimensionsRef.current;
