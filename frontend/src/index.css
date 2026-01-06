@@ -47,6 +47,8 @@ body {
   overscroll-behavior: none;
   touch-action: none;
   -webkit-overflow-scrolling: auto;
+  /* Compensate for body's safe-area padding so we don't double-count */
+  margin-bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
 }
 
 .unique-glow {

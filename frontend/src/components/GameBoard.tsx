@@ -858,11 +858,11 @@ export const GameBoard = () => {
     <div
       className="game-board-container grid bg-navy-gradient text-white select-none p-2 overflow-hidden"
       style={{
-        height: '100dvh', // Use dynamic viewport height for mobile
-        minHeight: '100vh', // Fallback for browsers without dvh support
+        height: 'calc(100svh - 50px)', // Aggressively shrink to guarantee power-ups visible above browser chrome
+        maxHeight: 'calc(-webkit-fill-available - 50px)', // iOS Safari fallback
         paddingTop: 'env(safe-area-inset-top, 8px)',
-        paddingBottom: 'max(env(safe-area-inset-bottom, 8px), 16px)', // Extra padding for browser chrome
-        gridTemplateRows: 'auto 1fr 70px', // Header, Board, Power-ups (70px for visibility)
+        paddingBottom: '16px',
+        gridTemplateRows: 'auto 1fr 80px', // Header, Board, Power-ups (80px for visibility)
       }}
     >
       {/* Header */}
@@ -897,8 +897,8 @@ export const GameBoard = () => {
           className="relative w-full"
           style={{
             aspectRatio: '1/1',
-            maxWidth: 'min(100%, calc(100dvh - 220px))',
-            maxHeight: 'calc(100dvh - 220px)',
+            maxWidth: 'min(100%, calc(100svh - 280px))',
+            maxHeight: 'calc(100svh - 280px)',
           }}
         >
           {/* Grid of letters - absolutely positioned to fill the square container */}
@@ -949,7 +949,7 @@ export const GameBoard = () => {
       </div>
 
       {/* Power-ups - ensure always visible at bottom */}
-      <div className="flex justify-center items-center space-x-4 py-2" style={{ minHeight: '70px' }}>
+      <div className="flex justify-center items-center space-x-4 py-3" style={{ minHeight: '80px' }}>
         {['freeze', 'blowup', 'shuffle'].map(p => {
           const count = me?.powerups?.filter(x => x === p).length || 0;
           return (
