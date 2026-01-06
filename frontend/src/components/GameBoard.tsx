@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo, memo, useEffect } from 'react';
+import { useRef, useCallback, useMemo, memo, useEffect } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
@@ -120,8 +120,9 @@ export const GameBoard = () => {
   const { send } = useWebSocketContext();
   const audio = useAudioContext();
 
-  // Minimal React state - only for things that MUST trigger re-render
-  const [currentWord, setCurrentWord] = useState('');
+  // NO React state during drag - use refs for everything
+  const currentWordRef = useRef('');
+  const wordDisplayRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const musicStartedRef = useRef(false);
   const lastTimerRef = useRef<number>(timer);
@@ -142,6 +143,7 @@ export const GameBoard = () => {
   // All path state in refs - NO React state during drag
   const touchPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const currentPathRef = useRef<[number, number][]>([]);
+  const previousPathRef = useRef<Set<string>>(new Set()); // Track previously highlighted cells for efficient updates
   const isDraggingRef = useRef(false);
   const rafIdRef = useRef<number | null>(null);
   const boardDimensionsRef = useRef<{ cellSize: number; gapSize: number; totalGapSpace: number } | null>(null);
@@ -171,37 +173,60 @@ export const GameBoard = () => {
     }
   }, []);
 
-  // Direct DOM manipulation for cell highlighting - NO REACT
+  // Direct DOM manipulation for cell highlighting - NO REACT RE-RENDERS
+  // Optimized to only update cells that changed, not all cells
   const updateCellHighlights = useCallback(() => {
     const path = currentPathRef.current;
     const cellRefs = cellRefsMap.current;
+    const prevPath = previousPathRef.current;
 
-    // Clear all highlights first
-    cellRefs.forEach((el) => {
-      el.classList.remove('selected', 'first', 'last');
-      const indexEl = el.querySelector('.cell-index') as HTMLElement;
-      if (indexEl) indexEl.textContent = '';
+    // Build current path set for efficient lookup
+    const currentPathSet = new Set<string>();
+    path.forEach(([r, c]) => currentPathSet.add(`${r}-${c}`));
+
+    // Clear highlights only from cells that were highlighted but aren't in current path
+    prevPath.forEach((key) => {
+      if (!currentPathSet.has(key)) {
+        const el = cellRefs.get(key);
+        if (el) {
+          el.classList.remove('selected', 'first', 'last');
+          const indexEl = el.querySelector('.cell-index') as HTMLElement;
+          if (indexEl) indexEl.textContent = '';
+        }
+      }
     });
 
     // Apply highlights to path cells
+    const pathLen = path.length;
     path.forEach(([r, c], i) => {
       const key = `${r}-${c}`;
       const el = cellRefs.get(key);
       if (el) {
+        // Always update classes since position in path may have changed
         el.classList.add('selected');
-        if (i === 0) el.classList.add('first');
-        if (i === path.length - 1) el.classList.add('last');
+        el.classList.toggle('first', i === 0);
+        el.classList.toggle('last', i === pathLen - 1);
         const indexEl = el.querySelector('.cell-index') as HTMLElement;
         if (indexEl) indexEl.textContent = String(i + 1);
       }
     });
 
-    // Update current word display
-    if (path.length > 0) {
-      const word = path.map(([r, c]) => board[r]?.[c] ?? '').join('');
-      setCurrentWord(word);
-    } else {
-      setCurrentWord('');
+    // Update previous path for next comparison
+    previousPathRef.current = currentPathSet;
+
+    // Update current word display via direct DOM (NO React re-render)
+    const wordDisplay = wordDisplayRef.current;
+    if (wordDisplay) {
+      if (pathLen > 0) {
+        const word = path.map(([r, c]) => board[r]?.[c] ?? '').join('');
+        currentWordRef.current = word;
+        wordDisplay.textContent = word;
+        wordDisplay.style.display = 'block';
+      } else {
+        currentWordRef.current = '';
+        wordDisplay.textContent = '';
+        wordDisplay.style.display = 'none';
+      }
     }
   }, [board]);
 
@@ -772,8 +797,7 @@ export const GameBoard = () => {
     currentPathRef.current = [];
     pathPointsRef.current = [];
     prevPathLengthRef.current = 0;
-    updateCellHighlights();
-    setCurrentWord('');
+    updateCellHighlights(); // This also clears the word display
 
     // Clear canvas
     const ctx = ctxRef.current;
@@ -862,8 +886,7 @@ export const GameBoard = () => {
       currentPathRef.current = [];
       pathPointsRef.current = [];
       prevPathLengthRef.current = 0;
-      updateCellHighlights();
-      setCurrentWord('');
+      updateCellHighlights(); // This also clears the word display
 
       // Clear canvas
       const ctx = ctxRef.current;
@@ -934,13 +957,13 @@ export const GameBoard = () => {
             <span className="text-xl sm:text-2xl font-black font-mono tabular-nums">{formattedTimer}</span>
           </div>
 
-          {/* Current Word (center) */}
+          {/* Current Word (center) - Updated via ref, no React re-renders */}
           <div className="flex-1 text-center min-w-0 overflow-hidden">
-            {currentWord && (
-              <div className="text-lg sm:text-2xl font-black tracking-wider text-primary animate-pulse truncate">
-                {currentWord}
-              </div>
-            )}
+            <div
+              ref={wordDisplayRef}
+              className="text-lg sm:text-2xl font-black tracking-wider text-primary animate-pulse truncate"
+              style={{ display: 'none' }}
+            />
           </div>
 
           {/* Score */}
