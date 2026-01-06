@@ -75,34 +75,51 @@ const Cell = memo(({
 });
 Cell.displayName = 'Cell';
 
+// Detect iOS once at module load
+const IS_IOS = typeof navigator !== 'undefined' && (
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+);
+
 // CSS for cell states - applied via direct DOM manipulation
-// iOS Safari optimization: only promote selected cells to GPU layers, not all cells
-// Use transform-only transitions to avoid paint/layout thrashing
-const CELL_STYLES = `
+// iOS: NO transitions, NO animations - instant state changes only
+// Android: smooth transitions
+const CELL_STYLES = IS_IOS ? `
   .cell {
-    /* iOS: only transition transform, avoid background/box-shadow transitions */
-    transition: transform 0.08s ease-out;
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-    /* Don't use will-change on all cells - too many GPU layers kills iOS performance */
+    /* iOS: NO transitions - they cause lag during touch */
   }
   .cell.selected {
     background: rgba(139, 92, 246, 0.8) !important;
     border: 2px solid white !important;
-    /* iOS: promote only selected cells to GPU layer */
-    transform: scale(1.1) translate3d(0,0,0);
-    will-change: transform;
+    transform: scale(1.08);
     z-index: 10;
-    /* iOS: use outline instead of box-shadow (cheaper to render) */
-    outline: 3px solid rgba(139, 92, 246, 0.5);
-    outline-offset: 2px;
   }
   .cell.selected .cell-index { display: block !important; }
   .cell.selected .cell-points { color: rgba(255,255,255,0.7) !important; }
   .cell.first {
-    /* iOS: combine outlines for first cell indicator */
-    outline: 3px solid #4ade80 !important;
-    outline-offset: 2px;
+    border-color: #4ade80 !important;
+  }
+  .cell.last:not(.first) {
+    background: white !important;
+    color: #8B5CF6 !important;
+  }
+  .cell.last:not(.first) .cell-points { color: rgba(139, 92, 246, 0.7) !important; }
+` : `
+  .cell {
+    transition: transform 0.08s ease-out, background 0.08s ease-out;
+    backface-visibility: hidden;
+  }
+  .cell.selected {
+    background: rgba(139, 92, 246, 0.8) !important;
+    border: 2px solid white !important;
+    transform: scale(1.1) translate3d(0,0,0);
+    z-index: 10;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+  }
+  .cell.selected .cell-index { display: block !important; }
+  .cell.selected .cell-points { color: rgba(255,255,255,0.7) !important; }
+  .cell.first {
+    box-shadow: 0 0 0 2px #4ade80, 0 0 20px rgba(139, 92, 246, 0.5) !important;
   }
   .cell.last:not(.first) {
     background: white !important;
@@ -143,11 +160,8 @@ export const GameBoard = () => {
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const dprRef = useRef<number>(window.devicePixelRatio || 1); // Cache DPR to avoid reading every frame
 
-  // iOS detection for performance optimizations - iOS Safari struggles with shadowBlur
-  const isIOSRef = useRef<boolean>(
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
+  // iOS detection - use module-level constant
+  const isIOSRef = useRef<boolean>(IS_IOS);
 
   // Interpolation state for smoother trailing line
   const interpolatedTouchRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -189,7 +203,7 @@ export const GameBoard = () => {
   }, []);
 
   // Direct DOM manipulation for cell highlighting - NO REACT RE-RENDERS
-  // Optimized to only update cells that changed, not all cells
+  // iOS: ultra-minimal DOM updates - skip index numbers and minimize class toggles
   const updateCellHighlights = useCallback(() => {
     const path = currentPathRef.current;
     const cellRefs = cellRefsMap.current;
@@ -205,8 +219,11 @@ export const GameBoard = () => {
         const el = cellRefs.get(key);
         if (el) {
           el.classList.remove('selected', 'first', 'last');
-          const indexEl = el.querySelector('.cell-index') as HTMLElement;
-          if (indexEl) indexEl.textContent = '';
+          // iOS: skip index update - unnecessary DOM write
+          if (!IS_IOS) {
+            const indexEl = el.querySelector('.cell-index') as HTMLElement;
+            if (indexEl) indexEl.textContent = '';
+          }
         }
       }
     });
@@ -221,8 +238,11 @@ export const GameBoard = () => {
         el.classList.add('selected');
         el.classList.toggle('first', i === 0);
         el.classList.toggle('last', i === pathLen - 1);
-        const indexEl = el.querySelector('.cell-index') as HTMLElement;
-        if (indexEl) indexEl.textContent = String(i + 1);
+        // iOS: skip index update - unnecessary DOM write
+        if (!IS_IOS) {
+          const indexEl = el.querySelector('.cell-index') as HTMLElement;
+          if (indexEl) indexEl.textContent = String(i + 1);
+        }
       }
     });
 
@@ -246,7 +266,10 @@ export const GameBoard = () => {
   }, [board]);
 
   // Update path pixel positions for canvas drawing
+  // iOS: skip entirely - we don't use canvas
   const updatePathPoints = useCallback(() => {
+    if (IS_IOS) return; // No canvas on iOS
+
     const path = currentPathRef.current;
     const dims = boardDimensionsRef.current;
 
@@ -594,7 +617,10 @@ export const GameBoard = () => {
   }, [boardSize, updateBoardDimensions]);
 
   // Play chain sound immediately when path grows
+  // iOS: disabled - audio during touch events causes lag
   const playChainSound = useCallback((pathLength: number) => {
+    if (IS_IOS) return; // Skip audio on iOS for performance
+
     const now = Date.now();
     if (now - lastSoundTimeRef.current > 50) {
       audioRef.current.playLetterChain(pathLength);
@@ -653,7 +679,7 @@ export const GameBoard = () => {
         if (existingIndex !== -1) {
           // Backtrack to this cell
           currentPathRef.current = currentPath.slice(0, existingIndex + 1);
-          audioRef.current.playLetterSelect();
+          if (!IS_IOS) audioRef.current.playLetterSelect();
         } else if (isAdjacent(lastCell, cell)) {
           // Adjacent cell - add to path
           currentPathRef.current = [...currentPath, cell];
@@ -661,7 +687,7 @@ export const GameBoard = () => {
         } else {
           // Not adjacent - start fresh sequence
           currentPathRef.current = [cell];
-          audioRef.current.playLetterSelect();
+          if (!IS_IOS) audioRef.current.playLetterSelect();
         }
 
         prevPathLengthRef.current = currentPathRef.current.length;
@@ -675,7 +701,7 @@ export const GameBoard = () => {
         tapModeActiveRef.current = false;
 
         currentPathRef.current = [cell];
-        audioRef.current.playLetterSelect();
+        if (!IS_IOS) audioRef.current.playLetterSelect();
         prevPathLengthRef.current = 1;
       }
 
