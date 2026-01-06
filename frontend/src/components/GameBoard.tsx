@@ -134,7 +134,7 @@ export const GameBoard = () => {
   const cellRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // All path state in refs - NO React state during drag
-  const touchPosRef = useRef<{ x: number; y: number } | null>(null);
+  const touchPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const currentPathRef = useRef<[number, number][]>([]);
   const isDraggingRef = useRef(false);
   const rafIdRef = useRef<number | null>(null);
@@ -213,6 +213,7 @@ export const GameBoard = () => {
   }, []);
 
   // Canvas drawing function - ultra-optimized for 60fps
+  // Uses direct touch position (no lag) with smooth interpolation only for the trailing tip
   const drawTrail = useCallback(() => {
     const ctx = ctxRef.current;
     const canvas = canvasRef.current;
@@ -221,84 +222,53 @@ export const GameBoard = () => {
     const dpr = dprRef.current;
     const points = pathPointsRef.current;
     const touchPos = touchPosRef.current;
+    const isDragging = isDraggingRef.current;
 
-    // Clear canvas using cached dimensions
+    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (points.length === 0) return;
 
-    // Interpolate touch position for ultra-smooth trailing line
+    // Very fast interpolation - 0.6 means line catches up quickly (less lag)
     const interp = interpolatedTouchRef.current;
-    if (touchPos && isDraggingRef.current) {
-      // Smooth interpolation factor (higher = snappier, lower = smoother)
-      const lerpFactor = 0.35;
-      interp.x += (touchPos.x - interp.x) * lerpFactor;
-      interp.y += (touchPos.y - interp.y) * lerpFactor;
+    if (isDragging) {
+      interp.x += (touchPos.x - interp.x) * 0.6;
+      interp.y += (touchPos.y - interp.y) * 0.6;
     }
 
-    // Use setTransform instead of save/restore for better performance
+    // Scale for DPR
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Build the path once, stroke twice
+    // Build path
     ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
+    const p0 = points[0];
+    ctx.moveTo(p0.x, p0.y);
 
     const len = points.length;
     if (len === 1) {
-      // Single point with trailing line
-      if (touchPos && isDraggingRef.current) {
-        const p0 = points[0];
-        ctx.quadraticCurveTo(
-          p0.x + (interp.x - p0.x) * 0.5,
-          p0.y + (interp.y - p0.y) * 0.5,
-          interp.x, interp.y
-        );
+      // Single point - draw line to finger
+      if (isDragging) {
+        ctx.lineTo(interp.x, interp.y);
       }
     } else {
-      // Multiple points - smooth curves using Catmull-Rom style
+      // Multiple points - use simple lines for speed (curves are expensive)
       for (let i = 1; i < len; i++) {
-        const prev = points[i - 1];
-        const curr = points[i];
-
-        if (i < len - 1) {
-          const next = points[i + 1];
-          const midX = (curr.x + next.x) * 0.5;
-          const midY = (curr.y + next.y) * 0.5;
-          ctx.quadraticCurveTo(
-            (prev.x + midX) * 0.5,
-            (prev.y + midY) * 0.5,
-            curr.x, curr.y
-          );
-        } else {
-          const dx = curr.x - prev.x;
-          const dy = curr.y - prev.y;
-          ctx.quadraticCurveTo(
-            curr.x - dx * 0.2,
-            curr.y - dy * 0.2,
-            curr.x, curr.y
-          );
-        }
+        ctx.lineTo(points[i].x, points[i].y);
       }
-
-      // Trailing line to interpolated touch position
-      if (touchPos && isDraggingRef.current) {
-        const last = points[len - 1];
-        ctx.quadraticCurveTo(
-          last.x + (interp.x - last.x) * 0.5,
-          last.y + (interp.y - last.y) * 0.5,
-          interp.x, interp.y
-        );
+      // Trailing line to finger
+      if (isDragging) {
+        ctx.lineTo(interp.x, interp.y);
       }
     }
 
     // Draw glow layer
-    ctx.strokeStyle = 'rgba(139, 92, 246, 0.3)';
-    ctx.lineWidth = 14;
+    ctx.strokeStyle = 'rgba(139, 92, 246, 0.35)';
+    ctx.lineWidth = 12;
     ctx.stroke();
 
-    // Draw main line on top
+    // Draw main line
     ctx.strokeStyle = '#8B5CF6';
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 4;
     ctx.stroke();
 
     // Reset transform
@@ -406,6 +376,33 @@ export const GameBoard = () => {
       resizeObserver.disconnect();
     };
   }, [boardSize]);
+
+  // CRITICAL: Start continuous animation loop on mount - eliminates startup latency
+  // The loop runs forever but only draws when isDraggingRef is true
+  useEffect(() => {
+    let running = true;
+
+    const animate = () => {
+      if (!running) return;
+
+      // Only draw when actively dragging - but loop never stops
+      if (isDraggingRef.current || pathPointsRef.current.length > 0) {
+        drawTrail();
+      }
+
+      rafIdRef.current = requestAnimationFrame(animate);
+    };
+
+    // Start immediately
+    rafIdRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      running = false;
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, [drawTrail]);
 
   // Start gameplay music when game begins (run once on mount)
   useEffect(() => {
@@ -575,9 +572,12 @@ export const GameBoard = () => {
       // Track initial position to distinguish clicks from drags
       dragStartPosRef.current = { x: localX, y: localY };
       hasMovedRef.current = false;
-      touchPosRef.current = { x: localX, y: localY };
+      // Update in place to avoid allocation
+      touchPosRef.current.x = localX;
+      touchPosRef.current.y = localY;
       // Initialize interpolated position to avoid jump from (0,0)
-      interpolatedTouchRef.current = { x: localX, y: localY };
+      interpolatedTouchRef.current.x = localX;
+      interpolatedTouchRef.current.y = localY;
 
       const now = Date.now();
       const timeSinceLastTap = now - lastTapTimeRef.current;
@@ -624,13 +624,8 @@ export const GameBoard = () => {
       updatePathPoints();
       updateCellHighlights();
 
-      // Start the animation loop - canvas redraws at 60fps
-      const animate = () => {
-        if (!isDraggingRef.current) return;
-        drawTrail();
-        rafIdRef.current = requestAnimationFrame(animate);
-      };
-      rafIdRef.current = requestAnimationFrame(animate);
+      // Animation loop is already running continuously - just draw immediately
+      drawTrail();
     }
   }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, drawTrail, updatePathPoints, updateCellHighlights, isAdjacent, playChainSound]);
 
@@ -647,13 +642,8 @@ export const GameBoard = () => {
     const localY = touch.clientY - rect.top;
 
     // Update touch position ref in-place - avoids object allocation
-    const tp = touchPosRef.current;
-    if (tp) {
-      tp.x = localX;
-      tp.y = localY;
-    } else {
-      touchPosRef.current = { x: localX, y: localY };
-    }
+    touchPosRef.current.x = localX;
+    touchPosRef.current.y = localY;
 
     // Track if user has moved (to distinguish click from drag)
     // Use higher threshold (15px) for mobile touch to avoid false positives
@@ -820,7 +810,6 @@ export const GameBoard = () => {
       dragStartPosRef.current = null;
       hasMovedRef.current = false;
       boardRectRef.current = null;
-      touchPosRef.current = null;
       return;
     }
 
@@ -828,7 +817,6 @@ export const GameBoard = () => {
     dragStartPosRef.current = null;
     hasMovedRef.current = false;
     boardRectRef.current = null;
-    touchPosRef.current = null;
 
     // If it was a drag with movement, submit and clear tap mode
     if (hadMovement && path.length >= 3) {
