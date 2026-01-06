@@ -74,12 +74,18 @@ const Cell = memo(({
 Cell.displayName = 'Cell';
 
 // CSS for cell states - applied via direct DOM manipulation
-// Simplified for Android compatibility - removed transforms that cause rendering issues
+// Optimized for smooth 60fps animations with GPU acceleration
 const CELL_STYLES = `
+  .cell {
+    transition: transform 0.08s ease-out, background 0.08s ease-out, box-shadow 0.08s ease-out;
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
   .cell.selected {
     background: rgba(139, 92, 246, 0.8) !important;
     border: 2px solid white !important;
-    transform: scale(1.1);
+    transform: scale(1.1) translateZ(0);
     z-index: 10;
     box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
   }
@@ -119,6 +125,10 @@ export const GameBoard = () => {
   // Canvas ref for butter-smooth 60fps trail rendering
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const dprRef = useRef<number>(window.devicePixelRatio || 1); // Cache DPR to avoid reading every frame
+
+  // Interpolation state for smoother trailing line
+  const interpolatedTouchRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Cell DOM refs for direct manipulation - NO REACT RE-RENDERS
   const cellRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -202,82 +212,97 @@ export const GameBoard = () => {
     }));
   }, []);
 
-  // Canvas drawing function - pure pixel operations, no DOM
+  // Canvas drawing function - ultra-optimized for 60fps
   const drawTrail = useCallback(() => {
     const ctx = ctxRef.current;
     const canvas = canvasRef.current;
     if (!ctx || !canvas) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = dprRef.current;
     const points = pathPointsRef.current;
     const touchPos = touchPosRef.current;
 
-    // Clear canvas
+    // Clear canvas using cached dimensions
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (points.length === 0) return;
 
-    // Scale for device pixel ratio
-    ctx.save();
-    ctx.scale(dpr, dpr);
+    // Interpolate touch position for ultra-smooth trailing line
+    const interp = interpolatedTouchRef.current;
+    if (touchPos && isDraggingRef.current) {
+      // Smooth interpolation factor (higher = snappier, lower = smoother)
+      const lerpFactor = 0.35;
+      interp.x += (touchPos.x - interp.x) * lerpFactor;
+      interp.y += (touchPos.y - interp.y) * lerpFactor;
+    }
 
-    // Build the path
+    // Use setTransform instead of save/restore for better performance
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Build the path once, stroke twice
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
 
-    if (points.length === 1) {
+    const len = points.length;
+    if (len === 1) {
       // Single point with trailing line
       if (touchPos && isDraggingRef.current) {
-        const cpX = points[0].x + (touchPos.x - points[0].x) * 0.5;
-        const cpY = points[0].y + (touchPos.y - points[0].y) * 0.5;
-        ctx.quadraticCurveTo(cpX, cpY, touchPos.x, touchPos.y);
+        const p0 = points[0];
+        ctx.quadraticCurveTo(
+          p0.x + (interp.x - p0.x) * 0.5,
+          p0.y + (interp.y - p0.y) * 0.5,
+          interp.x, interp.y
+        );
       }
     } else {
-      // Multiple points - smooth curves
-      for (let i = 1; i < points.length; i++) {
+      // Multiple points - smooth curves using Catmull-Rom style
+      for (let i = 1; i < len; i++) {
         const prev = points[i - 1];
         const curr = points[i];
-        const next = i < points.length - 1 ? points[i + 1] : null;
 
-        if (next) {
-          const midX = (curr.x + next.x) / 2;
-          const midY = (curr.y + next.y) / 2;
-          const cpX = (prev.x + midX) / 2;
-          const cpY = (prev.y + midY) / 2;
-          ctx.quadraticCurveTo(cpX, cpY, curr.x, curr.y);
+        if (i < len - 1) {
+          const next = points[i + 1];
+          const midX = (curr.x + next.x) * 0.5;
+          const midY = (curr.y + next.y) * 0.5;
+          ctx.quadraticCurveTo(
+            (prev.x + midX) * 0.5,
+            (prev.y + midY) * 0.5,
+            curr.x, curr.y
+          );
         } else {
           const dx = curr.x - prev.x;
           const dy = curr.y - prev.y;
-          const cpX = curr.x - dx * 0.2;
-          const cpY = curr.y - dy * 0.2;
-          ctx.quadraticCurveTo(cpX, cpY, curr.x, curr.y);
+          ctx.quadraticCurveTo(
+            curr.x - dx * 0.2,
+            curr.y - dy * 0.2,
+            curr.x, curr.y
+          );
         }
       }
 
-      // Trailing line to touch position
+      // Trailing line to interpolated touch position
       if (touchPos && isDraggingRef.current) {
-        const last = points[points.length - 1];
-        const dx = touchPos.x - last.x;
-        const dy = touchPos.y - last.y;
-        const cpX = last.x + dx * 0.5;
-        const cpY = last.y + dy * 0.5;
-        ctx.quadraticCurveTo(cpX, cpY, touchPos.x, touchPos.y);
+        const last = points[len - 1];
+        ctx.quadraticCurveTo(
+          last.x + (interp.x - last.x) * 0.5,
+          last.y + (interp.y - last.y) * 0.5,
+          interp.x, interp.y
+        );
       }
     }
 
-    // Draw glow (thicker, semi-transparent)
+    // Draw glow layer
     ctx.strokeStyle = 'rgba(139, 92, 246, 0.3)';
     ctx.lineWidth = 14;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
     ctx.stroke();
 
-    // Draw main line
+    // Draw main line on top
     ctx.strokeStyle = '#8B5CF6';
     ctx.lineWidth = 5;
     ctx.stroke();
 
-    ctx.restore();
+    // Reset transform
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }, []);
 
   // Keep a ref to audio so effects can access latest version
@@ -325,11 +350,17 @@ export const GameBoard = () => {
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
 
-      // Get and cache context - removed desynchronized option for Android compatibility
-      const ctx = canvas.getContext('2d', { alpha: true });
+      // Get and cache context with optimized settings
+      const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false });
       if (ctx) {
+        // Pre-set properties that don't change - avoids setting them every frame
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         ctxRef.current = ctx;
       }
+
+      // Update cached DPR
+      dprRef.current = dpr;
 
       // Update board dimensions
       const computedStyle = getComputedStyle(board);
@@ -545,6 +576,8 @@ export const GameBoard = () => {
       dragStartPosRef.current = { x: localX, y: localY };
       hasMovedRef.current = false;
       touchPosRef.current = { x: localX, y: localY };
+      // Initialize interpolated position to avoid jump from (0,0)
+      interpolatedTouchRef.current = { x: localX, y: localY };
 
       const now = Date.now();
       const timeSinceLastTap = now - lastTapTimeRef.current;
@@ -613,8 +646,14 @@ export const GameBoard = () => {
     const localX = touch.clientX - rect.left;
     const localY = touch.clientY - rect.top;
 
-    // Update touch position ref - animation loop picks this up
-    touchPosRef.current = { x: localX, y: localY };
+    // Update touch position ref in-place - avoids object allocation
+    const tp = touchPosRef.current;
+    if (tp) {
+      tp.x = localX;
+      tp.y = localY;
+    } else {
+      touchPosRef.current = { x: localX, y: localY };
+    }
 
     // Track if user has moved (to distinguish click from drag)
     // Use higher threshold (15px) for mobile touch to avoid false positives
@@ -943,7 +982,11 @@ export const GameBoard = () => {
           <canvas
             ref={canvasRef}
             className="trail-canvas absolute inset-0 w-full h-full pointer-events-none"
-            style={{ zIndex: 20 }}
+            style={{
+              zIndex: 20,
+              willChange: 'contents', // Hint to browser for GPU acceleration
+              transform: 'translateZ(0)', // Force GPU layer
+            }}
           />
         </div>
       </div>
