@@ -617,11 +617,12 @@ export const GameBoard = () => {
     touchPosRef.current = { x: localX, y: localY };
 
     // Track if user has moved (to distinguish click from drag)
+    // Use higher threshold (15px) for mobile touch to avoid false positives
     const startPos = dragStartPosRef.current;
     if (startPos && !hasMovedRef.current) {
       const dx = localX - startPos.x;
       const dy = localY - startPos.y;
-      if (dx * dx + dy * dy > 25) {
+      if (dx * dx + dy * dy > 225) { // 15 pixels squared
         hasMovedRef.current = true;
       }
     }
@@ -764,34 +765,24 @@ export const GameBoard = () => {
         // This tap was already added in handleStart, just update timer
         lastTapTimeRef.current = now;
         restartTapTimer();
-
-        // Keep the path and highlights visible
-        updatePathPoints();
-        updateCellHighlights();
-
-        // Reset drag-specific state but keep tap state
-        dragStartPosRef.current = null;
-        hasMovedRef.current = false;
-        boardRectRef.current = null;
-        touchPosRef.current = null;
-        return;
       } else {
         // Start new tap mode sequence
         tapModeActiveRef.current = true;
         lastTapTimeRef.current = now;
         restartTapTimer();
-
-        // Keep the path and highlights visible
-        updatePathPoints();
-        updateCellHighlights();
-
-        // Reset drag-specific state but keep tap state
-        dragStartPosRef.current = null;
-        hasMovedRef.current = false;
-        boardRectRef.current = null;
-        touchPosRef.current = null;
-        return;
       }
+
+      // Keep the path and highlights visible, draw the trail
+      updatePathPoints();
+      updateCellHighlights();
+      drawTrail(); // Draw trail statically for tap mode (animation loop is stopped)
+
+      // Reset drag-specific state but keep tap state
+      dragStartPosRef.current = null;
+      hasMovedRef.current = false;
+      boardRectRef.current = null;
+      touchPosRef.current = null;
+      return;
     }
 
     // Reset drag state
@@ -836,7 +827,7 @@ export const GameBoard = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
     }
-  }, [board, send, updateCellHighlights, updatePathPoints, restartTapTimer]);
+  }, [board, send, updateCellHighlights, updatePathPoints, restartTapTimer, drawTrail]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -901,7 +892,7 @@ export const GameBoard = () => {
 
       {/* The Board - Constrained square container that fits in viewport */}
       <div className="flex-1 flex items-center justify-center my-1 overflow-hidden min-h-0">
-        <div className="relative w-full max-w-[min(100vw,calc(100dvh-180px))]" style={{ aspectRatio: '1/1' }}>
+        <div className="relative w-full max-w-[min(100vw-16px,calc(100dvh-220px))]" style={{ aspectRatio: '1/1' }}>
           {/* Grid of letters - absolutely positioned to fill the square container */}
           <div
             ref={boardRef}
