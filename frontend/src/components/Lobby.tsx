@@ -1,19 +1,28 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { useGameStore } from '../stores/gameStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { useAudioContext } from '../contexts/AudioContext';
 import { MonsterAvatar } from './MonsterAvatar';
 import { motion } from 'framer-motion';
 
 export const Lobby = () => {
-  const { lobbyId, playerId, players, hostId, boardSize } = useGameStore();
+  const { lobbyId, playerId, players, hostId, boardSize, resetSession } = useGameStore(
+    useShallow(state => ({
+      lobbyId: state.lobbyId,
+      playerId: state.playerId,
+      players: state.players,
+      hostId: state.hostId,
+      boardSize: state.boardSize,
+      resetSession: state.resetSession,
+    }))
+  );
   const { send } = useWebSocketContext();
   const audio = useAudioContext();
   const musicStartedRef = useRef(false);
 
   const isHost = hostId === playerId;
-  const me = players.find(p => p.id === playerId);
-  const { resetSession } = useGameStore();
+  const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
   // Keep a ref to audio so effects can access latest version
   const audioRef = useRef(audio);

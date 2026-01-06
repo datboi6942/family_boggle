@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useMemo, memo, useEffect } from 'react';
 import { useGameStore } from '../stores/gameStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { useAudioContext } from '../contexts/AudioContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -102,14 +103,19 @@ const CELL_STYLES = `
 `;
 
 export const GameBoard = () => {
-  const playerId = useGameStore(state => state.playerId);
-  const board = useGameStore(state => state.board);
-  const boardSize = useGameStore(state => state.boardSize);
-  const timer = useGameStore(state => state.timer);
-  const lastWordResult = useGameStore(state => state.lastWordResult);
-  const players = useGameStore(state => state.players);
-  const blockedCells = useGameStore(state => state.blockedCells);
-  const isFrozen = useGameStore(state => state.isFrozen);
+  // Use shallow comparison to prevent unnecessary re-renders when unrelated state changes
+  const { playerId, board, boardSize, timer, lastWordResult, players, blockedCells, isFrozen } = useGameStore(
+    useShallow(state => ({
+      playerId: state.playerId,
+      board: state.board,
+      boardSize: state.boardSize,
+      timer: state.timer,
+      lastWordResult: state.lastWordResult,
+      players: state.players,
+      blockedCells: state.blockedCells,
+      isFrozen: state.isFrozen,
+    }))
+  );
 
   const { send } = useWebSocketContext();
   const audio = useAudioContext();
@@ -149,6 +155,10 @@ export const GameBoard = () => {
   const lastTapTimeRef = useRef(0);
   const tapSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const TAP_TIMEOUT_MS = 1500; // 1.5 seconds to tap next letter or auto-submit
+
+  // Throttling for handleMove - limit to ~60fps (16ms between updates)
+  const lastMoveProcessTimeRef = useRef(0);
+  const MOVE_THROTTLE_MS = 16;
   
   // Inject cell styles once on mount
   useEffect(() => {
@@ -377,32 +387,38 @@ export const GameBoard = () => {
     };
   }, [boardSize]);
 
-  // CRITICAL: Start continuous animation loop on mount - eliminates startup latency
-  // The loop runs forever but only draws when isDraggingRef is true
-  useEffect(() => {
-    let running = true;
+  // OPTIMIZED: Animation loop that only runs during active drag
+  // Instead of running continuously, we start/stop based on isDraggingRef
+  const startAnimationLoop = useCallback(() => {
+    if (rafIdRef.current !== null) return; // Already running
 
     const animate = () => {
-      if (!running) return;
-
-      // Only draw when actively dragging - but loop never stops
-      if (isDraggingRef.current || pathPointsRef.current.length > 0) {
-        drawTrail();
+      // Stop if no longer dragging and no path to show
+      if (!isDraggingRef.current && pathPointsRef.current.length === 0) {
+        rafIdRef.current = null;
+        return;
       }
 
+      drawTrail();
       rafIdRef.current = requestAnimationFrame(animate);
     };
 
-    // Start immediately
     rafIdRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      running = false;
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
-    };
   }, [drawTrail]);
+
+  const stopAnimationLoop = useCallback(() => {
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopAnimationLoop();
+    };
+  }, [stopAnimationLoop]);
 
   // Start gameplay music when game begins (run once on mount)
   useEffect(() => {
@@ -624,12 +640,13 @@ export const GameBoard = () => {
       updatePathPoints();
       updateCellHighlights();
 
-      // Animation loop is already running continuously - just draw immediately
-      drawTrail();
+      // Start animation loop and draw immediately
+      startAnimationLoop();
     }
-  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, drawTrail, updatePathPoints, updateCellHighlights, isAdjacent, playChainSound]);
+  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, updatePathPoints, updateCellHighlights, isAdjacent, playChainSound, startAnimationLoop]);
 
   // Ultra-optimized move handler - uses pre-computed cell centers, minimal allocations
+  // THROTTLED to ~60fps to prevent excessive processing on mobile
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isDraggingRef.current) return;
     e.preventDefault();
@@ -641,7 +658,7 @@ export const GameBoard = () => {
     const localX = touch.clientX - rect.left;
     const localY = touch.clientY - rect.top;
 
-    // Update touch position ref in-place - avoids object allocation
+    // ALWAYS update touch position for smooth canvas drawing (not throttled)
     touchPosRef.current.x = localX;
     touchPosRef.current.y = localY;
 
@@ -655,6 +672,13 @@ export const GameBoard = () => {
         hasMovedRef.current = true;
       }
     }
+
+    // THROTTLE: Skip expensive cell detection if called too frequently
+    const now = performance.now();
+    if (now - lastMoveProcessTimeRef.current < MOVE_THROTTLE_MS) {
+      return; // Skip this frame, touch position is already updated for canvas
+    }
+    lastMoveProcessTimeRef.current = now;
 
     // Use pre-computed dimensions
     const dims = boardDimensionsRef.current;
@@ -772,14 +796,8 @@ export const GameBoard = () => {
   }, [submitTapWord]);
 
   const handleEnd = useCallback(() => {
-    // Stop the animation loop first
+    // Mark drag as ended - animation loop will stop itself when path is cleared
     isDraggingRef.current = false;
-
-    // Cancel any pending animation frame
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
 
     const path = currentPathRef.current;
     const hadMovement = hasMovedRef.current;
@@ -856,12 +874,9 @@ export const GameBoard = () => {
     }
   }, [board, send, updateCellHighlights, updatePathPoints, restartTapTimer, drawTrail]);
 
-  // Cleanup on unmount
+  // Cleanup tap timer on unmount (animation loop cleanup is handled separately)
   useEffect(() => {
     return () => {
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
       if (tapSubmitTimerRef.current !== null) {
         clearTimeout(tapSubmitTimerRef.current);
       }
@@ -872,6 +887,24 @@ export const GameBoard = () => {
   const blockedSet = useMemo(() => {
     return new Set(blockedCells.map(([r, c]) => `${r}-${c}`));
   }, [blockedCells]);
+
+  // Create stable ref callbacks for cells - prevents memo bypass
+  const cellRefCallbacks = useMemo(() => {
+    const callbacks = new Map<string, (el: HTMLDivElement | null) => void>();
+    for (let r = 0; r < boardSize; r++) {
+      for (let c = 0; c < boardSize; c++) {
+        const key = `${r}-${c}`;
+        callbacks.set(key, (el: HTMLDivElement | null) => {
+          if (el) {
+            cellRefsMap.current.set(key, el);
+          } else {
+            cellRefsMap.current.delete(key);
+          }
+        });
+      }
+    }
+    return callbacks;
+  }, [boardSize]);
 
   const formattedTimer = useMemo(() => {
     const mins = Math.floor(timer / 60);
@@ -955,13 +988,7 @@ export const GameBoard = () => {
                 isBlocked={isBlocked}
                 row={r}
                 col={c}
-                cellRef={(el) => {
-                  if (el) {
-                    cellRefsMap.current.set(key, el);
-                  } else {
-                    cellRefsMap.current.delete(key);
-                  }
-                }}
+                cellRef={cellRefCallbacks.get(key)!}
               />
             );
           }))}

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useEffect, useRef } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useAudioContext } from '../contexts/AudioContext';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export const Countdown = () => {
   const { timer } = useGameStore();
@@ -67,15 +67,18 @@ export const Countdown = () => {
         minHeight: '-webkit-fill-available',
       }}
     >
-      <motion.div
-        key={timer}
-        initial={{ scale: 2, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0, opacity: 0 }}
-        className="text-[15rem] font-black italic text-primary drop-shadow-[0_0_30px_rgba(139,92,246,0.5)]"
-      >
-        {timer > 0 ? timer : 'GO!'}
-      </motion.div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={timer}
+          initial={{ scale: 2, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0, opacity: 0 }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
+          className="text-[15rem] font-black italic text-primary drop-shadow-[0_0_30px_rgba(139,92,246,0.5)]"
+        >
+          {timer > 0 ? timer : 'GO!'}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 };

@@ -50,8 +50,10 @@ const MUSIC = {
   countdownRiser: `${AUDIO_BASE}/music/countdown_riser.wav`,
 };
 
-// Audio cache to avoid reloading
+// Audio cache with LRU eviction to prevent unbounded memory growth
+const MAX_AUDIO_CACHE_SIZE = 25;
 const audioCache: Map<string, HTMLAudioElement> = new Map();
+const audioCacheOrder: string[] = []; // Track access order for LRU
 
 // Track if audio has been unlocked (required on mobile)
 let audioUnlocked = false;
@@ -136,6 +138,27 @@ function getAudio(src: string): HTMLAudioElement {
     const audio = new Audio(src);
     audio.preload = 'auto';
     audioCache.set(src, audio);
+    audioCacheOrder.push(src);
+
+    // LRU eviction - remove oldest entries when cache exceeds limit
+    while (audioCacheOrder.length > MAX_AUDIO_CACHE_SIZE) {
+      const oldest = audioCacheOrder.shift();
+      if (oldest) {
+        const oldAudio = audioCache.get(oldest);
+        if (oldAudio) {
+          oldAudio.pause();
+          oldAudio.src = ''; // Release resources
+        }
+        audioCache.delete(oldest);
+      }
+    }
+  } else {
+    // Move to end of access order (most recently used)
+    const idx = audioCacheOrder.indexOf(src);
+    if (idx !== -1) {
+      audioCacheOrder.splice(idx, 1);
+      audioCacheOrder.push(src);
+    }
   }
   return audioCache.get(src)!;
 }

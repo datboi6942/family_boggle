@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useGameStore } from '../stores/gameStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { useAudioContext } from '../contexts/AudioContext';
 import { MonsterAvatar } from './MonsterAvatar';
@@ -9,7 +10,18 @@ import { WordAwardAnimation } from './summary/WordAwardAnimation';
 import { Trophy, Sparkles, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
 
 export const GameSummary = () => {
-  const { results, winner, wordAwards, longestWordFound, longestPossibleWord, allPossibleWords, totalPossibleWords, resetSession } = useGameStore();
+  const { results, winner, wordAwards, longestWordFound, longestPossibleWord, allPossibleWords, totalPossibleWords, resetSession } = useGameStore(
+    useShallow(state => ({
+      results: state.results,
+      winner: state.winner,
+      wordAwards: state.wordAwards,
+      longestWordFound: state.longestWordFound,
+      longestPossibleWord: state.longestPossibleWord,
+      allPossibleWords: state.allPossibleWords,
+      totalPossibleWords: state.totalPossibleWords,
+      resetSession: state.resetSession,
+    }))
+  );
   const { send } = useWebSocketContext();
   const audio = useAudioContext();
   const [phase, setPhase] = useState<'animating' | 'longest-word' | 'celebrating'>('animating');
