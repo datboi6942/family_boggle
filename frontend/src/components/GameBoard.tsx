@@ -133,6 +133,12 @@ export const GameBoard = () => {
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const hasMovedRef = useRef(false);
   const pathPointsRef = useRef<{ x: number; y: number }[]>([]); // Cached pixel positions
+
+  // Tap mode state - allows tapping letters sequentially to build words
+  const tapModeActiveRef = useRef(false);
+  const lastTapTimeRef = useRef(0);
+  const tapSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const TAP_TIMEOUT_MS = 1500; // 1.5 seconds to tap next letter or auto-submit
   
   // Inject cell styles once on mount
   useEffect(() => {
@@ -516,6 +522,13 @@ export const GameBoard = () => {
     return blockedCellsRef.current.some(([br, bc]) => br === r && bc === c);
   }, []);
 
+  // Helper to check if two cells are adjacent
+  const isAdjacent = useCallback((cell1: [number, number], cell2: [number, number]): boolean => {
+    const rowDiff = Math.abs(cell1[0] - cell2[0]);
+    const colDiff = Math.abs(cell1[1] - cell2[1]);
+    return rowDiff <= 1 && colDiff <= 1 && !(rowDiff === 0 && colDiff === 0);
+  }, []);
+
   const handleStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault();
 
@@ -533,9 +546,48 @@ export const GameBoard = () => {
       hasMovedRef.current = false;
       touchPosRef.current = { x: localX, y: localY };
 
+      const now = Date.now();
+      const timeSinceLastTap = now - lastTapTimeRef.current;
+      const currentPath = currentPathRef.current;
+
+      // Check if we should continue a tap sequence
+      if (tapModeActiveRef.current && timeSinceLastTap < TAP_TIMEOUT_MS && currentPath.length > 0) {
+        const lastCell = currentPath[currentPath.length - 1];
+
+        // Check if this cell is already in the path (allow backtracking by tapping previous cell)
+        const existingIndex = currentPath.findIndex(([r, c]) => r === cell[0] && c === cell[1]);
+
+        if (existingIndex !== -1) {
+          // Backtrack to this cell
+          currentPathRef.current = currentPath.slice(0, existingIndex + 1);
+          audioRef.current.playLetterSelect();
+        } else if (isAdjacent(lastCell, cell)) {
+          // Adjacent cell - add to path
+          currentPathRef.current = [...currentPath, cell];
+          playChainSound(currentPath.length + 1);
+        } else {
+          // Not adjacent - start fresh sequence
+          currentPathRef.current = [cell];
+          audioRef.current.playLetterSelect();
+        }
+
+        prevPathLengthRef.current = currentPathRef.current.length;
+      } else {
+        // Start new sequence (either not in tap mode, or timed out)
+        // Cancel any existing tap timer
+        if (tapSubmitTimerRef.current) {
+          clearTimeout(tapSubmitTimerRef.current);
+          tapSubmitTimerRef.current = null;
+        }
+        tapModeActiveRef.current = false;
+
+        currentPathRef.current = [cell];
+        audioRef.current.playLetterSelect();
+        prevPathLengthRef.current = 1;
+      }
+
       // Set path in ref only - NO React state update
       isDraggingRef.current = true;
-      currentPathRef.current = [cell];
       updatePathPoints();
       updateCellHighlights();
 
@@ -546,11 +598,8 @@ export const GameBoard = () => {
         rafIdRef.current = requestAnimationFrame(animate);
       };
       rafIdRef.current = requestAnimationFrame(animate);
-
-      audioRef.current.playLetterSelect();
-      prevPathLengthRef.current = 1;
     }
-  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, drawTrail, updatePathPoints, updateCellHighlights]);
+  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, drawTrail, updatePathPoints, updateCellHighlights, isAdjacent, playChainSound]);
 
   // Ultra-optimized move handler - uses pre-computed cell centers, minimal allocations
   const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
@@ -656,32 +705,16 @@ export const GameBoard = () => {
     }
   }, [boardSize, playChainSound, isCellBlocked, updatePathPoints, updateCellHighlights]);
 
-  const handleEnd = useCallback(() => {
-    // Stop the animation loop first
-    isDraggingRef.current = false;
-
-    // Cancel any pending animation frame
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
-
+  // Helper to submit word in tap mode
+  const submitTapWord = useCallback(() => {
     const path = currentPathRef.current;
-    const hadMovement = hasMovedRef.current;
-
-    // Reset drag state
-    dragStartPosRef.current = null;
-    hasMovedRef.current = false;
-    boardRectRef.current = null;
-    touchPosRef.current = null;
-
-    // Only submit if it was a drag (not a click) and path is valid
-    if (hadMovement && path.length >= 3) {
+    if (path.length >= 3) {
       const word = path.map(([r, c]) => board[r][c]).join('');
       send('submit_word', { word, path });
     }
 
-    // Clear path and update DOM
+    // Clear tap mode state
+    tapModeActiveRef.current = false;
     currentPathRef.current = [];
     pathPointsRef.current = [];
     prevPathLengthRef.current = 0;
@@ -696,11 +729,123 @@ export const GameBoard = () => {
     }
   }, [board, send, updateCellHighlights]);
 
+  // Start/restart tap mode timer
+  const restartTapTimer = useCallback(() => {
+    // Clear existing timer
+    if (tapSubmitTimerRef.current) {
+      clearTimeout(tapSubmitTimerRef.current);
+    }
+    // Start new timer
+    tapSubmitTimerRef.current = setTimeout(() => {
+      submitTapWord();
+    }, TAP_TIMEOUT_MS);
+  }, [submitTapWord]);
+
+  const handleEnd = useCallback(() => {
+    // Stop the animation loop first
+    isDraggingRef.current = false;
+
+    // Cancel any pending animation frame
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+
+    const path = currentPathRef.current;
+    const hadMovement = hasMovedRef.current;
+    const now = Date.now();
+
+    // Check if this was a tap (no movement) - path already updated in handleStart
+    if (!hadMovement && path.length >= 1) {
+      const timeSinceLastTap = now - lastTapTimeRef.current;
+
+      // Check if we're continuing a tap sequence (handleStart already updated the path)
+      if (tapModeActiveRef.current && timeSinceLastTap < TAP_TIMEOUT_MS) {
+        // This tap was already added in handleStart, just update timer
+        lastTapTimeRef.current = now;
+        restartTapTimer();
+
+        // Keep the path and highlights visible
+        updatePathPoints();
+        updateCellHighlights();
+
+        // Reset drag-specific state but keep tap state
+        dragStartPosRef.current = null;
+        hasMovedRef.current = false;
+        boardRectRef.current = null;
+        touchPosRef.current = null;
+        return;
+      } else {
+        // Start new tap mode sequence
+        tapModeActiveRef.current = true;
+        lastTapTimeRef.current = now;
+        restartTapTimer();
+
+        // Keep the path and highlights visible
+        updatePathPoints();
+        updateCellHighlights();
+
+        // Reset drag-specific state but keep tap state
+        dragStartPosRef.current = null;
+        hasMovedRef.current = false;
+        boardRectRef.current = null;
+        touchPosRef.current = null;
+        return;
+      }
+    }
+
+    // Reset drag state
+    dragStartPosRef.current = null;
+    hasMovedRef.current = false;
+    boardRectRef.current = null;
+    touchPosRef.current = null;
+
+    // If it was a drag with movement, submit and clear tap mode
+    if (hadMovement && path.length >= 3) {
+      // Cancel any tap timer
+      if (tapSubmitTimerRef.current) {
+        clearTimeout(tapSubmitTimerRef.current);
+        tapSubmitTimerRef.current = null;
+      }
+      tapModeActiveRef.current = false;
+
+      const word = path.map(([r, c]) => board[r][c]).join('');
+      send('submit_word', { word, path });
+    }
+
+    // If we were dragging (not in tap mode), clear everything
+    if (hadMovement || !tapModeActiveRef.current) {
+      // Cancel tap timer if dragging
+      if (tapSubmitTimerRef.current) {
+        clearTimeout(tapSubmitTimerRef.current);
+        tapSubmitTimerRef.current = null;
+      }
+      tapModeActiveRef.current = false;
+
+      // Clear path and update DOM
+      currentPathRef.current = [];
+      pathPointsRef.current = [];
+      prevPathLengthRef.current = 0;
+      updateCellHighlights();
+      setCurrentWord('');
+
+      // Clear canvas
+      const ctx = ctxRef.current;
+      const canvas = canvasRef.current;
+      if (ctx && canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+  }, [board, send, updateCellHighlights, updatePathPoints, restartTapTimer]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (rafIdRef.current !== null) {
         cancelAnimationFrame(rafIdRef.current);
+      }
+      if (tapSubmitTimerRef.current !== null) {
+        clearTimeout(tapSubmitTimerRef.current);
       }
     };
   }, []);
@@ -729,7 +874,7 @@ export const GameBoard = () => {
       }}
     >
       {/* Header */}
-      <div className={`py-2 flex-shrink-0 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
+      <div className={`py-1 flex-shrink-0 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
           <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
@@ -755,8 +900,8 @@ export const GameBoard = () => {
       </div>
 
       {/* The Board - Constrained square container that fits in viewport */}
-      <div className="flex-1 flex items-center justify-center my-2 overflow-hidden">
-        <div className="relative w-full max-w-[100vw]" style={{ paddingBottom: 'min(100%, calc(100vh - 220px))', maxHeight: 'calc(100vh - 220px)' }}>
+      <div className="flex-1 flex items-center justify-center my-1 overflow-hidden min-h-0">
+        <div className="relative w-full max-w-[min(100vw,calc(100dvh-180px))]" style={{ aspectRatio: '1/1' }}>
           {/* Grid of letters - absolutely positioned to fill the square container */}
           <div
             ref={boardRef}
@@ -804,8 +949,8 @@ export const GameBoard = () => {
         </div>
       </div>
 
-      {/* Power-ups */}
-      <div className="flex justify-center space-x-4 py-3 flex-shrink-0">
+      {/* Power-ups - ensure always visible at bottom */}
+      <div className="flex justify-center space-x-4 py-2 flex-shrink-0">
         {['freeze', 'blowup', 'shuffle'].map(p => {
           const count = me?.powerups?.filter(x => x === p).length || 0;
           return (
