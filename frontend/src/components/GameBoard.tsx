@@ -861,8 +861,8 @@ export const GameBoard = () => {
         height: '100dvh', // Use dynamic viewport height for mobile
         minHeight: '100vh', // Fallback for browsers without dvh support
         paddingTop: 'env(safe-area-inset-top, 8px)',
-        paddingBottom: 'env(safe-area-inset-bottom, 8px)',
-        gridTemplateRows: 'auto 1fr 60px', // Header, Board, Power-ups (fixed 60px for power-ups)
+        paddingBottom: 'max(env(safe-area-inset-bottom, 8px), 16px)', // Extra padding for browser chrome
+        gridTemplateRows: 'auto 1fr 70px', // Header, Board, Power-ups (70px for visibility)
       }}
     >
       {/* Header */}
@@ -897,8 +897,8 @@ export const GameBoard = () => {
           className="relative w-full"
           style={{
             aspectRatio: '1/1',
-            maxWidth: 'min(100%, calc(100dvh - 200px))',
-            maxHeight: 'calc(100dvh - 200px)',
+            maxWidth: 'min(100%, calc(100dvh - 220px))',
+            maxHeight: 'calc(100dvh - 220px)',
           }}
         >
           {/* Grid of letters - absolutely positioned to fill the square container */}
@@ -949,7 +949,7 @@ export const GameBoard = () => {
       </div>
 
       {/* Power-ups - ensure always visible at bottom */}
-      <div className="flex justify-center items-center space-x-4 py-2" style={{ minHeight: '60px' }}>
+      <div className="flex justify-center items-center space-x-4 py-2" style={{ minHeight: '70px' }}>
         {['freeze', 'blowup', 'shuffle'].map(p => {
           const count = me?.powerups?.filter(x => x === p).length || 0;
           return (
