@@ -263,9 +263,8 @@ export const GameBoard = () => {
   }, []);
 
   // Canvas drawing function - ultra-optimized for 60fps
-  // Uses direct touch position (no lag) with smooth interpolation only for the trailing tip
-  // iOS: completely avoids shadowBlur which is extremely slow on Safari
-  // Android: uses shadow for nice glow effect
+  // iOS: MAXIMUM PERFORMANCE MODE - single stroke, no effects, no interpolation lag
+  // Android: full effects with shadow glow
   const drawTrail = useCallback(() => {
     const ctx = ctxRef.current;
     const canvas = canvasRef.current;
@@ -282,20 +281,39 @@ export const GameBoard = () => {
 
     if (points.length === 0) return;
 
-    // iOS: faster interpolation (0.7) for more responsive feel
-    // Android: smoother interpolation (0.5) since it handles it well
-    const interpFactor = isIOS ? 0.7 : 0.5;
     const interp = interpolatedTouchRef.current;
-    if (isDragging) {
-      interp.x += (touchPos.x - interp.x) * interpFactor;
-      interp.y += (touchPos.y - interp.y) * interpFactor;
-    }
 
-    // Scale for DPR
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (isIOS) {
+      // iOS: NO interpolation lag - use direct touch position for instant response
+      // This makes the line feel as responsive as native
+      if (isDragging) {
+        interp.x = touchPos.x;
+        interp.y = touchPos.y;
+      }
 
-    // Build path once, reuse for both strokes
-    const buildPath = () => {
+      // iOS: Manual coordinate scaling (avoid setTransform overhead)
+      ctx.beginPath();
+      ctx.moveTo(points[0].x * dpr, points[0].y * dpr);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x * dpr, points[i].y * dpr);
+      }
+      if (isDragging) {
+        ctx.lineTo(interp.x * dpr, interp.y * dpr);
+      }
+
+      // iOS: Single stroke, solid color, no effects - MAXIMUM SPEED
+      ctx.strokeStyle = '#8B5CF6';
+      ctx.lineWidth = 5 * dpr;
+      ctx.stroke();
+    } else {
+      // Android/Desktop: smooth interpolation
+      if (isDragging) {
+        interp.x += (touchPos.x - interp.x) * 0.5;
+        interp.y += (touchPos.y - interp.y) * 0.5;
+      }
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
       for (let i = 1; i < points.length; i++) {
@@ -304,39 +322,18 @@ export const GameBoard = () => {
       if (isDragging) {
         ctx.lineTo(interp.x, interp.y);
       }
-    };
 
-    if (isIOS) {
-      // iOS PATH: No shadowBlur - use double stroke for glow effect instead
-      // This is MUCH faster on iOS Safari than using shadows
-
-      // First: wide semi-transparent stroke for glow
-      buildPath();
-      ctx.strokeStyle = 'rgba(139, 92, 246, 0.3)';
-      ctx.lineWidth = 12;
-      ctx.stroke();
-
-      // Second: main solid stroke
-      buildPath();
-      ctx.strokeStyle = '#8B5CF6';
-      ctx.lineWidth = 4;
-      ctx.stroke();
-    } else {
-      // Android/Desktop PATH: use shadow for smoother glow
-      buildPath();
+      // Android: shadow for nice glow
       ctx.shadowColor = 'rgba(139, 92, 246, 0.5)';
       ctx.shadowBlur = 10;
       ctx.strokeStyle = '#8B5CF6';
       ctx.lineWidth = 4;
       ctx.stroke();
 
-      // Reset shadow
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
-
-    // Reset transform
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }, []);
 
   // Keep a ref to audio so effects can access latest version
@@ -376,10 +373,10 @@ export const GameBoard = () => {
 
     const setupCanvas = () => {
       const rect = board.getBoundingClientRect();
-      // iOS: cap DPR at 2 to reduce pixel count (iPhone 3x DPR = 9x pixels!)
-      // This significantly improves performance with minimal visual difference
+      // iOS: use DPR of 1 for trail canvas - dramatic performance boost
+      // The trail doesn't need to be super crisp, gameplay feel is more important
       const rawDpr = window.devicePixelRatio || 1;
-      const dpr = isIOSRef.current ? Math.min(rawDpr, 2) : rawDpr;
+      const dpr = isIOSRef.current ? 1 : rawDpr;
 
       // Set canvas size accounting for device pixel ratio for crisp lines
       canvas.width = rect.width * dpr;
@@ -454,18 +451,28 @@ export const GameBoard = () => {
   }, [boardSize]);
 
   // OPTIMIZED: Animation loop that only runs during active drag
-  // Instead of running continuously, we start/stop based on isDraggingRef
+  // iOS: runs at reduced frequency to maintain smooth 60fps
+  const lastFrameTimeRef = useRef(0);
   const startAnimationLoop = useCallback(() => {
     if (rafIdRef.current !== null) return; // Already running
 
-    const animate = () => {
+    const animate = (timestamp: number) => {
       // Stop if no longer dragging and no path to show
       if (!isDraggingRef.current && pathPointsRef.current.length === 0) {
         rafIdRef.current = null;
         return;
       }
 
-      drawTrail();
+      // iOS: throttle to ~45fps (22ms) to ensure consistent frame delivery
+      // This prevents the browser from queuing too many frames
+      const isIOS = isIOSRef.current;
+      const minFrameTime = isIOS ? 22 : 0; // ~45fps on iOS, unlimited on Android
+
+      if (timestamp - lastFrameTimeRef.current >= minFrameTime) {
+        drawTrail();
+        lastFrameTimeRef.current = timestamp;
+      }
+
       rafIdRef.current = requestAnimationFrame(animate);
     };
 
