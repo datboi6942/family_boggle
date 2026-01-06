@@ -74,12 +74,13 @@ const Cell = memo(({
 Cell.displayName = 'Cell';
 
 // CSS for cell states - applied via direct DOM manipulation
-// Uses GPU-accelerated transforms and will-change for smooth 60fps performance
+// Uses GPU-accelerated transforms for smooth 60fps performance
+// Note: Removed contain/will-change properties that caused Android rendering issues
 const CELL_STYLES = `
   .cell {
-    will-change: transform, background-color;
     transform: translateZ(0);
     backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
   }
   .cell.selected {
     background: rgba(139, 92, 246, 0.8) !important;
@@ -99,12 +100,12 @@ const CELL_STYLES = `
   }
   .cell.last:not(.first) .cell-points { color: rgba(139, 92, 246, 0.7) !important; }
   .game-board-grid {
-    contain: layout style paint;
-    will-change: contents;
+    /* Removed contain and will-change - they cause black screen on Android */
+    position: relative;
   }
   .trail-canvas {
-    will-change: transform;
     transform: translateZ(0);
+    -webkit-transform: translateZ(0);
   }
 `;
 
@@ -807,11 +808,6 @@ export const GameBoard = () => {
               touchAction: 'none'
             }}
           >
-          {/* Canvas overlay for butter-smooth 60fps trail rendering */}
-          <canvas
-            ref={canvasRef}
-            className="trail-canvas absolute inset-0 w-full h-full pointer-events-none z-20"
-          />
           {board.map((row, r) => row.map((letter, c) => {
             const key = `${r}-${c}`;
             const isBlocked = blockedSet.has(key);
@@ -833,7 +829,13 @@ export const GameBoard = () => {
               />
             );
           }))}
-        </div>
+          </div>
+          {/* Canvas overlay for trail rendering - OUTSIDE grid to avoid Android rendering issues */}
+          <canvas
+            ref={canvasRef}
+            className="trail-canvas absolute inset-0 w-full h-full pointer-events-none"
+            style={{ zIndex: 20 }}
+          />
         </div>
       </div>
 
