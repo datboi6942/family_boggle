@@ -263,9 +263,12 @@ export const GameBoard = () => {
   }, []);
 
   // Canvas drawing function - ultra-optimized for 60fps
-  // iOS: MAXIMUM PERFORMANCE MODE - single stroke, no effects, no interpolation lag
+  // iOS: DISABLED - canvas during touch is fundamentally broken on iOS Safari
   // Android: full effects with shadow glow
   const drawTrail = useCallback(() => {
+    // iOS: Skip canvas rendering entirely - rely on CSS cell highlights only
+    if (isIOSRef.current) return;
+
     const ctx = ctxRef.current;
     const canvas = canvasRef.current;
     if (!ctx || !canvas) return;
@@ -274,7 +277,6 @@ export const GameBoard = () => {
     const points = pathPointsRef.current;
     const touchPos = touchPosRef.current;
     const isDragging = isDraggingRef.current;
-    const isIOS = isIOSRef.current;
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -283,57 +285,33 @@ export const GameBoard = () => {
 
     const interp = interpolatedTouchRef.current;
 
-    if (isIOS) {
-      // iOS: NO interpolation lag - use direct touch position for instant response
-      // This makes the line feel as responsive as native
-      if (isDragging) {
-        interp.x = touchPos.x;
-        interp.y = touchPos.y;
-      }
-
-      // iOS: Manual coordinate scaling (avoid setTransform overhead)
-      ctx.beginPath();
-      ctx.moveTo(points[0].x * dpr, points[0].y * dpr);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x * dpr, points[i].y * dpr);
-      }
-      if (isDragging) {
-        ctx.lineTo(interp.x * dpr, interp.y * dpr);
-      }
-
-      // iOS: Single stroke, solid color, no effects - MAXIMUM SPEED
-      ctx.strokeStyle = '#8B5CF6';
-      ctx.lineWidth = 5 * dpr;
-      ctx.stroke();
-    } else {
-      // Android/Desktop: smooth interpolation
-      if (isDragging) {
-        interp.x += (touchPos.x - interp.x) * 0.5;
-        interp.y += (touchPos.y - interp.y) * 0.5;
-      }
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      if (isDragging) {
-        ctx.lineTo(interp.x, interp.y);
-      }
-
-      // Android: shadow for nice glow
-      ctx.shadowColor = 'rgba(139, 92, 246, 0.5)';
-      ctx.shadowBlur = 10;
-      ctx.strokeStyle = '#8B5CF6';
-      ctx.lineWidth = 4;
-      ctx.stroke();
-
-      ctx.shadowColor = 'transparent';
-      ctx.shadowBlur = 0;
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Android/Desktop: smooth interpolation
+    if (isDragging) {
+      interp.x += (touchPos.x - interp.x) * 0.5;
+      interp.y += (touchPos.y - interp.y) * 0.5;
     }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    if (isDragging) {
+      ctx.lineTo(interp.x, interp.y);
+    }
+
+    // Android: shadow for nice glow
+    ctx.shadowColor = 'rgba(139, 92, 246, 0.5)';
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = '#8B5CF6';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }, []);
 
   // Keep a ref to audio so effects can access latest version
@@ -451,28 +429,21 @@ export const GameBoard = () => {
   }, [boardSize]);
 
   // OPTIMIZED: Animation loop that only runs during active drag
-  // iOS: runs at reduced frequency to maintain smooth 60fps
-  const lastFrameTimeRef = useRef(0);
+  // iOS: completely disabled - no canvas animation needed
   const startAnimationLoop = useCallback(() => {
+    // iOS: skip animation loop entirely - we only use CSS cell highlights
+    if (isIOSRef.current) return;
+
     if (rafIdRef.current !== null) return; // Already running
 
-    const animate = (timestamp: number) => {
+    const animate = () => {
       // Stop if no longer dragging and no path to show
       if (!isDraggingRef.current && pathPointsRef.current.length === 0) {
         rafIdRef.current = null;
         return;
       }
 
-      // iOS: throttle to ~45fps (22ms) to ensure consistent frame delivery
-      // This prevents the browser from queuing too many frames
-      const isIOS = isIOSRef.current;
-      const minFrameTime = isIOS ? 22 : 0; // ~45fps on iOS, unlimited on Android
-
-      if (timestamp - lastFrameTimeRef.current >= minFrameTime) {
-        drawTrail();
-        lastFrameTimeRef.current = timestamp;
-      }
-
+      drawTrail();
       rafIdRef.current = requestAnimationFrame(animate);
     };
 
@@ -1066,18 +1037,20 @@ export const GameBoard = () => {
             );
           }))}
           </div>
-          {/* Canvas overlay for trail rendering - OUTSIDE grid to avoid Android rendering issues */}
-          <canvas
-            ref={canvasRef}
-            className="trail-canvas absolute inset-0 w-full h-full pointer-events-none"
-            style={{
-              zIndex: 20,
-              // iOS Safari: use transform for GPU layer, avoid will-change which causes memory issues
-              transform: 'translate3d(0,0,0)',
-              backfaceVisibility: 'hidden',
-              WebkitBackfaceVisibility: 'hidden',
-            }}
-          />
+          {/* Canvas overlay for trail rendering - Android/Desktop only */}
+          {/* iOS: canvas completely removed - causes massive performance issues during touch */}
+          {!isIOSRef.current && (
+            <canvas
+              ref={canvasRef}
+              className="trail-canvas absolute inset-0 w-full h-full pointer-events-none"
+              style={{
+                zIndex: 20,
+                transform: 'translate3d(0,0,0)',
+                backfaceVisibility: 'hidden',
+                WebkitBackfaceVisibility: 'hidden',
+              }}
+            />
+          )}
         </div>
       </div>
 
