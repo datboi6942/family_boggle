@@ -394,47 +394,16 @@ export const GameBoard = () => {
   // Pre-computed cell centers for ultra-fast hit detection
   const cellCentersRef = useRef<{ x: number; y: number }[][]>([]);
 
-  // Initialize canvas context and handle resize with throttling
+  // Calculate board dimensions and cell centers (runs on BOTH iOS and Android)
+  // This is separate from canvas setup because iOS doesn't use canvas
   useEffect(() => {
-    const canvas = canvasRef.current;
     const board = boardRef.current;
-    if (!canvas || !board) return;
+    if (!board) return;
 
     let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    const setupCanvas = () => {
+    const setupBoardDimensions = () => {
       const rect = board.getBoundingClientRect();
-      // iOS: use DPR of 1 for trail canvas - dramatic performance boost
-      // The trail doesn't need to be super crisp, gameplay feel is more important
-      const rawDpr = window.devicePixelRatio || 1;
-      const dpr = isIOSRef.current ? 1 : rawDpr;
-
-      // Set canvas size accounting for device pixel ratio for crisp lines
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
-
-      // Get and cache context with optimized settings
-      // iOS: desynchronized hint can improve performance by not waiting for compositor
-      const ctx = canvas.getContext('2d', {
-        alpha: true,
-        willReadFrequently: false,
-        desynchronized: true, // Reduces latency on supported browsers
-      });
-      if (ctx) {
-        // Pre-set properties that don't change - avoids setting them every frame
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        // iOS: imageSmoothingEnabled = false can improve performance slightly
-        if (isIOSRef.current) {
-          ctx.imageSmoothingEnabled = false;
-        }
-        ctxRef.current = ctx;
-      }
-
-      // Update cached DPR
-      dprRef.current = dpr;
 
       // Update board dimensions
       const computedStyle = getComputedStyle(board);
@@ -463,13 +432,13 @@ export const GameBoard = () => {
     const throttledSetup = () => {
       if (resizeTimeout) return;
       resizeTimeout = setTimeout(() => {
-        setupCanvas();
+        setupBoardDimensions();
         resizeTimeout = null;
       }, 100);
     };
 
     // Initial setup
-    setupCanvas();
+    setupBoardDimensions();
 
     // Handle resize with throttling
     const resizeObserver = new ResizeObserver(throttledSetup);
@@ -477,6 +446,52 @@ export const GameBoard = () => {
 
     return () => {
       if (resizeTimeout) clearTimeout(resizeTimeout);
+      resizeObserver.disconnect();
+    };
+  }, [boardSize]);
+
+  // Initialize canvas context (Android/Desktop only - iOS uses SVG)
+  useEffect(() => {
+    if (IS_IOS) return; // iOS uses SVG, not canvas
+
+    const canvas = canvasRef.current;
+    const board = boardRef.current;
+    if (!canvas || !board) return;
+
+    const setupCanvas = () => {
+      const rect = board.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+
+      // Set canvas size accounting for device pixel ratio for crisp lines
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+
+      // Get and cache context with optimized settings
+      const ctx = canvas.getContext('2d', {
+        alpha: true,
+        willReadFrequently: false,
+        desynchronized: true,
+      });
+      if (ctx) {
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctxRef.current = ctx;
+      }
+
+      // Update cached DPR
+      dprRef.current = dpr;
+    };
+
+    // Initial setup
+    setupCanvas();
+
+    // Handle resize
+    const resizeObserver = new ResizeObserver(() => setupCanvas());
+    resizeObserver.observe(board);
+
+    return () => {
       resizeObserver.disconnect();
     };
   }, [boardSize]);
