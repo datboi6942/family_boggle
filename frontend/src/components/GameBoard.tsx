@@ -291,10 +291,28 @@ export const GameBoard = () => {
     }));
 
     // iOS: update SVG polyline directly (no animation loop needed)
+    // Include finger position if dragging
     if (IS_IOS && svgPathRef.current) {
-      const pointsStr = pathPointsRef.current.map(p => `${p.x},${p.y}`).join(' ');
+      let pointsStr = pathPointsRef.current.map(p => `${p.x},${p.y}`).join(' ');
+      // Add current touch position if dragging
+      if (isDraggingRef.current) {
+        const touch = touchPosRef.current;
+        pointsStr += ` ${touch.x},${touch.y}`;
+      }
       svgPathRef.current.setAttribute('points', pointsStr);
     }
+  }, []);
+
+  // iOS: update SVG trail with current finger position during drag
+  const updateIOSSvgTrail = useCallback(() => {
+    if (!IS_IOS || !svgPathRef.current || !isDraggingRef.current) return;
+
+    const points = pathPointsRef.current;
+    if (points.length === 0) return;
+
+    const touch = touchPosRef.current;
+    const pointsStr = points.map(p => `${p.x},${p.y}`).join(' ') + ` ${touch.x},${touch.y}`;
+    svgPathRef.current.setAttribute('points', pointsStr);
   }, []);
 
   // Canvas drawing function - ultra-optimized for 60fps
@@ -740,9 +758,14 @@ export const GameBoard = () => {
     const localX = touch.clientX - rect.left;
     const localY = touch.clientY - rect.top;
 
-    // ALWAYS update touch position for smooth canvas drawing (not throttled)
+    // ALWAYS update touch position for smooth trail drawing (not throttled)
     touchPosRef.current.x = localX;
     touchPosRef.current.y = localY;
+
+    // iOS: update SVG trail immediately with finger position
+    if (IS_IOS) {
+      updateIOSSvgTrail();
+    }
 
     // Track if user has moved (to distinguish click from drag)
     // Use higher threshold (15px) for mobile touch to avoid false positives
@@ -839,7 +862,7 @@ export const GameBoard = () => {
       updatePathPoints();
       updateCellHighlights();
     }
-  }, [boardSize, playChainSound, isCellBlocked, updatePathPoints, updateCellHighlights]);
+  }, [boardSize, playChainSound, isCellBlocked, updatePathPoints, updateCellHighlights, updateIOSSvgTrail]);
 
   // Helper to submit word in tap mode
   const submitTapWord = useCallback(() => {
