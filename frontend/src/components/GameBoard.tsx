@@ -51,10 +51,10 @@ const Cell = memo(({
       data-row={row}
       data-col={col}
       className={`
-        cell aspect-square frosted-glass flex items-center justify-center font-black
+        cell aspect-square flex items-center justify-center font-black
         relative rounded-xl cursor-pointer select-none
         ${isQU ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'}
-        bg-white/5 border border-white/10
+        bg-white/10 border border-white/20 shadow-lg
         ${isBlocked ? 'opacity-20 grayscale border-red-500 pointer-events-none' : ''}
       `}
     >
@@ -74,18 +74,12 @@ const Cell = memo(({
 Cell.displayName = 'Cell';
 
 // CSS for cell states - applied via direct DOM manipulation
-// Uses GPU-accelerated transforms for smooth 60fps performance
-// Note: Removed contain/will-change properties that caused Android rendering issues
+// Simplified for Android compatibility - removed transforms that cause rendering issues
 const CELL_STYLES = `
-  .cell {
-    transform: translateZ(0);
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-  }
   .cell.selected {
     background: rgba(139, 92, 246, 0.8) !important;
     border: 2px solid white !important;
-    transform: translateZ(0) scale(1.1);
+    transform: scale(1.1);
     z-index: 10;
     box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
   }
@@ -99,14 +93,6 @@ const CELL_STYLES = `
     color: #8B5CF6 !important;
   }
   .cell.last:not(.first) .cell-points { color: rgba(139, 92, 246, 0.7) !important; }
-  .game-board-grid {
-    /* Removed contain and will-change - they cause black screen on Android */
-    position: relative;
-  }
-  .trail-canvas {
-    transform: translateZ(0);
-    -webkit-transform: translateZ(0);
-  }
 `;
 
 export const GameBoard = () => {
@@ -292,43 +278,23 @@ export const GameBoard = () => {
   const audioRef = useRef(audio);
   audioRef.current = audio;
 
-  // Force scroll to top and lock scroll when game starts
+  // Force scroll to top when game starts
   // This ensures the board is properly positioned and touch coordinates are accurate
   useEffect(() => {
     // Scroll to top immediately
     window.scrollTo({ top: 0, behavior: 'instant' });
 
-    // Prevent any scrolling while in game - critical for touch accuracy
-    const preventScroll = (e: Event) => {
-      // Allow touch events to pass through to the game board
-      if (e.target instanceof Element && e.target.closest('.game-board-grid')) {
-        return;
-      }
-      e.preventDefault();
-    };
+    // Simple overflow hidden approach - avoids Android rendering bugs with position:fixed
+    const originalOverflow = document.documentElement.style.overflow;
+    const originalBodyOverflow = document.body.style.overflow;
 
-    // Lock body scroll
+    document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
-    document.body.style.position = 'fixed';
-    document.body.style.width = '100%';
-    document.body.style.height = '100%';
-    document.body.style.top = '0';
-    document.body.style.left = '0';
-
-    // Add scroll prevention listeners
-    window.addEventListener('scroll', preventScroll, { passive: false });
-    document.addEventListener('touchmove', preventScroll, { passive: false });
 
     return () => {
       // Restore scroll when leaving game
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
-      document.body.style.height = '';
-      document.body.style.top = '';
-      document.body.style.left = '';
-      window.removeEventListener('scroll', preventScroll);
-      document.removeEventListener('touchmove', preventScroll);
+      document.documentElement.style.overflow = originalOverflow;
+      document.body.style.overflow = originalBodyOverflow;
     };
   }, []);
 
@@ -353,8 +319,8 @@ export const GameBoard = () => {
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
 
-      // Get and cache context with optimized settings
-      const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+      // Get and cache context - removed desynchronized option for Android compatibility
+      const ctx = canvas.getContext('2d', { alpha: true });
       if (ctx) {
         ctxRef.current = ctx;
       }
@@ -754,13 +720,12 @@ export const GameBoard = () => {
 
   return (
     <div
-      className="game-board-container flex flex-col bg-navy-gradient text-white select-none p-2 overflow-hidden fixed inset-0"
+      className="game-board-container flex flex-col bg-navy-gradient text-white select-none p-2 overflow-hidden"
       style={{
         height: '100dvh', // Use dynamic viewport height for mobile
-        minHeight: '-webkit-fill-available', // iOS Safari fallback
+        minHeight: '100vh', // Fallback for browsers without dvh support
         paddingTop: 'env(safe-area-inset-top, 8px)',
         paddingBottom: 'env(safe-area-inset-bottom, 8px)',
-        touchAction: 'none', // Prevent browser touch actions
       }}
     >
       {/* Header */}
