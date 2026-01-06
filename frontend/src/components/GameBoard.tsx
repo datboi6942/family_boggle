@@ -893,7 +893,14 @@ export const GameBoard = () => {
 
       {/* The Board - Constrained square container that fits in available space */}
       <div className="flex items-center justify-center overflow-hidden min-h-0 py-1">
-        <div className="relative h-full max-h-full" style={{ aspectRatio: '1/1', maxWidth: '100%' }}>
+        <div
+          className="relative w-full"
+          style={{
+            aspectRatio: '1/1',
+            maxWidth: 'min(100%, calc(100dvh - 200px))',
+            maxHeight: 'calc(100dvh - 200px)',
+          }}
+        >
           {/* Grid of letters - absolutely positioned to fill the square container */}
           <div
             ref={boardRef}
