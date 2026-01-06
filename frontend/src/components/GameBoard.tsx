@@ -856,16 +856,17 @@ export const GameBoard = () => {
 
   return (
     <div
-      className="game-board-container flex flex-col bg-navy-gradient text-white select-none p-2 overflow-hidden"
+      className="game-board-container grid bg-navy-gradient text-white select-none p-2 overflow-hidden"
       style={{
         height: '100dvh', // Use dynamic viewport height for mobile
         minHeight: '100vh', // Fallback for browsers without dvh support
         paddingTop: 'env(safe-area-inset-top, 8px)',
         paddingBottom: 'env(safe-area-inset-bottom, 8px)',
+        gridTemplateRows: 'auto 1fr auto', // Header, Board, Power-ups
       }}
     >
       {/* Header */}
-      <div className={`py-1 flex-shrink-0 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
+      <div className={`py-1 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
           <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
@@ -890,9 +891,9 @@ export const GameBoard = () => {
         </div>
       </div>
 
-      {/* The Board - Constrained square container that fits in viewport */}
-      <div className="flex-1 flex items-center justify-center my-1 overflow-hidden min-h-0">
-        <div className="relative w-full max-w-[min(100vw-16px,calc(100dvh-220px))]" style={{ aspectRatio: '1/1' }}>
+      {/* The Board - Constrained square container that fits in available space */}
+      <div className="flex items-center justify-center overflow-hidden min-h-0 py-1">
+        <div className="relative h-full max-h-full" style={{ aspectRatio: '1/1', maxWidth: '100%' }}>
           {/* Grid of letters - absolutely positioned to fill the square container */}
           <div
             ref={boardRef}
