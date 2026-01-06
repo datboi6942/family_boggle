@@ -494,9 +494,9 @@ export const GameBoard = () => {
     const cellCenterX = col * cellPlusGap + cellSize / 2;
     const cellCenterY = row * cellPlusGap + cellSize / 2;
 
-    // Distance from touch to cell center (increased safe area for easier selection)
+    // Distance from touch to cell center
     const distSq = (localX - cellCenterX) ** 2 + (localY - cellCenterY) ** 2;
-    const hitRadiusSq = (cellSize * 0.65) ** 2;
+    const hitRadiusSq = (cellSize * 0.45) ** 2;
 
     if (distSq <= hitRadiusSq) {
       return { cell: [row, col], localX, localY };
@@ -647,7 +647,7 @@ export const GameBoard = () => {
     const dx = localX - center.x;
     const dy = localY - center.y;
     const distSq = dx * dx + dy * dy;
-    const hitRadiusSq = (cellSize * 0.65) ** 2;
+    const hitRadiusSq = (cellSize * 0.45) ** 2;
 
     if (distSq > hitRadiusSq) return;
     if (isCellBlocked(row, col)) return;
@@ -862,7 +862,7 @@ export const GameBoard = () => {
         minHeight: '100vh', // Fallback for browsers without dvh support
         paddingTop: 'env(safe-area-inset-top, 8px)',
         paddingBottom: 'env(safe-area-inset-bottom, 8px)',
-        gridTemplateRows: 'auto 1fr auto', // Header, Board, Power-ups
+        gridTemplateRows: 'auto 1fr 60px', // Header, Board, Power-ups (fixed 60px for power-ups)
       }}
     >
       {/* Header */}
@@ -942,7 +942,7 @@ export const GameBoard = () => {
       </div>
 
       {/* Power-ups - ensure always visible at bottom */}
-      <div className="flex justify-center space-x-4 py-2 flex-shrink-0">
+      <div className="flex justify-center items-center space-x-4 py-2" style={{ minHeight: '60px' }}>
         {['freeze', 'blowup', 'shuffle'].map(p => {
           const count = me?.powerups?.filter(x => x === p).length || 0;
           return (
