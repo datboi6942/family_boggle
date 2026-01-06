@@ -662,10 +662,7 @@ export const GameBoard = () => {
   }, [boardSize, updateBoardDimensions]);
 
   // Play chain sound immediately when path grows
-  // iOS: disabled - audio during touch events causes lag
   const playChainSound = useCallback((pathLength: number) => {
-    if (IS_IOS) return; // Skip audio on iOS for performance
-
     const now = Date.now();
     if (now - lastSoundTimeRef.current > 50) {
       audioRef.current.playLetterChain(pathLength);
@@ -724,7 +721,7 @@ export const GameBoard = () => {
         if (existingIndex !== -1) {
           // Backtrack to this cell
           currentPathRef.current = currentPath.slice(0, existingIndex + 1);
-          if (!IS_IOS) audioRef.current.playLetterSelect();
+          audioRef.current.playLetterSelect();
         } else if (isAdjacent(lastCell, cell)) {
           // Adjacent cell - add to path
           currentPathRef.current = [...currentPath, cell];
@@ -732,7 +729,7 @@ export const GameBoard = () => {
         } else {
           // Not adjacent - start fresh sequence
           currentPathRef.current = [cell];
-          if (!IS_IOS) audioRef.current.playLetterSelect();
+          audioRef.current.playLetterSelect();
         }
 
         prevPathLengthRef.current = currentPathRef.current.length;
@@ -746,7 +743,7 @@ export const GameBoard = () => {
         tapModeActiveRef.current = false;
 
         currentPathRef.current = [cell];
-        if (!IS_IOS) audioRef.current.playLetterSelect();
+        audioRef.current.playLetterSelect();
         prevPathLengthRef.current = 1;
       }
 
