@@ -154,21 +154,19 @@ export const GameSummary = () => {
             className="flex-1 flex flex-col items-center justify-center p-6"
           >
             {/* Longest Word Award Animation */}
+            {/* iOS: use tween instead of spring for smoother animations */}
             <motion.div
               initial={{ scale: 0, rotate: -180 }}
               animate={{ scale: 1, rotate: 0 }}
-              transition={{ type: 'spring', damping: 12, delay: 0.2 }}
+              transition={{ type: 'tween', duration: 0.4, ease: 'backOut', delay: 0.2 }}
               className="mb-6"
             >
               <div className="relative">
                 <Trophy className="w-24 h-24 text-yellow-500" />
-                <motion.div
-                  animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  className="absolute inset-0 flex items-center justify-center"
-                >
+                {/* iOS: use CSS animation class instead of Framer Motion infinite loop */}
+                <div className="absolute inset-0 flex items-center justify-center ios-pulse">
                   <Sparkles className="w-32 h-32 text-yellow-400/30" />
-                </motion.div>
+                </div>
               </div>
             </motion.div>
 
@@ -184,7 +182,7 @@ export const GameSummary = () => {
             <motion.div
               initial={{ scale: 0.5, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', damping: 15, delay: 0.6 }}
+              transition={{ type: 'tween', duration: 0.3, ease: 'backOut', delay: 0.6 }}
               className="frosted-glass px-8 py-6 border-2 border-yellow-500 shadow-[0_0_40px_rgba(234,179,8,0.4)] mb-6"
             >
               <h3 className="text-4xl font-black uppercase tracking-tighter italic text-white text-center">

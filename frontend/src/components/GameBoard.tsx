@@ -17,9 +17,10 @@ const LETTER_SCORES: Record<string, number> = {
 };
 
 // Memoized timer component to isolate timer re-renders
+// iOS: use recording-pulse (transform-based) instead of animate-pulse (opacity-based)
 const TimerDisplay = memo(({ formattedTimer, isFrozen }: { formattedTimer: string; isFrozen: boolean }) => (
   <div className={`flex items-center gap-2 ${isFrozen ? 'text-blue-400' : 'text-white'}`}>
-    {isFrozen ? <Snowflake className="w-4 h-4 animate-spin" /> : <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+    {isFrozen ? <Snowflake className="w-4 h-4 animate-spin" /> : <div className="w-2 h-2 bg-red-500 rounded-full recording-pulse" />}
     <span className="text-lg font-black font-mono tabular-nums">{formattedTimer}</span>
   </div>
 ));
@@ -75,25 +76,33 @@ const Cell = memo(({
 Cell.displayName = 'Cell';
 
 // CSS for cell states - applied via direct DOM manipulation
-// Optimized for smooth 60fps animations with GPU acceleration
+// iOS Safari optimization: only promote selected cells to GPU layers, not all cells
+// Use transform-only transitions to avoid paint/layout thrashing
 const CELL_STYLES = `
   .cell {
-    transition: transform 0.08s ease-out, background 0.08s ease-out, box-shadow 0.08s ease-out;
-    will-change: transform;
+    /* iOS: only transition transform, avoid background/box-shadow transitions */
+    transition: transform 0.08s ease-out;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+    /* Don't use will-change on all cells - too many GPU layers kills iOS performance */
   }
   .cell.selected {
     background: rgba(139, 92, 246, 0.8) !important;
     border: 2px solid white !important;
-    transform: scale(1.1) translateZ(0);
+    /* iOS: promote only selected cells to GPU layer */
+    transform: scale(1.1) translate3d(0,0,0);
+    will-change: transform;
     z-index: 10;
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+    /* iOS: use outline instead of box-shadow (cheaper to render) */
+    outline: 3px solid rgba(139, 92, 246, 0.5);
+    outline-offset: 2px;
   }
   .cell.selected .cell-index { display: block !important; }
   .cell.selected .cell-points { color: rgba(255,255,255,0.7) !important; }
   .cell.first {
-    box-shadow: 0 0 0 2px #4ade80, 0 0 20px rgba(139, 92, 246, 0.5) !important;
+    /* iOS: combine outlines for first cell indicator */
+    outline: 3px solid #4ade80 !important;
+    outline-offset: 2px;
   }
   .cell.last:not(.first) {
     background: white !important;
@@ -133,6 +142,12 @@ export const GameBoard = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const dprRef = useRef<number>(window.devicePixelRatio || 1); // Cache DPR to avoid reading every frame
+
+  // iOS detection for performance optimizations - iOS Safari struggles with shadowBlur
+  const isIOSRef = useRef<boolean>(
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
 
   // Interpolation state for smoother trailing line
   const interpolatedTouchRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -249,6 +264,8 @@ export const GameBoard = () => {
 
   // Canvas drawing function - ultra-optimized for 60fps
   // Uses direct touch position (no lag) with smooth interpolation only for the trailing tip
+  // iOS: completely avoids shadowBlur which is extremely slow on Safari
+  // Android: uses shadow for nice glow effect
   const drawTrail = useCallback(() => {
     const ctx = ctxRef.current;
     const canvas = canvasRef.current;
@@ -258,53 +275,65 @@ export const GameBoard = () => {
     const points = pathPointsRef.current;
     const touchPos = touchPosRef.current;
     const isDragging = isDraggingRef.current;
+    const isIOS = isIOSRef.current;
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (points.length === 0) return;
 
-    // Very fast interpolation - 0.6 means line catches up quickly (less lag)
+    // iOS: faster interpolation (0.7) for more responsive feel
+    // Android: smoother interpolation (0.5) since it handles it well
+    const interpFactor = isIOS ? 0.7 : 0.5;
     const interp = interpolatedTouchRef.current;
     if (isDragging) {
-      interp.x += (touchPos.x - interp.x) * 0.6;
-      interp.y += (touchPos.y - interp.y) * 0.6;
+      interp.x += (touchPos.x - interp.x) * interpFactor;
+      interp.y += (touchPos.y - interp.y) * interpFactor;
     }
 
     // Scale for DPR
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Build path
-    ctx.beginPath();
-    const p0 = points[0];
-    ctx.moveTo(p0.x, p0.y);
-
-    const len = points.length;
-    if (len === 1) {
-      // Single point - draw line to finger
-      if (isDragging) {
-        ctx.lineTo(interp.x, interp.y);
-      }
-    } else {
-      // Multiple points - use simple lines for speed (curves are expensive)
-      for (let i = 1; i < len; i++) {
+    // Build path once, reuse for both strokes
+    const buildPath = () => {
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
         ctx.lineTo(points[i].x, points[i].y);
       }
-      // Trailing line to finger
       if (isDragging) {
         ctx.lineTo(interp.x, interp.y);
       }
+    };
+
+    if (isIOS) {
+      // iOS PATH: No shadowBlur - use double stroke for glow effect instead
+      // This is MUCH faster on iOS Safari than using shadows
+
+      // First: wide semi-transparent stroke for glow
+      buildPath();
+      ctx.strokeStyle = 'rgba(139, 92, 246, 0.3)';
+      ctx.lineWidth = 12;
+      ctx.stroke();
+
+      // Second: main solid stroke
+      buildPath();
+      ctx.strokeStyle = '#8B5CF6';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    } else {
+      // Android/Desktop PATH: use shadow for smoother glow
+      buildPath();
+      ctx.shadowColor = 'rgba(139, 92, 246, 0.5)';
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = '#8B5CF6';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // Reset shadow
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
     }
-
-    // Draw glow layer
-    ctx.strokeStyle = 'rgba(139, 92, 246, 0.35)';
-    ctx.lineWidth = 12;
-    ctx.stroke();
-
-    // Draw main line
-    ctx.strokeStyle = '#8B5CF6';
-    ctx.lineWidth = 4;
-    ctx.stroke();
 
     // Reset transform
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -347,7 +376,10 @@ export const GameBoard = () => {
 
     const setupCanvas = () => {
       const rect = board.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
+      // iOS: cap DPR at 2 to reduce pixel count (iPhone 3x DPR = 9x pixels!)
+      // This significantly improves performance with minimal visual difference
+      const rawDpr = window.devicePixelRatio || 1;
+      const dpr = isIOSRef.current ? Math.min(rawDpr, 2) : rawDpr;
 
       // Set canvas size accounting for device pixel ratio for crisp lines
       canvas.width = rect.width * dpr;
@@ -356,11 +388,20 @@ export const GameBoard = () => {
       canvas.style.height = `${rect.height}px`;
 
       // Get and cache context with optimized settings
-      const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false });
+      // iOS: desynchronized hint can improve performance by not waiting for compositor
+      const ctx = canvas.getContext('2d', {
+        alpha: true,
+        willReadFrequently: false,
+        desynchronized: true, // Reduces latency on supported browsers
+      });
       if (ctx) {
         // Pre-set properties that don't change - avoids setting them every frame
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        // iOS: imageSmoothingEnabled = false can improve performance slightly
+        if (isIOSRef.current) {
+          ctx.imageSmoothingEnabled = false;
+        }
         ctxRef.current = ctx;
       }
 
@@ -949,19 +990,21 @@ export const GameBoard = () => {
       }}
     >
       {/* Header */}
-      <div className={`py-1 ${isFrozen ? 'animate-pulse text-blue-400' : ''}`}>
+      {/* iOS: use ios-pulse (transform-based) instead of animate-pulse (opacity-based) */}
+      <div className={`py-1 ${isFrozen ? 'ios-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
           <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
-            {isFrozen ? <Snowflake className="w-5 h-5 animate-spin" /> : <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />}
+            {isFrozen ? <Snowflake className="w-5 h-5 animate-spin" /> : <div className="w-3 h-3 bg-red-500 rounded-full recording-pulse" />}
             <span className="text-xl sm:text-2xl font-black font-mono tabular-nums">{formattedTimer}</span>
           </div>
 
           {/* Current Word (center) - Updated via ref, no React re-renders */}
+          {/* iOS: removed animate-pulse for performance - word changes provide visual feedback */}
           <div className="flex-1 text-center min-w-0 overflow-hidden">
             <div
               ref={wordDisplayRef}
-              className="text-lg sm:text-2xl font-black tracking-wider text-primary animate-pulse truncate"
+              className="text-lg sm:text-2xl font-black tracking-wider text-primary truncate"
               style={{ display: 'none' }}
             />
           </div>
@@ -1022,14 +1065,17 @@ export const GameBoard = () => {
             className="trail-canvas absolute inset-0 w-full h-full pointer-events-none"
             style={{
               zIndex: 20,
-              willChange: 'contents', // Hint to browser for GPU acceleration
-              transform: 'translateZ(0)', // Force GPU layer
+              // iOS Safari: use transform for GPU layer, avoid will-change which causes memory issues
+              transform: 'translate3d(0,0,0)',
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
             }}
           />
         </div>
       </div>
 
       {/* Power-ups - ensure always visible at bottom */}
+      {/* iOS: use ios-pulse (transform-based) instead of animate-pulse (opacity-based) */}
       <div className="flex justify-center items-center space-x-4 py-3" style={{ minHeight: '80px' }}>
         {['freeze', 'blowup', 'shuffle'].map(p => {
           const count = me?.powerups?.filter(x => x === p).length || 0;
@@ -1045,7 +1091,7 @@ export const GameBoard = () => {
               }}
               className={`
                 relative p-3 rounded-xl frosted-glass transition-all
-                ${count > 0 ? 'bg-primary/20 border-primary animate-pulse' : 'opacity-50'}
+                ${count > 0 ? 'bg-primary/20 border-primary ios-pulse' : 'opacity-50'}
               `}
             >
               {p === 'freeze' && <Snowflake className="w-5 h-5" />}
@@ -1062,6 +1108,7 @@ export const GameBoard = () => {
       </div>
 
       {/* Word Result Popup */}
+      {/* iOS: use tween instead of spring for smoother animations */}
       <AnimatePresence mode="wait">
         {lastWordResult && (
           <motion.div
@@ -1069,11 +1116,12 @@ export const GameBoard = () => {
             initial={{ y: 20, opacity: 0, scale: 0.8 }}
             animate={{ y: -50, opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            transition={{ type: "tween", duration: 0.2, ease: "easeOut" }}
             className={`
               fixed left-1/2 bottom-32 -translate-x-1/2 px-6 py-3 rounded-full font-bold z-50 flex flex-col items-center
               ${lastWordResult.valid ? 'bg-success text-white' : 'bg-error text-white'}
             `}
+            style={{ transform: 'translate3d(-50%, 0, 0)' }}
           >
             <span>{lastWordResult.valid ? `+${lastWordResult.points} POINTS!` : lastWordResult.reason}</span>
             {/* Powerup Earned Animation */}
@@ -1081,7 +1129,7 @@ export const GameBoard = () => {
               <motion.div
                 initial={{ scale: 0, rotate: -180 }}
                 animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.2 }}
+                transition={{ type: "tween", duration: 0.25, ease: "backOut", delay: 0.15 }}
                 className="flex items-center gap-2 mt-1 bg-yellow-500 text-black px-3 py-1 rounded-full text-sm"
               >
                 {lastWordResult.powerup === 'freeze' && <Snowflake className="w-4 h-4" />}

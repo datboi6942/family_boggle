@@ -66,6 +66,29 @@ body {
   100% { transform: scale(1); }
 }
 
+/* iOS-optimized pulse using transform instead of opacity (GPU accelerated) */
+@keyframes ios-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.ios-pulse {
+  animation: ios-pulse 2s ease-in-out infinite;
+  transform: translateZ(0);
+}
+
+/* Recording dot pulse - uses transform for iOS */
+@keyframes recording-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.7; }
+}
+
+.recording-pulse {
+  animation: recording-pulse 1.5s ease-in-out infinite;
+  transform: translateZ(0);
+  contain: layout style;
+}
+
 .shimmer {
   background: linear-gradient(
     90deg,
@@ -211,111 +234,172 @@ body {
 }
 
 /* Animation classes with GPU acceleration hints */
+/* iOS Safari performance: use contain and reduce paint areas */
 .animate-monster-blobby {
   animation: monster-blobby 1.5s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
+  contain: layout style paint;
 }
 
 .animate-monster-spike {
   animation: monster-spike 2s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
+  contain: layout style paint;
 }
 
 .animate-monster-chompy {
   animation: monster-chompy 0.8s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
+  contain: layout style paint;
 }
 
 .animate-monster-floaty {
   animation: monster-floaty 3s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
+  contain: layout style paint;
 }
 
 .animate-monster-grumble {
   animation: monster-grumble 1.2s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
+  contain: layout style paint;
 }
 
 .animate-monster-zippy {
   animation: monster-zippy 0.6s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
+  contain: layout style paint;
 }
 
 .animate-monster-mossy {
   animation: monster-mossy 4s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
+  contain: layout style paint;
 }
 
 .animate-monster-pebble {
   animation: monster-pebble 5s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
+  contain: layout style paint;
 }
 
 .animate-monster-bubbles {
   animation: monster-bubbles 1.8s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
+  contain: layout style paint;
 }
 
 .animate-monster-shadow {
   animation: monster-shadow 2.5s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
+  contain: layout style paint;
 }
 
-/* Eye animation classes */
+/* Pause monster animations when user prefers reduced motion or for iOS battery saving */
+@media (prefers-reduced-motion: reduce) {
+  .animate-monster-blobby,
+  .animate-monster-spike,
+  .animate-monster-chompy,
+  .animate-monster-floaty,
+  .animate-monster-grumble,
+  .animate-monster-zippy,
+  .animate-monster-mossy,
+  .animate-monster-pebble,
+  .animate-monster-bubbles,
+  .animate-monster-shadow,
+  .animate-monster-blink,
+  .animate-monster-blink-slow,
+  .animate-monster-squint,
+  .animate-monster-drowsy,
+  .animate-monster-glare,
+  .animate-monster-excited,
+  .animate-monster-sparkle,
+  .animate-monster-fade,
+  .animate-monster-chomp,
+  .animate-monster-bubble-1,
+  .animate-monster-bubble-2,
+  .animate-monster-bubble-3 {
+    animation: none !important;
+  }
+}
+
+/* Eye animation classes - GPU accelerated for iOS */
 .animate-monster-blink {
   animation: monster-blink 3s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
 }
 
 .animate-monster-blink-slow {
   animation: monster-blink-slow 5s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
 }
 
 .animate-monster-squint {
   animation: monster-squint 2s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
 }
 
 .animate-monster-drowsy {
   animation: monster-drowsy 3s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
 }
 
 .animate-monster-glare {
   animation: monster-glare 1.2s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
 }
 
 .animate-monster-excited {
   animation: monster-excited 0.6s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
 }
 
 .animate-monster-sparkle {
   animation: monster-sparkle 1.8s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
 }
 
 .animate-monster-fade {
   animation: monster-fade 2.5s ease-in-out infinite;
+  transform: translateZ(0);
 }
 
-/* Mouth animation classes */
+/* Mouth animation classes - GPU accelerated for iOS */
 .animate-monster-chomp {
   animation: monster-chomp 0.8s ease-in-out infinite;
   transform-origin: center;
+  transform: translateZ(0);
 }
 
-/* Bubble animation classes */
+/* Bubble animation classes - GPU accelerated for iOS */
 .animate-monster-bubble-1 {
   animation: monster-bubble-1 2s ease-in-out infinite;
+  transform: translateZ(0);
 }
 
 .animate-monster-bubble-2 {
   animation: monster-bubble-2 1.5s ease-in-out infinite 0.5s;
+  transform: translateZ(0);
 }
 
 .animate-monster-bubble-3 {
   animation: monster-bubble-3 1.8s ease-in-out infinite 0.3s;
+  transform: translateZ(0);
 }
