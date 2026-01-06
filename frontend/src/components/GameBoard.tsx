@@ -155,10 +155,13 @@ export const GameBoard = () => {
   const lastSoundTimeRef = useRef(0);
   const prevPathLengthRef = useRef(0);
 
-  // Canvas ref for butter-smooth 60fps trail rendering
+  // Canvas ref for butter-smooth 60fps trail rendering (Android/Desktop)
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const dprRef = useRef<number>(window.devicePixelRatio || 1); // Cache DPR to avoid reading every frame
+
+  // iOS: SVG-based trail (hardware accelerated, no canvas performance issues)
+  const svgPathRef = useRef<SVGPolylineElement>(null);
 
   // iOS detection - use module-level constant
   const isIOSRef = useRef<boolean>(IS_IOS);
@@ -265,16 +268,19 @@ export const GameBoard = () => {
     }
   }, [board]);
 
-  // Update path pixel positions for canvas drawing
-  // iOS: skip entirely - we don't use canvas
+  // Update path pixel positions for trail drawing
+  // iOS: updates SVG polyline points attribute
+  // Android: updates canvas path points
   const updatePathPoints = useCallback(() => {
-    if (IS_IOS) return; // No canvas on iOS
-
     const path = currentPathRef.current;
     const dims = boardDimensionsRef.current;
 
     if (path.length === 0 || !dims) {
       pathPointsRef.current = [];
+      // iOS: clear SVG path
+      if (IS_IOS && svgPathRef.current) {
+        svgPathRef.current.setAttribute('points', '');
+      }
       return;
     }
 
@@ -283,6 +289,12 @@ export const GameBoard = () => {
       x: c * (cellSize + gapSize) + cellSize / 2,
       y: r * (cellSize + gapSize) + cellSize / 2,
     }));
+
+    // iOS: update SVG polyline directly (no animation loop needed)
+    if (IS_IOS && svgPathRef.current) {
+      const pointsStr = pathPointsRef.current.map(p => `${p.x},${p.y}`).join(' ');
+      svgPathRef.current.setAttribute('points', pointsStr);
+    }
   }, []);
 
   // Canvas drawing function - ultra-optimized for 60fps
@@ -844,11 +856,17 @@ export const GameBoard = () => {
     prevPathLengthRef.current = 0;
     updateCellHighlights(); // This also clears the word display
 
-    // Clear canvas
-    const ctx = ctxRef.current;
-    const canvas = canvasRef.current;
-    if (ctx && canvas) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Clear trail (canvas or SVG)
+    if (IS_IOS) {
+      if (svgPathRef.current) {
+        svgPathRef.current.setAttribute('points', '');
+      }
+    } else {
+      const ctx = ctxRef.current;
+      const canvas = canvasRef.current;
+      if (ctx && canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
     }
   }, [board, send, updateCellHighlights]);
 
@@ -933,11 +951,17 @@ export const GameBoard = () => {
       prevPathLengthRef.current = 0;
       updateCellHighlights(); // This also clears the word display
 
-      // Clear canvas
-      const ctx = ctxRef.current;
-      const canvas = canvasRef.current;
-      if (ctx && canvas) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Clear trail (canvas or SVG)
+      if (IS_IOS) {
+        if (svgPathRef.current) {
+          svgPathRef.current.setAttribute('points', '');
+        }
+      } else {
+        const ctx = ctxRef.current;
+        const canvas = canvasRef.current;
+        if (ctx && canvas) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
       }
     }
   }, [board, send, updateCellHighlights, updatePathPoints, restartTapTimer, drawTrail]);
@@ -1063,9 +1087,24 @@ export const GameBoard = () => {
             );
           }))}
           </div>
-          {/* Canvas overlay for trail rendering - Android/Desktop only */}
-          {/* iOS: canvas completely removed - causes massive performance issues during touch */}
-          {!isIOSRef.current && (
+          {/* Trail overlay - different implementations for iOS vs Android */}
+          {IS_IOS ? (
+            /* iOS: SVG-based trail - hardware accelerated, no canvas performance issues */
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              style={{ zIndex: 20 }}
+            >
+              <polyline
+                ref={svgPathRef}
+                fill="none"
+                stroke="#8B5CF6"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            /* Android/Desktop: Canvas-based trail with glow effects */
             <canvas
               ref={canvasRef}
               className="trail-canvas absolute inset-0 w-full h-full pointer-events-none"
