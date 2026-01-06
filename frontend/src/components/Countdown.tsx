@@ -13,6 +13,26 @@ export const Countdown = () => {
   const audioRef = useRef(audio);
   audioRef.current = audio;
 
+  // CRITICAL: Scroll to top and lock scroll during countdown
+  // This ensures the game board will be properly positioned when the game starts
+  useEffect(() => {
+    // Force scroll to top immediately - this is crucial for touch accuracy
+    window.scrollTo({ top: 0, behavior: 'instant' });
+
+    // Lock body scroll during countdown to prevent any accidental scrolling
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
+    document.body.style.top = '0';
+    document.body.style.left = '0';
+
+    return () => {
+      // Don't restore scroll here - GameBoard will take over scroll lock
+      // Only restore if going back to lobby (which will handle its own cleanup)
+    };
+  }, []);
+
   // Stop any previous music and play countdown riser when countdown starts
   useEffect(() => {
     if (!musicStartedRef.current) {
@@ -40,7 +60,13 @@ export const Countdown = () => {
   }, [timer]);
 
   return (
-    <div className="flex items-center justify-center h-full bg-navy-gradient">
+    <div
+      className="flex items-center justify-center bg-navy-gradient fixed inset-0"
+      style={{
+        height: '100dvh',
+        minHeight: '-webkit-fill-available',
+      }}
+    >
       <motion.div
         key={timer}
         initial={{ scale: 2, opacity: 0 }}

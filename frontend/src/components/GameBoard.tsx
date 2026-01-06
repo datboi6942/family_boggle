@@ -291,9 +291,44 @@ export const GameBoard = () => {
   const audioRef = useRef(audio);
   audioRef.current = audio;
 
-  // Scroll to top when game starts to prevent header from obscuring the board
+  // Force scroll to top and lock scroll when game starts
+  // This ensures the board is properly positioned and touch coordinates are accurate
   useEffect(() => {
+    // Scroll to top immediately
     window.scrollTo({ top: 0, behavior: 'instant' });
+
+    // Prevent any scrolling while in game - critical for touch accuracy
+    const preventScroll = (e: Event) => {
+      // Allow touch events to pass through to the game board
+      if (e.target instanceof Element && e.target.closest('.game-board-grid')) {
+        return;
+      }
+      e.preventDefault();
+    };
+
+    // Lock body scroll
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
+    document.body.style.top = '0';
+    document.body.style.left = '0';
+
+    // Add scroll prevention listeners
+    window.addEventListener('scroll', preventScroll, { passive: false });
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+
+    return () => {
+      // Restore scroll when leaving game
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.height = '';
+      document.body.style.top = '';
+      document.body.style.left = '';
+      window.removeEventListener('scroll', preventScroll);
+      document.removeEventListener('touchmove', preventScroll);
+    };
   }, []);
 
   // Pre-computed cell centers for ultra-fast hit detection
@@ -718,10 +753,13 @@ export const GameBoard = () => {
 
   return (
     <div
-      className="game-board-container flex flex-col h-screen bg-navy-gradient text-white select-none p-2 overflow-hidden"
+      className="game-board-container flex flex-col bg-navy-gradient text-white select-none p-2 overflow-hidden fixed inset-0"
       style={{
+        height: '100dvh', // Use dynamic viewport height for mobile
+        minHeight: '-webkit-fill-available', // iOS Safari fallback
         paddingTop: 'env(safe-area-inset-top, 8px)',
-        paddingBottom: 'env(safe-area-inset-bottom, 8px)'
+        paddingBottom: 'env(safe-area-inset-bottom, 8px)',
+        touchAction: 'none', // Prevent browser touch actions
       }}
     >
       {/* Header */}

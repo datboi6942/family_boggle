@@ -19,6 +19,19 @@ export const Lobby = () => {
   const audioRef = useRef(audio);
   audioRef.current = audio;
 
+  // Restore scroll state when entering lobby (e.g., after game ends)
+  useEffect(() => {
+    // Restore body scroll - clear any scroll locks from game/countdown
+    document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.width = '';
+    document.body.style.height = '';
+    document.body.style.top = '';
+    document.body.style.left = '';
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
   // Start menu music
   useEffect(() => {
     if (!musicStartedRef.current) {

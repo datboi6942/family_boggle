@@ -11,19 +11,20 @@ export const useWebSocketContext = () => useContext(WebSocketContext);
 
 export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   const socketRef = useRef<WebSocket | null>(null);
-  const reconnectAttempted = useRef(false);
-  const { 
-    lobbyId, 
-    playerId, 
-    username, 
-    character, 
+  const isConnectingRef = useRef(false); // Prevent concurrent connection attempts
+  const connectionIdRef = useRef(0); // Track connection attempts to cancel stale ones
+  const {
+    lobbyId,
+    playerId,
+    username,
+    character,
     mode,
     status,
-    updateFromLobby, 
-    updateFromGameState, 
-    setWordResult, 
-    setGameEnd, 
-    setPowerup, 
+    updateFromLobby,
+    updateFromGameState,
+    setWordResult,
+    setGameEnd,
+    setPowerup,
     setStatus,
     resetSession
   } = useGameStore();
@@ -31,13 +32,32 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   const connect = useCallback(() => {
     // Only connect when we have lobby info and we're past the join screen
     if (!lobbyId || !playerId || status === 'join') return;
-    
-    // Don't reconnect if already connected
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) return;
-    
-    // Close any existing connection
+
+    // Don't reconnect if already connected or connecting
     if (socketRef.current) {
-      socketRef.current.close();
+      const state = socketRef.current.readyState;
+      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
+        console.log('WebSocket already connected or connecting, skipping');
+        return;
+      }
+    }
+
+    // Prevent concurrent connection attempts
+    if (isConnectingRef.current) {
+      console.log('Connection already in progress, skipping');
+      return;
+    }
+
+    isConnectingRef.current = true;
+    const thisConnectionId = ++connectionIdRef.current;
+
+    // Close any existing connection cleanly
+    if (socketRef.current) {
+      try {
+        socketRef.current.close(1000, 'Reconnecting');
+      } catch {
+        // Ignore close errors
+      }
       socketRef.current = null;
     }
 
@@ -50,10 +70,20 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     const socket = new WebSocket(url);
 
     socket.onopen = () => {
+      // Check if this connection is still current
+      if (thisConnectionId !== connectionIdRef.current) {
+        console.log('Stale connection opened, closing');
+        socket.close();
+        return;
+      }
       console.log('WebSocket connected');
+      isConnectingRef.current = false;
     };
 
     socket.onmessage = (event) => {
+      // Ignore messages from stale connections
+      if (thisConnectionId !== connectionIdRef.current) return;
+
       const message = JSON.parse(event.data);
       console.log('Received:', message);
 
@@ -105,7 +135,13 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
 
     socket.onclose = (event) => {
       console.log('WebSocket disconnected', event.code, event.reason);
-      socketRef.current = null;
+      isConnectingRef.current = false;
+
+      // Only clear ref if this is the current connection
+      if (socketRef.current === socket) {
+        socketRef.current = null;
+      }
+
       if (event.code === 1008) {
         alert(event.reason || 'Could not join lobby');
         resetSession();
@@ -114,39 +150,48 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
 
     socket.onerror = (error) => {
       console.error('WebSocket error:', error);
+      isConnectingRef.current = false;
     };
 
     socketRef.current = socket;
   }, [lobbyId, playerId, username, character, mode, status, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setStatus, resetSession]);
 
-  // Connect when transitioning from 'join' to 'lobby', or reconnect on page refresh
+  // Single unified effect for connection management
   useEffect(() => {
-    // Reconnect if we have session data but no active connection (e.g., after page refresh)
-    if (!reconnectAttempted.current && lobbyId && playerId && status !== 'join' && !socketRef.current) {
-      reconnectAttempted.current = true;
-      console.log('Attempting to reconnect to existing session...');
-      connect();
-    }
-    // Normal connect when transitioning to lobby
-    if (status === 'lobby' && lobbyId && playerId && !socketRef.current) {
-      connect();
+    // Should we be connected?
+    const shouldConnect = lobbyId && playerId && status !== 'join';
+
+    if (shouldConnect) {
+      // Need a connection
+      if (!socketRef.current || socketRef.current.readyState === WebSocket.CLOSED) {
+        connect();
+      }
+    } else {
+      // Should disconnect
+      if (socketRef.current) {
+        console.log('Disconnecting WebSocket (status changed to join or no lobby)');
+        connectionIdRef.current++; // Invalidate any pending connection
+        try {
+          socketRef.current.close(1000, 'Session ended');
+        } catch {
+          // Ignore close errors
+        }
+        socketRef.current = null;
+        isConnectingRef.current = false;
+      }
     }
   }, [status, lobbyId, playerId, connect]);
-
-  // Disconnect when returning to join screen or clearing session
-  useEffect(() => {
-    if ((status === 'join' || !lobbyId || !playerId) && socketRef.current) {
-      console.log('Disconnecting WebSocket...');
-      socketRef.current.close();
-      socketRef.current = null;
-    }
-  }, [status, lobbyId, playerId]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      connectionIdRef.current++; // Invalidate any pending connection
       if (socketRef.current) {
-        socketRef.current.close();
+        try {
+          socketRef.current.close(1000, 'Component unmounted');
+        } catch {
+          // Ignore close errors
+        }
         socketRef.current = null;
       }
     };

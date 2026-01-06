@@ -16,6 +16,19 @@ export const GameSummary = () => {
   const [showAllWords, setShowAllWords] = useState(false);
   const musicStartedRef = useRef(false);
 
+  // Restore scroll state when entering summary (game locks scroll)
+  useEffect(() => {
+    // Restore body scroll - clear any scroll locks from game
+    document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.width = '';
+    document.body.style.height = '';
+    document.body.style.top = '';
+    document.body.style.left = '';
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
   // Stable audio function refs that always use the latest audio context
   const playSummaryMusic = useCallback(() => {
     audio.stopMusic();
