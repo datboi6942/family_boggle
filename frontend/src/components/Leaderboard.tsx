@@ -21,7 +21,8 @@ interface PlayerStats {
   win_rate: number;
 }
 
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:2626`;
+// Use the same host as the frontend (routes through nginx which preserves client IP)
+const API_BASE = `${window.location.protocol}//${window.location.host}`;
 
 export const Leaderboard = () => {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
