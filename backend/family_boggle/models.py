@@ -10,6 +10,8 @@ class PlayerModel(BaseModel):
     score: int = 0
     powerups: List[str] = []
     found_words: List[str] = []
+    bonus_time: int = 0  # Extra time from freeze powerup
+    is_time_up: bool = False  # Whether this player's time has run out
 
 class GameStateModel(BaseModel):
     """Data model for the game state."""

@@ -13,6 +13,9 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   const socketRef = useRef<WebSocket | null>(null);
   const isConnectingRef = useRef(false); // Prevent concurrent connection attempts
   const connectionIdRef = useRef(0); // Track connection attempts to cancel stale ones
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryCountRef = useRef(0);
+  const maxRetries = 3;
   const {
     lobbyId,
     playerId,
@@ -25,13 +28,25 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     setWordResult,
     setGameEnd,
     setPowerup,
+    setWaitingPhase,
+    setPlayerTimeUp,
+    updateBonusTimer,
     setStatus,
     resetSession
   } = useGameStore();
 
   const connect = useCallback(() => {
-    // Only connect when we have lobby info and we're past the join screen
-    if (!lobbyId || !playerId || status === 'join') return;
+    // CRITICAL: Validate ALL required fields before attempting connection
+    if (!lobbyId || !playerId || !username || !character || status === 'join') {
+      console.log('WebSocket connection skipped - missing required fields:', {
+        lobbyId: !!lobbyId,
+        playerId: !!playerId,
+        username: !!username,
+        character: !!character,
+        status
+      });
+      return;
+    }
 
     // Don't reconnect if already connected or connecting
     if (socketRef.current) {
@@ -76,8 +91,15 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
         socket.close();
         return;
       }
-      console.log('WebSocket connected');
+      console.log('WebSocket connected successfully');
       isConnectingRef.current = false;
+      retryCountRef.current = 0; // Reset retry count on successful connection
+
+      // Clear any pending retry attempts
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
     };
 
     socket.onmessage = (event) => {
@@ -130,6 +152,18 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
             message.data.powerup
           );
           break;
+        case 'waiting_phase':
+          // Transition to waiting phase when main timer ends
+          setWaitingPhase(message.data, playerId || undefined);
+          break;
+        case 'player_time_up':
+          // A specific player's time (including bonus) has run out
+          setPlayerTimeUp(message.data.player_id, playerId || undefined);
+          break;
+        case 'bonus_timer_update':
+          // Update bonus time for players still playing
+          updateBonusTimer(message.data, playerId || undefined);
+          break;
       }
     };
 
@@ -142,8 +176,29 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
         socketRef.current = null;
       }
 
-      if (event.code === 1008) {
-        alert(event.reason || 'Could not join lobby');
+      // Don't retry if this is an intentional close or policy violation
+      if (event.code === 1000 || event.code === 1008) {
+        if (event.code === 1008) {
+          alert(event.reason || 'Could not join lobby');
+          resetSession();
+        }
+        return;
+      }
+
+      // Retry with exponential backoff for unexpected disconnections
+      if (retryCountRef.current < maxRetries && thisConnectionId === connectionIdRef.current) {
+        const retryDelay = Math.min(1000 * Math.pow(2, retryCountRef.current), 5000);
+        console.log(`WebSocket disconnected, retrying in ${retryDelay}ms (attempt ${retryCountRef.current + 1}/${maxRetries})`);
+        retryCountRef.current++;
+
+        retryTimeoutRef.current = setTimeout(() => {
+          if (thisConnectionId === connectionIdRef.current) {
+            connect();
+          }
+        }, retryDelay);
+      } else if (retryCountRef.current >= maxRetries) {
+        console.error('Max WebSocket retry attempts reached');
+        alert('Unable to connect to game server. Please try again.');
         resetSession();
       }
     };
@@ -154,23 +209,42 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     };
 
     socketRef.current = socket;
-  }, [lobbyId, playerId, username, character, mode, status, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setStatus, resetSession]);
+  }, [lobbyId, playerId, username, character, mode, status, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setWaitingPhase, setPlayerTimeUp, updateBonusTimer, setStatus, resetSession]);
 
   // Single unified effect for connection management
   useEffect(() => {
     // Should we be connected?
-    const shouldConnect = lobbyId && playerId && status !== 'join';
+    const shouldConnect = lobbyId && playerId && username && character && status !== 'join';
 
     if (shouldConnect) {
-      // Need a connection
-      if (!socketRef.current || socketRef.current.readyState === WebSocket.CLOSED) {
-        connect();
-      }
+      // Add a small delay to ensure state is fully hydrated (fixes iOS race condition)
+      const connectTimer = setTimeout(() => {
+        // Revalidate all required fields after delay
+        const store = useGameStore.getState();
+        if (store.lobbyId && store.playerId && store.username && store.character && store.status !== 'join') {
+          // Need a connection
+          if (!socketRef.current || socketRef.current.readyState === WebSocket.CLOSED) {
+            connect();
+          }
+        } else {
+          console.log('Connection delayed - still waiting for complete state hydration');
+        }
+      }, 100); // 100ms delay to ensure state persistence completes
+
+      return () => clearTimeout(connectTimer);
     } else {
       // Should disconnect
       if (socketRef.current) {
         console.log('Disconnecting WebSocket (status changed to join or no lobby)');
         connectionIdRef.current++; // Invalidate any pending connection
+
+        // Clear any pending retry attempts
+        if (retryTimeoutRef.current) {
+          clearTimeout(retryTimeoutRef.current);
+          retryTimeoutRef.current = null;
+        }
+        retryCountRef.current = 0;
+
         try {
           socketRef.current.close(1000, 'Session ended');
         } catch {
@@ -180,12 +254,19 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
         isConnectingRef.current = false;
       }
     }
-  }, [status, lobbyId, playerId, connect]);
+  }, [status, lobbyId, playerId, username, character, connect]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       connectionIdRef.current++; // Invalidate any pending connection
+
+      // Clear any pending retry attempts
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+
       if (socketRef.current) {
         try {
           socketRef.current.close(1000, 'Component unmounted');

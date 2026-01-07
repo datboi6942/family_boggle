@@ -105,11 +105,21 @@ async def websocket_endpoint(
         if not success:
             await websocket.close(code=1008, reason="Lobby full or error joining")
             return
-    
-    # Broadcast updated lobby state
+
+    # First, send lobby state directly to the new connection to ensure they receive it
+    lobby_state = game_engine.lobbies[lobby_id].model_dump()
+    await manager.send_personal(websocket, {
+        "type": "lobby_update",
+        "data": lobby_state
+    })
+
+    # Small delay to ensure the personal message is processed
+    await asyncio.sleep(0.05)
+
+    # Then broadcast to all other players in the lobby
     await manager.broadcast(lobby_id, {
         "type": "lobby_update",
-        "data": game_engine.lobbies[lobby_id].model_dump()
+        "data": lobby_state
     })
 
     try:
@@ -186,12 +196,12 @@ async def websocket_endpoint(
                     from family_boggle.powerups import powerup_manager
                     effect = powerup_manager.apply_powerup(lobby_id, player_id, powerup, lobby.players)
 
-                    # For freeze, actually add bonus time to the game timer
+                    # For freeze, add bonus time only to the player who used it
                     if powerup == "freeze":
                         bonus_time = 10  # 10 seconds bonus
-                        lobby.timer += bonus_time
+                        player.bonus_time += bonus_time
                         effect["bonus_time"] = bonus_time
-                        effect["new_timer"] = lobby.timer
+                        effect["player_id"] = player_id  # Identify who gets the bonus
 
                     await manager.broadcast(lobby_id, {
                         "type": "powerup_event",
@@ -219,7 +229,7 @@ async def websocket_endpoint(
                 })
 
 async def run_game_loop(lobby_id: str):
-    """Handles the 3-2-1 countdown and the 3-minute game timer."""
+    """Handles the 3-2-1 countdown and the game timer with per-player bonus time."""
     lobby = game_engine.lobbies.get(lobby_id)
     if not lobby: return
 
@@ -237,36 +247,95 @@ async def run_game_loop(lobby_id: str):
     game_engine.start_game(lobby_id) # Generates board
     lobby.status = "playing"
     lobby.timer = settings.GAME_DURATION_SECONDS
-    
+
+    # Reset per-player time states
+    for player in lobby.players:
+        player.bonus_time = 0
+        player.is_time_up = False
+
     # Send initial full state for playing phase
     await manager.broadcast(lobby_id, {
         "type": "game_state",
         "data": lobby.model_dump()
     })
-    
+
+    # Main timer phase
     while lobby.timer > 0:
         await asyncio.sleep(1)
         lobby.timer -= 1
-        
+
         # Broadcast timer update only (90% reduction in payload)
         await manager.broadcast(lobby_id, {
             "type": "timer_update",
             "data": {"timer": lobby.timer}
         })
-        
+
         # Check if game was forcibly ended or everyone left
         if lobby_id not in game_engine.lobbies:
             break
+
+    # Check if lobby still exists
+    if lobby_id not in game_engine.lobbies:
+        return
+
+    # 2b. Bonus Time Phase - handle players with extra time from freeze powerup
+    # Mark players without bonus time as finished
+    players_with_bonus = []
+    for player in lobby.players:
+        if player.bonus_time > 0:
+            players_with_bonus.append(player)
+        else:
+            player.is_time_up = True
+
+    # Notify players whose time is up that they're waiting
+    if players_with_bonus:
+        await manager.broadcast(lobby_id, {
+            "type": "waiting_phase",
+            "data": {
+                "players_finished": [p.id for p in lobby.players if p.is_time_up],
+                "players_with_bonus": [{"player_id": p.id, "bonus_time": p.bonus_time} for p in players_with_bonus]
+            }
+        })
+
+        # Continue until all bonus time is exhausted
+        while any(p.bonus_time > 0 for p in lobby.players):
+            await asyncio.sleep(1)
+
+            # Check if game was forcibly ended or everyone left
+            if lobby_id not in game_engine.lobbies:
+                return
+
+            # Decrement bonus time for each player and notify when they finish
+            for player in lobby.players:
+                if player.bonus_time > 0:
+                    player.bonus_time -= 1
+                    if player.bonus_time <= 0:
+                        player.is_time_up = True
+                        # Notify this specific player their time is up
+                        await manager.broadcast(lobby_id, {
+                            "type": "player_time_up",
+                            "data": {"player_id": player.id}
+                        })
+
+            # Send bonus timer updates to players still playing
+            active_players = [p for p in lobby.players if p.bonus_time > 0]
+            if active_players:
+                await manager.broadcast(lobby_id, {
+                    "type": "bonus_timer_update",
+                    "data": {
+                        "players": [{"player_id": p.id, "bonus_time": p.bonus_time} for p in active_players]
+                    }
+                })
 
     # 3. Summary Phase
     if lobby_id in game_engine.lobbies:
         lobby.status = "summary"
         summary = game_engine.finalize_scores(lobby_id)
-        
+
         # Update high scores for all players
         from family_boggle.high_scores import update_player_score
         winner_id = summary.get("winner", {}).get("player_id") if summary.get("winner") else None
-        
+
         for result in summary.get("results", []):
             player_id = result.get("player_id")
             if player_id:
@@ -280,7 +349,7 @@ async def run_game_loop(lobby_id: str):
                         is_winner=(player_id == winner_id),
                         challenges_completed=result.get("challenges_completed", 0)
                     )
-        
+
         await manager.broadcast(lobby_id, {
             "type": "game_end",
             "data": summary

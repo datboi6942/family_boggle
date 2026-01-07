@@ -130,12 +130,13 @@ const CELL_STYLES = IS_IOS ? `
 
 export const GameBoard = () => {
   // Use shallow comparison to prevent unnecessary re-renders when unrelated state changes
-  const { playerId, board, boardSize, timer, lastWordResult, players, blockedCells, isFrozen } = useGameStore(
+  const { playerId, board, boardSize, timer, bonusTime, lastWordResult, players, blockedCells, isFrozen } = useGameStore(
     useShallow(state => ({
       playerId: state.playerId,
       board: state.board,
       boardSize: state.boardSize,
       timer: state.timer,
+      bonusTime: state.bonusTime,
       lastWordResult: state.lastWordResult,
       players: state.players,
       blockedCells: state.blockedCells,
@@ -1043,10 +1044,12 @@ export const GameBoard = () => {
   }, [boardSize]);
 
   const formattedTimer = useMemo(() => {
-    const mins = Math.floor(timer / 60);
-    const secs = timer % 60;
+    // Use bonus time if main timer has run out
+    const displayTime = timer > 0 ? timer : bonusTime;
+    const mins = Math.floor(displayTime / 60);
+    const secs = displayTime % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }, [timer]);
+  }, [timer, bonusTime]);
 
   const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 

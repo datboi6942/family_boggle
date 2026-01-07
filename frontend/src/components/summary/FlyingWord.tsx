@@ -2,6 +2,12 @@ import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { MonsterAvatar } from '../MonsterAvatar';
 
+// iOS detection - spring animations cause lag
+const IS_IOS = typeof navigator !== 'undefined' && (
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+);
+
 interface Finder {
   player_id: string;
   username: string;
@@ -50,12 +56,16 @@ export const FlyingWord: React.FC<FlyingWordProps> = ({
         <motion.div
           initial={{ scale: 0, opacity: 0, rotateX: -90 }}
           animate={{ scale: 1, opacity: 1, rotateX: 0 }}
-          transition={{
+          transition={IS_IOS ? {
+            type: "tween",
+            duration: 0.2,
+            ease: "easeOut",
+          } : {
             type: "spring",
             stiffness: 500,
             damping: 30,
           }}
-          onAnimationComplete={() => setTimeout(handleRevealComplete, 120)}
+          onAnimationComplete={() => setTimeout(handleRevealComplete, IS_IOS ? 50 : 120)}
           className={`frosted-glass px-6 py-4 flex flex-col items-center ${
             isUnique ? 'border-2 border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.5)]' : ''
           }`}

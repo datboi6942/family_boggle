@@ -3,6 +3,7 @@ import { JoinScreen } from './components/JoinScreen';
 import { Lobby } from './components/Lobby';
 import { GameBoard } from './components/GameBoard';
 import { Countdown } from './components/Countdown';
+import { WaitingScreen } from './components/WaitingScreen';
 import { GameSummary } from './components/GameSummary';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { AudioProvider } from './contexts/AudioContext';
@@ -19,6 +20,7 @@ function App() {
           {status === 'lobby' && <Lobby />}
           {status === 'countdown' && <Countdown />}
           {status === 'playing' && <GameBoard />}
+          {status === 'waiting' && <WaitingScreen />}
           {status === 'summary' && <GameSummary />}
           <AudioControls />
         </div>

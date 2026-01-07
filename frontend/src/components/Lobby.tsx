@@ -5,6 +5,7 @@ import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { useAudioContext } from '../contexts/AudioContext';
 import { MonsterAvatar } from './MonsterAvatar';
 import { motion } from 'framer-motion';
+import QRCodeSVG from 'react-qr-code';
 
 export const Lobby = () => {
   const { lobbyId, playerId, players, hostId, boardSize, resetSession } = useGameStore(
@@ -59,7 +60,7 @@ export const Lobby = () => {
   return (
     <div className="flex flex-col h-full p-4 space-y-4 bg-navy-gradient min-h-screen">
       <div className="grid grid-cols-2 gap-4 flex-shrink-0">
-        <div 
+        <div
           onClick={copyToClipboard}
           className="frosted-glass p-4 text-center cursor-pointer active:scale-95 transition-transform border-primary/50"
         >
@@ -72,6 +73,20 @@ export const Lobby = () => {
           <p className="text-2xl font-black">{players.length}/10</p>
           <p className="text-[8px] text-white/30 mt-1">CONNECTED</p>
         </div>
+      </div>
+
+      <div className="frosted-glass p-6 flex flex-col items-center justify-center">
+        <h2 className="text-xs font-bold text-primary uppercase tracking-widest mb-3">Scan to Join</h2>
+        <div className="bg-white p-4 rounded-xl">
+          {lobbyId ? (
+            <QRCodeSVG value={lobbyId} size={140} />
+          ) : (
+            <div className="w-[140px] h-[140px] flex items-center justify-center text-gray-400">
+              ...
+            </div>
+          )}
+        </div>
+        <p className="text-[10px] text-white/30 mt-3">POINT CAMERA AT CODE</p>
       </div>
 
       <div className="flex-1 grid grid-cols-2 gap-4 overflow-y-auto py-4">

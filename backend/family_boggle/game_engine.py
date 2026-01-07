@@ -201,36 +201,49 @@ class GameEngine:
         # Recalculate final results for leaderboard with challenge data
         final_results = []
         for p in lobby.players:
-            p.score = 0
+            # Calculate word score
+            word_score = 0
             for word in p.found_words:
                 # We can reuse the points from word_data
-                p.score += word_data[word]["points"]
-            
+                word_score += word_data[word]["points"]
+
             # Get challenge progress for this player
             all_challenges = challenge_manager.get_player_progress(
-                lobby_id, p.found_words, p.score
+                lobby_id, p.found_words, word_score
             )
             best_challenge = challenge_manager.get_best_challenge_for_player(
-                lobby_id, p.found_words, p.score
+                lobby_id, p.found_words, word_score
             )
             challenges_completed = sum(1 for c in all_challenges if c.get("completed", False))
-            
+
+            # Calculate challenge score
+            challenge_score = challenge_manager.get_total_challenge_points(
+                lobby_id, p.found_words, word_score
+            )
+
+            # Calculate total score
+            total_score = word_score + challenge_score
+            p.score = total_score  # Update player's score
+
             final_results.append({
                 "player_id": p.id,
                 "username": p.username,
                 "character": p.character,
-                "score": p.score,
+                "word_score": word_score,
+                "challenge_score": challenge_score,
+                "total_score": total_score,
+                "score": total_score,  # Keep for backwards compatibility
                 "words": p.found_words,
                 "all_challenges": all_challenges,
                 "best_challenge": best_challenge,
                 "challenges_completed": challenges_completed
             })
-        
+
         # Clean up challenge data for this game
         challenge_manager.cleanup_game(lobby_id)
-            
-        # Sort by score
-        final_results.sort(key=lambda x: x["score"], reverse=True)
+
+        # Sort by total score
+        final_results.sort(key=lambda x: x["total_score"], reverse=True)
         return {
             "results": final_results, 
             "winner": final_results[0] if final_results else None,

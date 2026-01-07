@@ -17,10 +17,12 @@ interface PersistedState {
   username: string;
   character: string;
   mode: 'create' | 'join' | null;
-  status: 'join' | 'lobby' | 'countdown' | 'playing' | 'summary';
+  status: 'join' | 'lobby' | 'countdown' | 'playing' | 'waiting' | 'summary';
   board: string[][];
   boardSize: number;
   timer: number;
+  bonusTime: number;  // Per-player bonus time from freeze powerup
+  isTimeUp: boolean;  // Whether current player's time has run out
   players: Player[];
   hostId: string | null;
 }
@@ -53,6 +55,9 @@ interface ChallengeProgress {
   ratio: number;
   completed: boolean;
   category: string;
+  difficulty: string;
+  points: number;
+  points_earned: number;
 }
 
 interface ChallengeDefinition {
@@ -61,13 +66,18 @@ interface ChallengeDefinition {
   description: string;
   target: number;
   category: string;
+  difficulty: string;
+  points: number;
 }
 
 interface PlayerResult {
   username: string;
   character: string;
   player_id: string;
-  score: number;
+  word_score: number;
+  challenge_score: number;
+  total_score: number;
+  score: number; // Keep for backwards compatibility
   words: string[];
   best_challenge: ChallengeProgress | null;
   all_challenges: ChallengeProgress[];
@@ -87,7 +97,9 @@ interface GameState extends PersistedState {
   challenges: ChallengeDefinition[];
   blockedCells: [number, number][];
   isFrozen: boolean;
+  playersStillPlaying: string[];  // Player IDs still playing during waiting phase
   setTimer: (timer: number) => void;
+  setBonusTime: (time: number) => void;
   updatePlayerScore: (playerId: string, score: number, powerup?: string) => void;
   updatePlayerPowerups: (playerId: string, powerups: string[]) => void;
   setBoard: (board: string[][]) => void;
@@ -105,6 +117,9 @@ interface GameState extends PersistedState {
   setWordResult: (result: any) => void;
   setGameEnd: (data: any) => void;
   setPowerup: (data: any, myPlayerId?: string) => void;
+  setWaitingPhase: (data: any, myPlayerId?: string) => void;
+  setPlayerTimeUp: (playerId: string, myPlayerId?: string) => void;
+  updateBonusTimer: (data: any, myPlayerId?: string) => void;
   resetSession: () => void;
 }
 
@@ -125,6 +140,8 @@ export const useGameStore = create<GameState>()(
   board: [],
   boardSize: 6,
   timer: 0,
+  bonusTime: 0,
+  isTimeUp: false,
   players: [],
   hostId: null,
   lastWordResult: null,
@@ -138,8 +155,10 @@ export const useGameStore = create<GameState>()(
   challenges: [],
   blockedCells: [],
   isFrozen: false,
+  playersStillPlaying: [],
 
   setTimer: (timer) => set({ timer }),
+  setBonusTime: (bonusTime) => set({ bonusTime }),
 
   updatePlayerScore: (targetPlayerId, score, powerup) => set((state) => ({
     players: state.players.map(p => {
@@ -208,12 +227,12 @@ export const useGameStore = create<GameState>()(
   }),
   setPowerup: (data: any, myPlayerId?: string) => {
     if (data.type === 'freeze') {
-      // The player who used freeze gets bonus time
-      if (data.by === myPlayerId) {
+      // Only the player who used freeze gets bonus time
+      if (data.player_id === myPlayerId) {
         if (freezeTimeout) clearTimeout(freezeTimeout);
-        set((state) => ({ 
+        set((state) => ({
           isFrozen: true,
-          timer: state.timer + (data.bonus_time || 10)  // Add bonus time!
+          bonusTime: state.bonusTime + (data.bonus_time || 10)  // Add to personal bonus time
         }));
         freezeTimeout = setTimeout(() => set({ isFrozen: false }), 10000);
       }
@@ -226,6 +245,45 @@ export const useGameStore = create<GameState>()(
       }
     }
   },
+  setWaitingPhase: (data: any, myPlayerId?: string) => {
+    const playersFinished = data.players_finished || [];
+    const playersWithBonus = data.players_with_bonus || [];
+
+    // If I'm in the finished list, enter waiting state
+    if (playersFinished.includes(myPlayerId)) {
+      set({
+        status: 'waiting',
+        isTimeUp: true,
+        playersStillPlaying: playersWithBonus.map((p: any) => p.player_id)
+      });
+    }
+  },
+  setPlayerTimeUp: (playerId: string, myPlayerId?: string) => {
+    // If my time is up, enter waiting state
+    if (playerId === myPlayerId) {
+      set({
+        status: 'waiting',
+        isTimeUp: true,
+        bonusTime: 0
+      });
+    } else {
+      // Remove this player from the still-playing list
+      set((state) => ({
+        playersStillPlaying: state.playersStillPlaying.filter(id => id !== playerId)
+      }));
+    }
+  },
+  updateBonusTimer: (data: any, myPlayerId?: string) => {
+    const players = data.players || [];
+    const myData = players.find((p: any) => p.player_id === myPlayerId);
+
+    if (myData) {
+      set({ bonusTime: myData.bonus_time });
+    }
+
+    // Update list of players still playing
+    set({ playersStillPlaying: players.map((p: any) => p.player_id) });
+  },
   resetSession: () => set({
     lobbyId: null,
     playerId: null,
@@ -233,6 +291,8 @@ export const useGameStore = create<GameState>()(
     status: 'join',
     board: [],
     timer: 0,
+    bonusTime: 0,
+    isTimeUp: false,
     players: [],
     hostId: null,
     lastWordResult: null,
@@ -246,6 +306,7 @@ export const useGameStore = create<GameState>()(
     challenges: [],
     blockedCells: [],
     isFrozen: false,
+    playersStillPlaying: [],
   }),
 }),
     {
@@ -273,6 +334,8 @@ export const useGameStore = create<GameState>()(
         board: state.board,
         boardSize: state.boardSize,
         timer: state.timer,
+        bonusTime: state.bonusTime,
+        isTimeUp: state.isTimeUp,
         players: state.players,
         hostId: state.hostId,
       }),

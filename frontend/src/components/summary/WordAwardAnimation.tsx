@@ -5,6 +5,12 @@ import { useAudioContext } from '../../contexts/AudioContext';
 import { PlayerScoreCard } from './PlayerScoreCard';
 import { FlyingWord } from './FlyingWord';
 
+// iOS detection - audio during rapid animations causes severe lag
+const IS_IOS = typeof navigator !== 'undefined' && (
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+);
+
 interface WordAwardAnimationProps {
   onAllCompleted: (finalScores: Record<string, number>) => void;
 }
@@ -48,7 +54,10 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
   }, [players]);
 
   // Play reveal sound when showing a new word
+  // iOS: SKIP rapid sounds - they cause severe lag during animations
   useEffect(() => {
+    if (IS_IOS) return; // Skip all per-word sounds on iOS
+
     if (wordAwards && wordAwards.length > 0) {
       playWordAwardReveal();
       // Play unique word bonus sound if it's a unique word
@@ -63,8 +72,10 @@ export const WordAwardAnimation: React.FC<WordAwardAnimationProps> = ({ onAllCom
 
     const currentWord = wordAwards[currentIndex];
 
-    // Play points landing sound
-    playPointsLand();
+    // Play points landing sound (skip on iOS for performance)
+    if (!IS_IOS) {
+      playPointsLand();
+    }
 
     // Update local scores
     const newScores = { ...playerScores };

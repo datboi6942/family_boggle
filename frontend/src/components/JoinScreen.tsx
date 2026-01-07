@@ -2,13 +2,18 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useAudioContext } from '../contexts/AudioContext';
 import { MONSTERS, MonsterAvatar } from './MonsterAvatar';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Leaderboard } from './Leaderboard';
+import { Scanner } from '@yudiel/react-qr-scanner';
+import { QrCode, X } from 'lucide-react';
 
 export const JoinScreen = () => {
   const { setUsername, setCharacter, setLobbyId, setPlayerId, setStatus, setMode, username, character } = useGameStore();
   const audio = useAudioContext();
   const [lobbyInput, setLobbyInput] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
+  const [cameraAvailable, setCameraAvailable] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const musicStartedRef = useRef(false);
 
   // Restore scroll state when entering join screen (game locks scroll)
@@ -24,6 +29,23 @@ export const JoinScreen = () => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
+  // Check camera availability
+  useEffect(() => {
+    const checkCamera = async () => {
+      try {
+        if (navigator.mediaDevices?.enumerateDevices) {
+          // Just check if we can enumerate devices to see if camera exists
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const hasCamera = devices.some(device => device.kind === 'videoinput');
+          setCameraAvailable(hasCamera);
+        }
+      } catch (error) {
+        setCameraAvailable(false);
+      }
+    };
+    checkCamera();
+  }, []);
+
   // Start menu music on first user interaction (mobile browsers block autoplay)
   const startMusicOnInteraction = useCallback(() => {
     if (!musicStartedRef.current) {
@@ -31,6 +53,37 @@ export const JoinScreen = () => {
       musicStartedRef.current = true;
     }
   }, [audio]);
+
+  const handleScan = (result: string) => {
+    if (result) {
+      audio.playButtonClick();
+      setLobbyInput(result.toUpperCase());
+      setShowScanner(false);
+      setScanError(null);
+    }
+  };
+
+  const handleScanError = (error: unknown) => {
+    console.error('QR Scan error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('permission')) {
+      setScanError('Camera access required to scan QR codes');
+    } else {
+      setScanError('Unable to access camera. Please try manual entry.');
+    }
+  };
+
+  const openScanner = () => {
+    audio.playButtonClick();
+    setScanError(null);
+    setShowScanner(true);
+  };
+
+  const closeScanner = () => {
+    audio.playButtonClick();
+    setShowScanner(false);
+    setScanError(null);
+  };
 
   const handleStart = (mode: 'create' | 'join') => {
     if (!username) return;
@@ -98,7 +151,37 @@ export const JoinScreen = () => {
           >
             CREATE LOBBY
           </button>
-          
+
+          {cameraAvailable && (
+            <>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/10"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-transparent px-2 text-white/30">or</span>
+                </div>
+              </div>
+
+              <button
+                onClick={openScanner}
+                className="w-full py-4 bg-white/5 border border-white/20 rounded-xl font-bold active:scale-95 transition-transform flex items-center justify-center gap-2"
+              >
+                <QrCode size={20} />
+                SCAN QR CODE
+              </button>
+            </>
+          )}
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-transparent px-2 text-white/30">or enter code</span>
+            </div>
+          </div>
+
           <div className="flex items-stretch gap-2">
             <input
               type="text"
@@ -121,6 +204,77 @@ export const JoinScreen = () => {
       <div className="w-full max-w-sm shrink-0 mb-6">
         <Leaderboard />
       </div>
+
+      {/* QR Scanner Modal */}
+      <AnimatePresence>
+        {showScanner && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={closeScanner}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={closeScanner}
+                className="absolute -top-4 -right-4 z-10 frosted-glass w-12 h-12 rounded-full flex items-center justify-center active:scale-95 transition-transform border border-white/20"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="frosted-glass rounded-2xl p-6 space-y-4">
+                <h2 className="text-xl font-bold text-center text-primary uppercase tracking-wide">
+                  Scan QR Code
+                </h2>
+                <p className="text-sm text-center text-white/70">
+                  Point your camera at the QR code
+                </p>
+
+                <div className="relative rounded-xl overflow-hidden bg-black aspect-square">
+                  <Scanner
+                    onScan={(result) => {
+                      if (result && result.length > 0) {
+                        handleScan(result[0].rawValue);
+                      }
+                    }}
+                    onError={handleScanError}
+                    constraints={{
+                      facingMode: 'environment'
+                    }}
+                    styles={{
+                      container: {
+                        width: '100%',
+                        height: '100%'
+                      }
+                    }}
+                  />
+                </div>
+
+                {scanError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-red-500/20 border border-red-500/50 rounded-xl p-3 text-center text-sm text-red-200"
+                  >
+                    {scanError}
+                  </motion.div>
+                )}
+
+                <p className="text-xs text-center text-white/50">
+                  Or close this to enter code manually
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -9,6 +9,12 @@ import confetti from 'canvas-confetti';
 import { WordAwardAnimation } from './summary/WordAwardAnimation';
 import { Trophy, Sparkles, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
 
+// iOS detection - confetti and spring animations cause lag
+const IS_IOS = typeof navigator !== 'undefined' && (
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+);
+
 export const GameSummary = () => {
   const { results, winner, wordAwards, longestWordFound, longestPossibleWord, allPossibleWords, totalPossibleWords, resetSession } = useGameStore(
     useShallow(state => ({
@@ -87,29 +93,42 @@ export const GameSummary = () => {
     if (phase === 'celebrating') {
       // Play victory sounds
       playVictoryFanfare();
-      playConfettiBurst();
+      if (!IS_IOS) {
+        playConfettiBurst(); // Skip on iOS - multiple sounds cause lag
+      }
 
-      confetti({
-        particleCount: 100,
-        spread: 100,
-        origin: { y: 0.6 },
-        colors: ['#8b5cf6', '#22c55e', '#f97316', '#eab308']
-      });
+      // iOS: simplified confetti - fewer particles, no repeated bursts
+      if (IS_IOS) {
+        confetti({
+          particleCount: 50,
+          spread: 70,
+          origin: { y: 0.6 },
+          colors: ['#8b5cf6', '#22c55e', '#f97316', '#eab308'],
+          disableForReducedMotion: true,
+        });
+      } else {
+        confetti({
+          particleCount: 100,
+          spread: 100,
+          origin: { y: 0.6 },
+          colors: ['#8b5cf6', '#22c55e', '#f97316', '#eab308']
+        });
 
-      // Secondary bursts
-      const duration = 2 * 1000;
-      const animationEnd = Date.now() + duration;
-      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
+        // Secondary bursts - Android/Desktop only
+        const duration = 2 * 1000;
+        const animationEnd = Date.now() + duration;
+        const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
 
-      interval = setInterval(function() {
-        const timeLeft = animationEnd - Date.now();
-        if (timeLeft <= 0) {
-          clearInterval(interval);
-          return;
-        }
-        const particleCount = 30 * (timeLeft / duration);
-        confetti({ ...defaults, particleCount, origin: { x: Math.random(), y: Math.random() - 0.2 } });
-      }, 300);
+        interval = setInterval(function() {
+          const timeLeft = animationEnd - Date.now();
+          if (timeLeft <= 0) {
+            clearInterval(interval);
+            return;
+          }
+          const particleCount = 30 * (timeLeft / duration);
+          confetti({ ...defaults, particleCount, origin: { x: Math.random(), y: Math.random() - 0.2 } });
+        }, 300);
+      }
     } else if (phase === 'longest-word') {
       // Play longest word award sound
       playLongestWordAward();
@@ -222,7 +241,7 @@ export const GameSummary = () => {
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                transition={{ type: 'spring', damping: 12 }}
+                transition={IS_IOS ? { type: 'tween', duration: 0.3, ease: 'backOut' } : { type: 'spring', damping: 12 }}
                 className="inline-block"
               >
                 <MonsterAvatar name={winner?.character || 'Blobby'} size={150} isWinner={true} />
@@ -381,7 +400,15 @@ export const GameSummary = () => {
                       </div>
                     </div>
                     <div className="flex flex-col items-end">
-                      <p className="text-2xl font-black text-primary">{res.score ?? 0}</p>
+                      <p className="text-2xl font-black text-primary">{res.total_score ?? res.score ?? 0}</p>
+                      {(res.word_score !== undefined || res.challenge_score !== undefined) && (
+                        <div className="text-[10px] text-white/40 text-right space-y-0.5 mt-1">
+                          <div>Words: {res.word_score ?? 0}</div>
+                          {(res.challenge_score ?? 0) > 0 && (
+                            <div className="text-green-400">Challenges: +{res.challenge_score}</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </motion.div>
                 );
@@ -398,53 +425,132 @@ export const GameSummary = () => {
               >
                 <h2 className="text-white/50 font-bold uppercase tracking-widest text-center mb-4">Challenge Results</h2>
                 <div className="space-y-3">
-                  {results.filter(res => res && res.username && res.all_challenges && res.all_challenges.length > 0).map((res, playerIndex) => (
-                    <div key={res.player_id || playerIndex} className="frosted-glass p-4">
-                      <div className="flex items-center gap-3 mb-3">
-                        <MonsterAvatar name={res.character || 'Blobby'} size={32} animated={false} />
-                        <span className="font-bold text-white">{res.username || 'Player'}</span>
-                        {(res.challenges_completed ?? 0) > 0 && (
-                          <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
-                            {res.challenges_completed} completed
-                          </span>
+                  {results.filter(res => res && res.username && res.all_challenges && res.all_challenges.length > 0).map((res, playerIndex) => {
+                    const completedChallenges = res.all_challenges.filter(c => c.completed);
+                    const totalChallengePoints = completedChallenges.reduce((sum, c) => sum + (c.points_earned ?? c.points ?? 0), 0);
+
+                    return (
+                      <div key={res.player_id || playerIndex} className="frosted-glass p-4">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <div className="flex items-center gap-3">
+                            <MonsterAvatar name={res.character || 'Blobby'} size={32} animated={false} />
+                            <span className="font-bold text-white">{res.username || 'Player'}</span>
+                          </div>
+                          <div className="text-right">
+                            {(res.challenges_completed ?? 0) > 0 && (
+                              <>
+                                <div className="text-sm font-bold text-green-400">
+                                  +{totalChallengePoints} pts
+                                </div>
+                                <div className="text-xs text-white/40">
+                                  {res.challenges_completed}/{res.all_challenges.length} completed
+                                </div>
+                              </>
+                            )}
+                            {(res.challenges_completed ?? 0) === 0 && (
+                              <span className="text-xs text-white/40">
+                                0/{res.all_challenges.length} completed
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Show completed challenges first */}
+                        {completedChallenges.length > 0 && (
+                          <div className="mb-3">
+                            <div className="text-xs font-bold text-green-400 mb-2 uppercase tracking-wide">Completed</div>
+                            <div className="grid gap-2">
+                              {completedChallenges.slice(0, 10).map((challenge, i) => {
+                                const difficultyColors = {
+                                  very_easy: 'text-gray-400',
+                                  easy: 'text-blue-400',
+                                  medium: 'text-yellow-400',
+                                  hard: 'text-orange-400',
+                                  very_hard: 'text-red-400'
+                                };
+                                const difficultyLabels = {
+                                  very_easy: 'Very Easy',
+                                  easy: 'Easy',
+                                  medium: 'Medium',
+                                  hard: 'Hard',
+                                  very_hard: 'Very Hard'
+                                };
+
+                                return (
+                                  <motion.div
+                                    key={challenge.id || i}
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: 1.2 + playerIndex * 0.1 + i * 0.05 }}
+                                    className="flex items-center justify-between p-2 rounded-lg bg-green-500/10 border border-green-500/30"
+                                  >
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <Check className="w-3 h-3 text-green-400" />
+                                        <p className="text-sm font-bold text-green-400">
+                                          {challenge.name || 'Challenge'}
+                                        </p>
+                                      </div>
+                                      <p className="text-[10px] text-white/40 ml-5">{challenge.description || ''}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 ml-2">
+                                      <span className={`text-[9px] ${difficultyColors[challenge.difficulty as keyof typeof difficultyColors] || 'text-white/50'}`}>
+                                        {difficultyLabels[challenge.difficulty as keyof typeof difficultyLabels] || challenge.difficulty}
+                                      </span>
+                                      <span className="text-xs font-bold text-green-400">
+                                        +{challenge.points_earned ?? challenge.points ?? 0}
+                                      </span>
+                                    </div>
+                                  </motion.div>
+                                );
+                              })}
+                              {completedChallenges.length > 10 && (
+                                <div className="text-xs text-center text-white/40 py-1">
+                                  +{completedChallenges.length - 10} more completed
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Show in-progress challenges (limited to top 5) */}
+                        {res.all_challenges.filter(c => !c.completed && c.progress > 0).slice(0, 5).length > 0 && (
+                          <div>
+                            <div className="text-xs font-bold text-white/50 mb-2 uppercase tracking-wide">In Progress</div>
+                            <div className="grid gap-2">
+                              {res.all_challenges
+                                .filter(c => !c.completed && c.progress > 0)
+                                .slice(0, 5)
+                                .map((challenge, i) => (
+                                  <div
+                                    key={challenge.id || i}
+                                    className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10"
+                                  >
+                                    <div className="flex-1">
+                                      <p className="text-sm font-bold text-white/70">
+                                        {challenge.name || 'Challenge'}
+                                      </p>
+                                      <p className="text-[10px] text-white/40">{challenge.description || ''}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 ml-2">
+                                      <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                        <div
+                                          className="h-full bg-primary"
+                                          style={{ width: `${Math.min(100, (challenge.ratio ?? 0) * 100)}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-xs font-bold text-white/50 min-w-[3rem] text-right">
+                                        {challenge.progress ?? 0}/{challenge.target ?? 0}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
                         )}
                       </div>
-                      <div className="grid gap-2">
-                        {res.all_challenges.map((challenge, i) => (
-                          <motion.div
-                            key={challenge.id || i}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 1.2 + playerIndex * 0.1 + i * 0.05 }}
-                            className={`flex items-center justify-between p-2 rounded-lg ${
-                              challenge.completed
-                                ? 'bg-green-500/10 border border-green-500/30'
-                                : 'bg-white/5 border border-white/10'
-                            }`}
-                          >
-                            <div className="flex-1">
-                              <p className={`text-sm font-bold ${challenge.completed ? 'text-green-400' : 'text-white/70'}`}>
-                                {challenge.name || 'Challenge'}
-                              </p>
-                              <p className="text-[10px] text-white/40">{challenge.description || ''}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full ${challenge.completed ? 'bg-green-400' : 'bg-primary'}`}
-                                  style={{ width: `${Math.min(100, (challenge.ratio ?? 0) * 100)}%` }}
-                                />
-                              </div>
-                              <span className={`text-xs font-bold min-w-[3rem] text-right ${challenge.completed ? 'text-green-400' : 'text-white/50'}`}>
-                                {challenge.progress ?? 0}/{challenge.target ?? 0}
-                                {challenge.completed && ' ✓'}
-                              </span>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </motion.div>
             )}
