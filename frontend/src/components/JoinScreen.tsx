@@ -12,7 +12,6 @@ export const JoinScreen = () => {
   const audio = useAudioContext();
   const [lobbyInput, setLobbyInput] = useState('');
   const [showScanner, setShowScanner] = useState(false);
-  const [cameraAvailable, setCameraAvailable] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const musicStartedRef = useRef(false);
 
@@ -27,23 +26,6 @@ export const JoinScreen = () => {
     document.body.style.left = '';
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'instant' });
-  }, []);
-
-  // Check camera availability
-  useEffect(() => {
-    const checkCamera = async () => {
-      try {
-        if (navigator.mediaDevices?.enumerateDevices) {
-          // Just check if we can enumerate devices to see if camera exists
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const hasCamera = devices.some(device => device.kind === 'videoinput');
-          setCameraAvailable(hasCamera);
-        }
-      } catch (error) {
-        setCameraAvailable(false);
-      }
-    };
-    checkCamera();
   }, []);
 
   // Start menu music on first user interaction (mobile browsers block autoplay)
@@ -152,26 +134,22 @@ export const JoinScreen = () => {
             CREATE LOBBY
           </button>
 
-          {cameraAvailable && (
-            <>
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/10"></div>
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-transparent px-2 text-white/30">or</span>
-                </div>
-              </div>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-transparent px-2 text-white/30">or</span>
+            </div>
+          </div>
 
-              <button
-                onClick={openScanner}
-                className="w-full py-4 bg-white/5 border border-white/20 rounded-xl font-bold active:scale-95 transition-transform flex items-center justify-center gap-2"
-              >
-                <QrCode size={20} />
-                SCAN QR CODE
-              </button>
-            </>
-          )}
+          <button
+            onClick={openScanner}
+            className="w-full py-4 bg-white/5 border border-white/20 rounded-xl font-bold active:scale-95 transition-transform flex items-center justify-center gap-2"
+          >
+            <QrCode size={20} />
+            SCAN QR CODE
+          </button>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
