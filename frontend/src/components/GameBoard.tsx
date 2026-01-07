@@ -477,6 +477,8 @@ export const GameBoard = () => {
       if (ctx) {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        // Clear canvas to transparent on setup
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctxRef.current = ctx;
       }
 
@@ -487,11 +489,19 @@ export const GameBoard = () => {
     // Initial setup
     setupCanvas();
 
-    // Handle resize
-    const resizeObserver = new ResizeObserver(() => setupCanvas());
+    // Handle resize - throttle to avoid excessive redraws
+    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+    const resizeObserver = new ResizeObserver(() => {
+      if (resizeTimeout) return;
+      resizeTimeout = setTimeout(() => {
+        setupCanvas();
+        resizeTimeout = null;
+      }, 100);
+    });
     resizeObserver.observe(board);
 
     return () => {
+      if (resizeTimeout) clearTimeout(resizeTimeout);
       resizeObserver.disconnect();
     };
   }, [boardSize]);
