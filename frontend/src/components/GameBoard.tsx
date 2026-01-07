@@ -665,11 +665,12 @@ export const GameBoard = () => {
   }, [boardSize, updateBoardDimensions]);
 
   // Play chain sound immediately when path grows
-  // iOS: throttle more aggressively to prevent lag during rapid dragging
+  // iOS: DISABLED entirely - even throttled sounds cause lag during touch events
   const playChainSound = useCallback((pathLength: number) => {
+    if (IS_IOS) return; // Skip chain sounds on iOS for buttery smooth performance
+
     const now = Date.now();
-    const minInterval = IS_IOS ? 150 : 50; // iOS needs more throttling
-    if (now - lastSoundTimeRef.current > minInterval) {
+    if (now - lastSoundTimeRef.current > 50) {
       audioRef.current.playLetterChain(pathLength);
       lastSoundTimeRef.current = now;
     }
