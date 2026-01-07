@@ -185,11 +185,14 @@ async def websocket_endpoint(
                     
                     from family_boggle.powerups import powerup_manager
                     effect = powerup_manager.apply_powerup(lobby_id, player_id, powerup, lobby.players)
-                    
-                    # For freeze, include bonus time info
+
+                    # For freeze, actually add bonus time to the game timer
                     if powerup == "freeze":
-                        effect["bonus_time"] = 10  # 10 seconds bonus
-                    
+                        bonus_time = 10  # 10 seconds bonus
+                        lobby.timer += bonus_time
+                        effect["bonus_time"] = bonus_time
+                        effect["new_timer"] = lobby.timer
+
                     await manager.broadcast(lobby_id, {
                         "type": "powerup_event",
                         "data": effect

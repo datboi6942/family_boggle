@@ -463,23 +463,24 @@ export const GameBoard = () => {
       const dpr = window.devicePixelRatio || 1;
 
       // Set canvas size accounting for device pixel ratio for crisp lines
+      // Note: Setting width/height clears the canvas AND resets context state
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
 
-      // Get and cache context with optimized settings
-      const ctx = canvas.getContext('2d', {
-        alpha: true,
-        willReadFrequently: false,
-        desynchronized: true,
-      });
+      // Get context (or reuse existing reference)
+      let ctx = ctxRef.current;
+      if (!ctx) {
+        ctx = canvas.getContext('2d', { alpha: true });
+        ctxRef.current = ctx;
+      }
+
+      // IMPORTANT: Must reapply context settings after EVERY resize
+      // because setting canvas.width/height resets all context state
       if (ctx) {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        // Clear canvas to transparent on setup
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctxRef.current = ctx;
       }
 
       // Update cached DPR
@@ -489,19 +490,11 @@ export const GameBoard = () => {
     // Initial setup
     setupCanvas();
 
-    // Handle resize - throttle to avoid excessive redraws
-    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
-    const resizeObserver = new ResizeObserver(() => {
-      if (resizeTimeout) return;
-      resizeTimeout = setTimeout(() => {
-        setupCanvas();
-        resizeTimeout = null;
-      }, 100);
-    });
+    // Handle resize
+    const resizeObserver = new ResizeObserver(() => setupCanvas());
     resizeObserver.observe(board);
 
     return () => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
       resizeObserver.disconnect();
     };
   }, [boardSize]);
@@ -672,9 +665,11 @@ export const GameBoard = () => {
   }, [boardSize, updateBoardDimensions]);
 
   // Play chain sound immediately when path grows
+  // iOS: throttle more aggressively to prevent lag during rapid dragging
   const playChainSound = useCallback((pathLength: number) => {
     const now = Date.now();
-    if (now - lastSoundTimeRef.current > 50) {
+    const minInterval = IS_IOS ? 150 : 50; // iOS needs more throttling
+    if (now - lastSoundTimeRef.current > minInterval) {
       audioRef.current.playLetterChain(pathLength);
       lastSoundTimeRef.current = now;
     }
