@@ -65,6 +65,18 @@ export const JoinScreen = () => {
     audio.playButtonClick();
     setScanError(null);
 
+    // Check if camera API is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.error('Camera API not available. Protocol:', window.location.protocol, 'Host:', window.location.host);
+
+      if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        setScanError('Camera requires HTTPS. Please access via https:// or localhost. Use manual code entry for now.');
+      } else {
+        setScanError('Camera not supported in this browser. Please use manual code entry or try a different browser.');
+      }
+      return;
+    }
+
     // Test camera access before opening scanner
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
