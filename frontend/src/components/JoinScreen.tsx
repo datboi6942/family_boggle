@@ -48,17 +48,45 @@ export const JoinScreen = () => {
   const handleScanError = (error: unknown) => {
     console.error('QR Scan error:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (errorMessage.includes('permission')) {
-      setScanError('Camera access required to scan QR codes');
+    const lowerError = errorMessage.toLowerCase();
+
+    if (lowerError.includes('permission') || lowerError.includes('denied')) {
+      setScanError('Camera permission denied. Please allow camera access in your browser settings.');
+    } else if (lowerError.includes('not found') || lowerError.includes('no device')) {
+      setScanError('No camera found. Please use manual code entry.');
+    } else if (lowerError.includes('not readable') || lowerError.includes('in use')) {
+      setScanError('Camera is in use by another app. Please close other apps and try again.');
     } else {
-      setScanError('Unable to access camera. Please try manual entry.');
+      setScanError('Unable to start camera. Try manual code entry or refresh the page.');
     }
   };
 
-  const openScanner = () => {
+  const openScanner = async () => {
     audio.playButtonClick();
     setScanError(null);
-    setShowScanner(true);
+
+    // Test camera access before opening scanner
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } }
+      });
+      // Stop the test stream
+      stream.getTracks().forEach(track => track.stop());
+      // Camera is accessible, open scanner
+      setShowScanner(true);
+    } catch (error) {
+      console.error('Camera access test failed:', error);
+      const err = error as Error;
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setScanError('Camera permission denied. Please allow camera access and try again.');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setScanError('No camera found on this device.');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setScanError('Camera is in use by another application.');
+      } else {
+        setScanError(`Camera error: ${err.message}. Try refreshing the page.`);
+      }
+    }
   };
 
   const closeScanner = () => {
@@ -151,6 +179,16 @@ export const JoinScreen = () => {
             SCAN QR CODE
           </button>
 
+          {scanError && !showScanner && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-500/20 border border-red-500/50 rounded-xl p-3 text-center text-sm text-red-200"
+            >
+              {scanError}
+            </motion.div>
+          )}
+
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-white/10"></div>
@@ -223,14 +261,14 @@ export const JoinScreen = () => {
                       }
                     }}
                     onError={handleScanError}
+                    allowMultiple={true}
+                    scanDelay={500}
                     constraints={{
-                      facingMode: 'environment'
+                      facingMode: { ideal: 'environment' },
+                      aspectRatio: 1
                     }}
-                    styles={{
-                      container: {
-                        width: '100%',
-                        height: '100%'
-                      }
+                    components={{
+                      finder: true
                     }}
                   />
                 </div>
