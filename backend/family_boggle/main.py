@@ -253,13 +253,41 @@ async def websocket_endpoint(
                         "data": effect
                     })
 
+            elif msg_type == "want_play_again":
+                # Mark this player as wanting to play again
+                lobby = game_engine.lobbies.get(lobby_id)
+                if lobby and lobby.status == "summary":
+                    player = next((p for p in lobby.players if p.id == player_id), None)
+                    if player:
+                        player.wants_play_again = True
+
+                        # Broadcast the updated play again status to all players
+                        await manager.broadcast(lobby_id, {
+                            "type": "play_again_update",
+                            "data": {
+                                "player_id": player_id,
+                                "players_ready": [p.id for p in lobby.players if p.wants_play_again],
+                                "all_ready": all(p.wants_play_again for p in lobby.players)
+                            }
+                        })
+
+                        # If all players want to play again, reset the lobby
+                        if all(p.wants_play_again for p in lobby.players):
+                            if game_engine.reset_lobby(lobby_id):
+                                await manager.broadcast(lobby_id, {
+                                    "type": "lobby_update",
+                                    "data": game_engine.lobbies[lobby_id].model_dump()
+                                })
+
             elif msg_type == "reset_game":
-                # Reset the lobby for a new game
-                if game_engine.reset_lobby(lobby_id):
-                    await manager.broadcast(lobby_id, {
-                        "type": "lobby_update",
-                        "data": game_engine.lobbies[lobby_id].model_dump()
-                    })
+                # Force reset the lobby for a new game (host only fallback)
+                lobby = game_engine.lobbies.get(lobby_id)
+                if lobby and lobby.host_id == player_id:
+                    if game_engine.reset_lobby(lobby_id):
+                        await manager.broadcast(lobby_id, {
+                            "type": "lobby_update",
+                            "data": game_engine.lobbies[lobby_id].model_dump()
+                        })
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)

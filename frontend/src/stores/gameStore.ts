@@ -100,6 +100,7 @@ interface GameState extends PersistedState {
   isLockArmed: boolean;  // Whether this player has an armed lock
   lockJustConsumed: boolean;  // True briefly when lock blocks a shuffle (for animation)
   playersStillPlaying: string[];  // Player IDs still playing during waiting phase
+  playersWantingPlayAgain: string[];  // Player IDs who clicked "Play Again"
   setTimer: (timer: number) => void;
   setBonusTime: (time: number) => void;
   updatePlayerScore: (playerId: string, score: number, powerup?: string) => void;
@@ -122,6 +123,7 @@ interface GameState extends PersistedState {
   setWaitingPhase: (data: any, myPlayerId?: string) => void;
   setPlayerTimeUp: (playerId: string, myPlayerId?: string) => void;
   updateBonusTimer: (data: any, myPlayerId?: string) => void;
+  setPlayAgainUpdate: (data: any) => void;
   resetSession: () => void;
 }
 
@@ -160,6 +162,7 @@ export const useGameStore = create<GameState>()(
   isLockArmed: false,
   lockJustConsumed: false,
   playersStillPlaying: [],
+  playersWantingPlayAgain: [],
 
   setTimer: (timer) => set({ timer }),
   setBonusTime: (bonusTime) => set({ bonusTime }),
@@ -207,6 +210,7 @@ export const useGameStore = create<GameState>()(
     isFrozen: false,
     isLockArmed: false,
     lockJustConsumed: false,
+    playersWantingPlayAgain: [],
   }),
   updateFromGameState: (data) => set({
     status: data.status,
@@ -295,6 +299,9 @@ export const useGameStore = create<GameState>()(
     // Update list of players still playing
     set({ playersStillPlaying: players.map((p: any) => p.player_id) });
   },
+  setPlayAgainUpdate: (data: any) => {
+    set({ playersWantingPlayAgain: data.players_ready || [] });
+  },
   resetSession: () => set({
     lobbyId: null,
     playerId: null,
@@ -320,6 +327,7 @@ export const useGameStore = create<GameState>()(
     isLockArmed: false,
     lockJustConsumed: false,
     playersStillPlaying: [],
+    playersWantingPlayAgain: [],
   }),
 }),
     {

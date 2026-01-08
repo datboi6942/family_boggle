@@ -306,7 +306,8 @@ class GameEngine:
             p.found_words = []
             p.powerups = []
             p.is_ready = False
-            
+            p.wants_play_again = False
+
         logger.info("lobby_reset", lobby_id=lobby_id)
         return True
 

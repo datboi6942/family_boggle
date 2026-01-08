@@ -31,6 +31,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     setWaitingPhase,
     setPlayerTimeUp,
     updateBonusTimer,
+    setPlayAgainUpdate,
     setStatus,
     resetSession
   } = useGameStore();
@@ -182,6 +183,10 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
           // Update bonus time for players still playing
           updateBonusTimer(message.data, playerId || undefined);
           break;
+        case 'play_again_update':
+          // Update which players want to play again
+          setPlayAgainUpdate(message.data);
+          break;
       }
     };
 
@@ -227,7 +232,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     };
 
     socketRef.current = socket;
-  }, [lobbyId, playerId, username, character, mode, status, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setWaitingPhase, setPlayerTimeUp, updateBonusTimer, setStatus, resetSession]);
+  }, [lobbyId, playerId, username, character, mode, status, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setWaitingPhase, setPlayerTimeUp, updateBonusTimer, setPlayAgainUpdate, setStatus, resetSession]);
 
   // Single unified effect for connection management
   useEffect(() => {

@@ -16,7 +16,7 @@ const IS_IOS = typeof navigator !== 'undefined' && (
 );
 
 export const GameSummary = () => {
-  const { results, winner, wordAwards, longestWordFound, longestPossibleWord, allPossibleWords, totalPossibleWords, resetSession } = useGameStore(
+  const { results, winner, wordAwards, longestWordFound, longestPossibleWord, allPossibleWords, totalPossibleWords, players, playerId, playersWantingPlayAgain, resetSession } = useGameStore(
     useShallow(state => ({
       results: state.results,
       winner: state.winner,
@@ -25,6 +25,9 @@ export const GameSummary = () => {
       longestPossibleWord: state.longestPossibleWord,
       allPossibleWords: state.allPossibleWords,
       totalPossibleWords: state.totalPossibleWords,
+      players: state.players,
+      playerId: state.playerId,
+      playersWantingPlayAgain: state.playersWantingPlayAgain,
       resetSession: state.resetSession,
     }))
   );
@@ -552,15 +555,60 @@ export const GameSummary = () => {
               </motion.div>
             )}
 
-            <motion.button
+            {/* Play Again Section */}
+            <motion.div
               initial={{ y: 50, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 1.5 }}
-              onClick={() => send('reset_game', {})}
-              className="w-full max-w-md mx-auto py-5 bg-primary rounded-2xl font-black text-xl mt-12 mb-2 shadow-2xl active:scale-95 transition-transform"
+              className="max-w-md mx-auto w-full mt-12"
             >
-              PLAY AGAIN
-            </motion.button>
+              {/* Show waiting players */}
+              {playersWantingPlayAgain.length > 0 && (
+                <div className="mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
+                  <p className="text-xs text-white/50 uppercase font-bold tracking-wider mb-3 text-center">
+                    Waiting to play again ({playersWantingPlayAgain.length}/{players.length})
+                  </p>
+                  <div className="flex justify-center gap-2 flex-wrap">
+                    {players.map(player => {
+                      const isReady = playersWantingPlayAgain.includes(player.id);
+                      return (
+                        <div
+                          key={player.id}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${
+                            isReady
+                              ? 'bg-green-500/20 border border-green-500/50'
+                              : 'bg-white/5 border border-white/10 opacity-50'
+                          }`}
+                        >
+                          <MonsterAvatar name={player.character} size={24} animated={false} />
+                          <span className={`text-sm font-bold ${isReady ? 'text-green-400' : 'text-white/50'}`}>
+                            {player.username}
+                          </span>
+                          {isReady && <Check className="w-4 h-4 text-green-400" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Play Again Button */}
+              {playerId && playersWantingPlayAgain.includes(playerId) ? (
+                <div className="w-full py-5 bg-green-500/20 border-2 border-green-500/50 rounded-2xl font-black text-xl text-center text-green-400 mb-2">
+                  <div className="flex items-center justify-center gap-3">
+                    <Check className="w-6 h-6" />
+                    <span>WAITING FOR OTHERS...</span>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => send('want_play_again', {})}
+                  className="w-full py-5 bg-primary rounded-2xl font-black text-xl mb-2 shadow-2xl active:scale-95 transition-transform"
+                >
+                  PLAY AGAIN
+                </button>
+              )}
+            </motion.div>
 
             <motion.button
               initial={{ y: 50, opacity: 0 }}
