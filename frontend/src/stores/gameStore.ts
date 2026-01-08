@@ -97,6 +97,7 @@ interface GameState extends PersistedState {
   challenges: ChallengeDefinition[];
   blockedCells: [number, number][];
   isFrozen: boolean;
+  isLockArmed: boolean;  // Whether this player has an armed lock
   playersStillPlaying: string[];  // Player IDs still playing during waiting phase
   setTimer: (timer: number) => void;
   setBonusTime: (time: number) => void;
@@ -155,6 +156,7 @@ export const useGameStore = create<GameState>()(
   challenges: [],
   blockedCells: [],
   isFrozen: false,
+  isLockArmed: false,
   playersStillPlaying: [],
 
   setTimer: (timer) => set({ timer }),
@@ -201,6 +203,7 @@ export const useGameStore = create<GameState>()(
     lastWordResult: null,
     blockedCells: [],
     isFrozen: false,
+    isLockArmed: false,
   }),
   updateFromGameState: (data) => set({
     status: data.status,
@@ -242,6 +245,11 @@ export const useGameStore = create<GameState>()(
         if (blockedTimeout) clearTimeout(blockedTimeout);
         set({ blockedCells: data.blocked_cells });
         blockedTimeout = setTimeout(() => set({ blockedCells: [] }), 8000);
+      }
+    } else if (data.type === 'lock_armed') {
+      // Track if this player armed a lock
+      if (data.by === myPlayerId) {
+        set({ isLockArmed: true });
       }
     }
   },
@@ -306,6 +314,7 @@ export const useGameStore = create<GameState>()(
     challenges: [],
     blockedCells: [],
     isFrozen: false,
+    isLockArmed: false,
     playersStillPlaying: [],
   }),
 }),

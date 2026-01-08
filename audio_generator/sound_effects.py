@@ -261,6 +261,49 @@ def generate_powerup_shuffle() -> np.ndarray:
     return normalize(wave)
 
 
+def generate_powerup_lock() -> np.ndarray:
+    """Shield/lock activation sound - protective feeling."""
+    duration = 0.5
+
+    # Rising metallic tone
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+    freq = 400 + 200 * (t / duration)  # Gentle rise
+
+    wave = np.zeros(len(t))
+    phase = 0
+    for i in range(len(t)):
+        wave[i] = 0.25 * np.sin(phase)
+        wave[i] += 0.15 * np.sin(phase * 1.5)  # Perfect fifth
+        wave[i] += 0.1 * np.sin(phase * 2)  # Octave
+        phase += 2 * np.pi * freq[i] / SAMPLE_RATE
+
+    # Add metallic shimmer
+    shimmer = noise(duration, amplitude=0.15)
+    shimmer = high_pass_filter(shimmer, cutoff=4000)
+    shimmer *= adsr_envelope(duration, attack=0.1, decay=0.2, sustain=0.3, release=0.2)
+    wave += shimmer
+
+    # Add a "click" at the start like a lock engaging
+    click = noise(0.02, amplitude=0.4)
+    click = low_pass_filter(click, cutoff=3000)
+    click *= quick_envelope(0.02, attack=0.001, release=0.015)
+    wave[:len(click)] += click
+
+    # Add a resonant "ping" for confirmation
+    ping_freq = 1200
+    ping = sine_wave(ping_freq, 0.15, amplitude=0.2)
+    ping += sine_wave(ping_freq * 2, 0.15, amplitude=0.1)
+    ping *= pluck_envelope(0.15)
+    start_pos = int(0.05 * SAMPLE_RATE)
+    wave[start_pos:start_pos+len(ping)] += ping
+
+    env = adsr_envelope(duration, attack=0.02, decay=0.1, sustain=0.6, release=0.2)
+    wave = wave * env
+
+    wave = reverb(wave, room_size=0.4)
+    return normalize(fade_out(wave, 0.05))
+
+
 def generate_timer_tick() -> np.ndarray:
     """Clock tick for timer."""
     duration = 0.05
@@ -407,6 +450,7 @@ def generate_all_effects(output_dir: str = "output/sfx"):
     save_wav(generate_powerup_freeze(), f"{output_dir}/powerup_freeze.wav")
     save_wav(generate_powerup_bomb(), f"{output_dir}/powerup_bomb.wav")
     save_wav(generate_powerup_shuffle(), f"{output_dir}/powerup_shuffle.wav")
+    save_wav(generate_powerup_lock(), f"{output_dir}/powerup_lock.wav")
 
     # Timer
     save_wav(generate_timer_tick(), f"{output_dir}/timer_tick.wav")

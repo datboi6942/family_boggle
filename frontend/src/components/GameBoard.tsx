@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { useAudioContext } from '../contexts/AudioContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Snowflake, Bomb, RotateCw } from 'lucide-react';
+import { Snowflake, Bomb, RotateCw, Lock } from 'lucide-react';
 
 // Letter point values (same as backend scoring.py)
 const LETTER_SCORES: Record<string, number> = {
@@ -15,6 +15,9 @@ const LETTER_SCORES: Record<string, number> = {
   'Q': 8, 'Z': 8,
   'QU': 10  // QU tile is worth more (Q + U value)
 };
+
+// Rare letters that grant powerups when used - styled with gold color
+const RARE_LETTERS = new Set(['J', 'X', 'Q', 'Z', 'QU']);
 
 // Memoized timer component to isolate timer re-renders
 // iOS: use recording-pulse (transform-based) instead of animate-pulse (opacity-based)
@@ -40,8 +43,10 @@ const Cell = memo(({
   col: number;
   cellRef: (el: HTMLDivElement | null) => void;
 }) => {
-  const points = LETTER_SCORES[letter.toUpperCase()] ?? 1;
-  const isQU = letter.toUpperCase() === 'QU';
+  const upperLetter = letter.toUpperCase();
+  const points = LETTER_SCORES[upperLetter] ?? 1;
+  const isQU = upperLetter === 'QU';
+  const isRare = RARE_LETTERS.has(upperLetter);
 
   const displayLetter = isQU ? (
     <span>Q<span className="text-[0.7em]">u</span></span>
@@ -56,13 +61,16 @@ const Cell = memo(({
         cell aspect-square flex items-center justify-center font-black
         relative rounded-xl cursor-pointer select-none
         ${isQU ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'}
-        bg-white/10 border border-white/20 shadow-lg
+        ${isRare
+          ? 'bg-gradient-to-br from-yellow-500/30 to-amber-600/30 border-2 border-yellow-400/60 text-yellow-300 shadow-[0_0_12px_rgba(234,179,8,0.3)]'
+          : 'bg-white/10 border border-white/20 text-white'}
+        shadow-lg
         ${isBlocked ? 'opacity-20 grayscale border-red-500 pointer-events-none' : ''}
       `}
     >
       <span className="cell-index absolute top-0.5 left-1 text-[8px] sm:text-[10px] font-bold text-white/70 hidden" />
       {displayLetter}
-      <span className="cell-points absolute bottom-0.5 right-1 text-[8px] sm:text-[10px] font-bold text-primary/70">
+      <span className={`cell-points absolute bottom-0.5 right-1 text-[8px] sm:text-[10px] font-bold ${isRare ? 'text-yellow-400/90' : 'text-primary/70'}`}>
         {points}
       </span>
       {isBlocked && (
@@ -130,7 +138,7 @@ const CELL_STYLES = IS_IOS ? `
 
 export const GameBoard = () => {
   // Use shallow comparison to prevent unnecessary re-renders when unrelated state changes
-  const { playerId, board, boardSize, timer, bonusTime, lastWordResult, players, blockedCells, isFrozen } = useGameStore(
+  const { playerId, board, boardSize, timer, bonusTime, lastWordResult, players, blockedCells, isFrozen, isLockArmed } = useGameStore(
     useShallow(state => ({
       playerId: state.playerId,
       board: state.board,
@@ -141,6 +149,7 @@ export const GameBoard = () => {
       players: state.players,
       blockedCells: state.blockedCells,
       isFrozen: state.isFrozen,
+      isLockArmed: state.isLockArmed,
     }))
   );
 
@@ -1169,29 +1178,43 @@ export const GameBoard = () => {
       {/* Power-ups - ensure always visible at bottom */}
       {/* iOS: use ios-pulse (transform-based) instead of animate-pulse (opacity-based) */}
       <div className="flex justify-center items-center space-x-4 py-3" style={{ minHeight: '80px' }}>
-        {['freeze', 'blowup', 'shuffle'].map(p => {
+        {['freeze', 'blowup', 'shuffle', 'lock'].map(p => {
           const count = me?.powerups?.filter(x => x === p).length || 0;
+          // Lock shows as "armed" if player has activated it
+          const isLockActive = p === 'lock' && isLockArmed;
           return (
             <button
               key={p}
-              disabled={count === 0}
+              disabled={count === 0 && !isLockActive}
               onClick={() => {
                 send('use_powerup', { powerup: p });
                 if (p === 'shuffle') {
                   audio.playPowerupShuffle();
+                } else if (p === 'lock') {
+                  audio.playPowerupLock();
                 }
               }}
               className={`
                 relative p-3 rounded-xl frosted-glass transition-all
-                ${count > 0 ? 'bg-primary/20 border-primary ios-pulse' : 'opacity-50'}
+                ${isLockActive
+                  ? 'bg-green-500/30 border-2 border-green-400 shadow-[0_0_12px_rgba(34,197,94,0.4)]'
+                  : count > 0
+                    ? 'bg-primary/20 border-primary ios-pulse'
+                    : 'opacity-50'}
               `}
             >
               {p === 'freeze' && <Snowflake className="w-5 h-5" />}
               {p === 'blowup' && <Bomb className="w-5 h-5" />}
               {p === 'shuffle' && <RotateCw className="w-5 h-5" />}
+              {p === 'lock' && <Lock className={`w-5 h-5 ${isLockActive ? 'text-green-400' : ''}`} />}
               {count > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 bg-primary w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold">
                   {count}
+                </span>
+              )}
+              {isLockActive && (
+                <span className="absolute -top-1.5 -right-1.5 bg-green-500 w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold text-white">
+                  ✓
                 </span>
               )}
             </button>
@@ -1199,18 +1222,18 @@ export const GameBoard = () => {
         })}
       </div>
 
-      {/* Word Result Popup */}
+      {/* Word Result Popup - Positioned at top to not obscure game board */}
       {/* iOS: use tween instead of spring for smoother animations */}
       <AnimatePresence mode="wait">
         {lastWordResult && (
           <motion.div
             key={lastWordResult.valid ? `valid-${lastWordResult.points}` : `invalid-${lastWordResult.reason}`}
-            initial={{ y: 20, opacity: 0, scale: 0.8 }}
-            animate={{ y: -50, opacity: 1, scale: 1 }}
+            initial={{ y: -20, opacity: 0, scale: 0.8 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ type: "tween", duration: 0.2, ease: "easeOut" }}
             className={`
-              fixed left-1/2 bottom-32 -translate-x-1/2 px-6 py-3 rounded-full font-bold z-50 flex flex-col items-center
+              fixed left-1/2 top-20 -translate-x-1/2 px-6 py-3 rounded-full font-bold z-50 flex flex-col items-center
               ${lastWordResult.valid ? 'bg-success text-white' : 'bg-error text-white'}
             `}
             style={{ transform: 'translate3d(-50%, 0, 0)' }}
@@ -1227,6 +1250,7 @@ export const GameBoard = () => {
                 {lastWordResult.powerup === 'freeze' && <Snowflake className="w-4 h-4" />}
                 {lastWordResult.powerup === 'blowup' && <Bomb className="w-4 h-4" />}
                 {lastWordResult.powerup === 'shuffle' && <RotateCw className="w-4 h-4" />}
+                {lastWordResult.powerup === 'lock' && <Lock className="w-4 h-4" />}
                 <span className="font-black uppercase text-xs">+1 {lastWordResult.powerup}!</span>
               </motion.div>
             )}

@@ -171,10 +171,35 @@ async def websocket_endpoint(
                 powerup = msg_data.get("powerup")
                 lobby = game_engine.lobbies[lobby_id]
                 player = next((p for p in lobby.players if p.id == player_id), None)
-                
+
                 if player and powerup in player.powerups:
+                    from family_boggle.powerups import powerup_manager
+
+                    # Special handling for lock powerup - arm it instead of applying immediately
+                    if powerup == "lock":
+                        player.powerups.remove(powerup)
+                        # Save current board state for this player
+                        powerup_manager.arm_lock(lobby_id, player_id, lobby.board)
+
+                        # Broadcast that the powerup was consumed and lock is armed
+                        await manager.broadcast(lobby_id, {
+                            "type": "powerup_consumed",
+                            "data": {
+                                "player_id": player_id,
+                                "powerups": list(player.powerups)
+                            }
+                        })
+                        await manager.broadcast(lobby_id, {
+                            "type": "powerup_event",
+                            "data": {
+                                "type": "lock_armed",
+                                "by": player_id
+                            }
+                        })
+                        continue
+
                     player.powerups.remove(powerup)
-                    
+
                     # Broadcast that the powerup was consumed
                     await manager.broadcast(lobby_id, {
                         "type": "powerup_consumed",
@@ -183,17 +208,37 @@ async def websocket_endpoint(
                             "powerups": list(player.powerups)
                         }
                     })
-                    
+
                     if powerup == "shuffle":
+                        # Get players with armed locks before shuffle
+                        locked_players = powerup_manager.get_locked_players(lobby_id)
+                        old_board = [row[:] for row in lobby.board]  # Copy current board
+
+                        # Generate new board
                         game_engine.board_gen.generate()
                         lobby.board = game_engine.board_gen.grid
-                        # Broadcast the new board
+                        new_board = lobby.board
+
+                        # Consume all armed locks
+                        protected_player_ids = powerup_manager.consume_locks(lobby_id)
+
+                        # Send personalized board updates
+                        for conn_ws, conn_lobby_id in manager.active_connections:
+                            if conn_lobby_id == lobby_id:
+                                # Find which player this connection belongs to
+                                # We need to check the URL params - for now, broadcast to all
+                                pass
+
+                        # Broadcast new board to everyone (protected players will restore theirs)
                         await manager.broadcast(lobby_id, {
                             "type": "board_update",
-                            "data": {"board": lobby.board}
+                            "data": {
+                                "board": new_board,
+                                "protected_players": protected_player_ids,
+                                "old_board": old_board if protected_player_ids else None
+                            }
                         })
-                    
-                    from family_boggle.powerups import powerup_manager
+
                     effect = powerup_manager.apply_powerup(lobby_id, player_id, powerup, lobby.players)
 
                     # For freeze, add bonus time only to the player who used it

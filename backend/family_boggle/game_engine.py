@@ -14,6 +14,9 @@ logger = structlog.get_logger()
 from family_boggle.powerups import powerup_manager
 from family_boggle.challenges import challenge_manager
 
+# Rare letters that grant powerups when used in a word
+RARE_LETTERS = {'J', 'X', 'Q', 'Z'}
+
 class GameEngine:
     """Core logic for managing Boggle game sessions."""
     
@@ -128,13 +131,14 @@ class GameEngine:
         points = calculate_word_score(word)
         player.score += points
         player.found_words.append(word)
-        
-        # Check for power-up (5+ letters)
+
+        # Check for power-up: 5+ letters OR contains rare letter (J, X, Q, Z)
         earned_powerup = None
-        if len(word) >= 5:
-            earned_powerup = random.choice(["freeze", "blowup", "shuffle"])
+        has_rare_letter = any(letter in RARE_LETTERS for letter in word)
+        if len(word) >= 5 or has_rare_letter:
+            earned_powerup = random.choice(["freeze", "blowup", "shuffle", "lock"])
             player.powerups.append(earned_powerup)
-            
+
         return {
             "valid": True,
             "points": points,

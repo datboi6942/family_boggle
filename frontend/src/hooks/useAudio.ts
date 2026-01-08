@@ -18,6 +18,7 @@ const SFX = {
   powerupFreeze: `${AUDIO_BASE}/sfx/powerup_freeze.wav`,
   powerupBomb: `${AUDIO_BASE}/sfx/powerup_bomb.wav`,
   powerupShuffle: `${AUDIO_BASE}/sfx/powerup_shuffle.wav`,
+  powerupLock: `${AUDIO_BASE}/sfx/powerup_lock.wav`,
   timerTick: `${AUDIO_BASE}/sfx/timer_tick.wav`,
   timerWarning: `${AUDIO_BASE}/sfx/timer_warning.wav`,
   gameStart: `${AUDIO_BASE}/sfx/game_start.wav`,
@@ -50,10 +51,14 @@ const MUSIC = {
   countdownRiser: `${AUDIO_BASE}/music/countdown_riser.wav`,
 };
 
-// Audio cache with LRU eviction to prevent unbounded memory growth
+// Audio cache for preloading - stores template elements
 const MAX_AUDIO_CACHE_SIZE = 25;
 const audioCache: Map<string, HTMLAudioElement> = new Map();
 const audioCacheOrder: string[] = []; // Track access order for LRU
+
+// Pool of active audio instances for cleanup
+const activeAudioPool: HTMLAudioElement[] = [];
+const MAX_ACTIVE_AUDIO = 20; // Max concurrent sounds
 
 // Track if audio has been unlocked (required on mobile)
 let audioUnlocked = false;
@@ -163,11 +168,86 @@ function getAudio(src: string): HTMLAudioElement {
   return audioCache.get(src)!;
 }
 
+// Create a fresh audio instance for reliable playback
+// This prevents issues where reusing the same Audio element causes sounds to not play
+function createFreshAudio(src: string): HTMLAudioElement {
+  const audio = new Audio(src);
+  audio.preload = 'auto';
+
+  // Track in pool for cleanup
+  activeAudioPool.push(audio);
+
+  // Clean up after playback ends
+  audio.addEventListener('ended', () => {
+    const idx = activeAudioPool.indexOf(audio);
+    if (idx !== -1) {
+      activeAudioPool.splice(idx, 1);
+    }
+    audio.src = ''; // Release resources
+  }, { once: true });
+
+  // Also clean up on error
+  audio.addEventListener('error', () => {
+    const idx = activeAudioPool.indexOf(audio);
+    if (idx !== -1) {
+      activeAudioPool.splice(idx, 1);
+    }
+  }, { once: true });
+
+  // If pool is too large, clean up oldest non-playing sounds
+  while (activeAudioPool.length > MAX_ACTIVE_AUDIO) {
+    const oldest = activeAudioPool.shift();
+    if (oldest && oldest.paused) {
+      oldest.src = '';
+    } else if (oldest) {
+      // If still playing, put it back and try the next
+      activeAudioPool.push(oldest);
+      break;
+    }
+  }
+
+  return audio;
+}
+
 // Preload an audio file so it's ready to play instantly
 function preloadAudio(src: string): void {
   const audio = getAudio(src);
   // Force the browser to start loading
   audio.load();
+}
+
+// Preload commonly used SFX for faster playback
+function preloadCommonSfx(): void {
+  // Preload all SFX that are used during gameplay
+  const commonSfx = [
+    SFX.letterSelect,
+    SFX.wordValid,
+    SFX.wordInvalid,
+    SFX.wordAlreadyFound,
+    SFX.powerupEarned,
+    SFX.powerupFreeze,
+    SFX.powerupBomb,
+    SFX.powerupShuffle,
+    SFX.powerupLock,
+    SFX.timerWarning,
+    SFX.gameStart,
+    SFX.countdownBeep,
+    SFX.countdownGo,
+    SFX.gameEnd,
+  ];
+
+  // Also preload chain sounds
+  for (let i = 1; i <= 10; i++) {
+    commonSfx.push(SFX.letterChain(i));
+  }
+
+  commonSfx.forEach(src => preloadAudio(src));
+}
+
+// Preload common sounds when module loads
+if (typeof window !== 'undefined') {
+  // Delay preloading slightly to not block initial page load
+  setTimeout(preloadCommonSfx, 500);
 }
 
 export interface AudioManager {
@@ -191,6 +271,7 @@ export interface AudioManager {
   playPowerupFreeze: () => void;
   playPowerupBomb: () => void;
   playPowerupShuffle: () => void;
+  playPowerupLock: () => void;
   playTimerTick: () => void;
   playTimerWarning: () => void;
   playGameStart: () => void;
@@ -281,13 +362,21 @@ export function useAudio(): AudioManager {
 
     const doPlaySfx = () => {
       try {
-        const audio = getAudio(src);
+        // Create a fresh audio instance for each play
+        // This prevents conflicts when sounds are triggered rapidly
+        const audio = createFreshAudio(src);
         audio.volume = volume ?? sfxVolume;
-        audio.currentTime = 0;
+
         const playPromise = audio.play();
         if (playPromise !== undefined) {
           playPromise.catch((e) => {
             console.warn('Audio play failed:', e.message);
+            // On failure, clean up the audio element
+            const idx = activeAudioPool.indexOf(audio);
+            if (idx !== -1) {
+              activeAudioPool.splice(idx, 1);
+            }
+            audio.src = '';
           });
         }
       } catch (e) {
@@ -297,7 +386,7 @@ export function useAudio(): AudioManager {
 
     // Try to unlock audio first
     unlockAudio();
-    
+
     // If audio is unlocked, play immediately
     if (audioUnlocked) {
       doPlaySfx();
@@ -408,6 +497,7 @@ export function useAudio(): AudioManager {
     playPowerupFreeze: () => playSfx(SFX.powerupFreeze),
     playPowerupBomb: () => playSfx(SFX.powerupBomb),
     playPowerupShuffle: () => playSfx(SFX.powerupShuffle),
+    playPowerupLock: () => playSfx(SFX.powerupLock),
     playTimerTick: () => playSfx(SFX.timerTick, 0.3),
     playTimerWarning: () => playSfx(SFX.timerWarning),
     playGameStart: () => playSfx(SFX.gameStart),

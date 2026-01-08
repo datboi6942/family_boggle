@@ -135,10 +135,23 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
             message.data.powerups
           );
           break;
-        case 'board_update':
-          // Update just the board (for shuffle)
-          useGameStore.getState().setBoard(message.data.board);
+        case 'board_update': {
+          // Handle shuffle with lock protection
+          const store = useGameStore.getState();
+          const protectedPlayers = message.data.protected_players || [];
+          const isProtected = playerId && protectedPlayers.includes(playerId);
+
+          if (isProtected && message.data.old_board) {
+            // Player was protected by lock - restore their old board
+            store.setBoard(message.data.old_board);
+            // Clear lock armed state since it was consumed
+            useGameStore.setState({ isLockArmed: false });
+          } else {
+            // Normal shuffle - use new board
+            store.setBoard(message.data.board);
+          }
           break;
+        }
         case 'error':
           console.error('Server error:', message.data);
           alert(message.data.message || 'Error connecting to lobby');

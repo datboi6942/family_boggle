@@ -3,7 +3,7 @@ from typing import Dict, List, Set, Tuple
 
 class PowerUpManager:
     """Manages the logic and state for game power-ups."""
-    
+
     def __init__(self) -> None:
         """Initializes the power-up manager."""
         # lobby_id -> { player_id -> freeze_end_time }
@@ -12,6 +12,8 @@ class PowerUpManager:
         self.blocked_cells: Dict[str, Set[Tuple[int, int]]] = {}
         # lobby_id -> block_end_time
         self.block_end_time: Dict[str, float] = {}
+        # lobby_id -> { player_id -> saved_board } - players with lock armed
+        self.armed_locks: Dict[str, Dict[str, List[List[str]]]] = {}
 
     def apply_powerup(self, lobby_id: str, player_id: str, powerup: str, players: List[any]) -> dict:
         """Applies a power-up effect.
@@ -70,6 +72,47 @@ class PowerUpManager:
         if lobby_id in self.block_end_time and now < self.block_end_time[lobby_id]:
             return self.blocked_cells.get(lobby_id, set())
         return set()
+
+    def arm_lock(self, lobby_id: str, player_id: str, current_board: List[List[str]]) -> bool:
+        """Arms a lock powerup for a player, saving their current board state.
+
+        Args:
+            lobby_id: The lobby ID.
+            player_id: The player arming the lock.
+            current_board: The current board state to save.
+
+        Returns:
+            True if lock was armed successfully.
+        """
+        if lobby_id not in self.armed_locks:
+            self.armed_locks[lobby_id] = {}
+        # Deep copy the board to preserve it
+        self.armed_locks[lobby_id][player_id] = [row[:] for row in current_board]
+        return True
+
+    def has_armed_lock(self, lobby_id: str, player_id: str) -> bool:
+        """Checks if a player has an armed lock."""
+        return (lobby_id in self.armed_locks and
+                player_id in self.armed_locks[lobby_id])
+
+    def get_locked_players(self, lobby_id: str) -> Dict[str, List[List[str]]]:
+        """Returns dict of player_id -> saved_board for all locked players."""
+        return self.armed_locks.get(lobby_id, {})
+
+    def consume_locks(self, lobby_id: str) -> List[str]:
+        """Consumes all armed locks in a lobby and returns list of protected player IDs."""
+        if lobby_id not in self.armed_locks:
+            return []
+        protected_players = list(self.armed_locks[lobby_id].keys())
+        self.armed_locks[lobby_id] = {}
+        return protected_players
+
+    def clear_lobby(self, lobby_id: str) -> None:
+        """Clears all powerup state for a lobby."""
+        self.active_freezes.pop(lobby_id, None)
+        self.blocked_cells.pop(lobby_id, None)
+        self.block_end_time.pop(lobby_id, None)
+        self.armed_locks.pop(lobby_id, None)
 
 powerup_manager = PowerUpManager()
 
