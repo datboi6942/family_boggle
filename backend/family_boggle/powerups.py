@@ -14,6 +14,8 @@ class PowerUpManager:
         self.block_end_time: Dict[str, float] = {}
         # lobby_id -> { player_id -> saved_board } - players with lock armed
         self.armed_locks: Dict[str, Dict[str, List[List[str]]]] = {}
+        # lobby_id -> { player_id -> board } - per-player board views (for lock protection)
+        self.player_boards: Dict[str, Dict[str, List[List[str]]]] = {}
 
     def apply_powerup(self, lobby_id: str, player_id: str, powerup: str, players: List[any]) -> dict:
         """Applies a power-up effect.
@@ -99,13 +101,44 @@ class PowerUpManager:
         """Returns dict of player_id -> saved_board for all locked players."""
         return self.armed_locks.get(lobby_id, {})
 
-    def consume_locks(self, lobby_id: str) -> List[str]:
-        """Consumes all armed locks in a lobby and returns list of protected player IDs."""
+    def consume_locks(self, lobby_id: str) -> Dict[str, List[List[str]]]:
+        """Consumes all armed locks in a lobby.
+
+        Returns:
+            Dict mapping protected player IDs to their saved boards.
+        """
         if lobby_id not in self.armed_locks:
-            return []
-        protected_players = list(self.armed_locks[lobby_id].keys())
+            return {}
+
+        # Move armed locks to player_boards so they're used for word validation
+        protected_players = self.armed_locks[lobby_id].copy()
+
+        # Store the protected boards for word validation
+        if lobby_id not in self.player_boards:
+            self.player_boards[lobby_id] = {}
+
+        for player_id, saved_board in protected_players.items():
+            self.player_boards[lobby_id][player_id] = saved_board
+
+        # Clear the armed locks
         self.armed_locks[lobby_id] = {}
+
         return protected_players
+
+    def get_player_board(self, lobby_id: str, player_id: str, default_board: List[List[str]]) -> List[List[str]]:
+        """Gets a player's current board view.
+
+        If the player has a protected board (from lock), returns that.
+        Otherwise returns the default lobby board.
+        """
+        if lobby_id in self.player_boards and player_id in self.player_boards[lobby_id]:
+            return self.player_boards[lobby_id][player_id]
+        return default_board
+
+    def sync_player_to_lobby_board(self, lobby_id: str, player_id: str) -> None:
+        """Syncs a player back to the lobby's main board (clears their protected board)."""
+        if lobby_id in self.player_boards and player_id in self.player_boards[lobby_id]:
+            del self.player_boards[lobby_id][player_id]
 
     def clear_lobby(self, lobby_id: str) -> None:
         """Clears all powerup state for a lobby."""
@@ -113,6 +146,7 @@ class PowerUpManager:
         self.blocked_cells.pop(lobby_id, None)
         self.block_end_time.pop(lobby_id, None)
         self.armed_locks.pop(lobby_id, None)
+        self.player_boards.pop(lobby_id, None)
 
 powerup_manager = PowerUpManager()
 

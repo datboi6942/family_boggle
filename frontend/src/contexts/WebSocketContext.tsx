@@ -139,22 +139,28 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
         case 'board_update': {
           // Handle shuffle with lock protection
           const store = useGameStore.getState();
-          const currentPlayerId = store.playerId; // Get fresh playerId from store
+          const currentPlayerId = store.playerId;
           const protectedPlayers = message.data.protected_players || [];
+          const protectedBoards = message.data.protected_boards || {};
           const isProtected = currentPlayerId && protectedPlayers.includes(currentPlayerId);
 
-          if (isProtected && message.data.old_board) {
-            // Player was protected by lock - restore their old board
-            store.setBoard(message.data.old_board);
+          if (isProtected && protectedBoards[currentPlayerId]) {
+            // Player was protected by lock - use their saved board
+            store.setBoard(protectedBoards[currentPlayerId]);
             // Clear lock armed state and trigger lock consumed animation
             useGameStore.setState({ isLockArmed: false, lockJustConsumed: true });
             // Clear the consumed flag after animation
             setTimeout(() => {
               useGameStore.setState({ lockJustConsumed: false });
-            }, 2000);
+            }, 2500);
           } else {
             // Normal shuffle - use new board
             store.setBoard(message.data.board);
+            // If this player had isLockArmed but wasn't in protected list, clear it
+            // (shouldn't happen, but safety check)
+            if (store.isLockArmed) {
+              useGameStore.setState({ isLockArmed: false });
+            }
           }
           break;
         }

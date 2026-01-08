@@ -1,7 +1,7 @@
 import asyncio
 import random
 import uuid
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 import structlog
 
 from family_boggle.board import BoggleBoard
@@ -102,25 +102,65 @@ class GameEngine:
         logger.info("game_countdown_started", lobby_id=lobby_id)
         return True
 
+    def _is_word_on_board(self, word: str, path: List[Tuple[int, int]], board: List[List[str]]) -> bool:
+        """Validates if a word is present on a given board following a path.
+
+        Args:
+            word: The word to validate (uppercase).
+            path: List of (row, col) coordinates.
+            board: The board grid to validate against.
+
+        Returns:
+            True if the path matches the word and is valid.
+        """
+        if len(word) != len(path):
+            return False
+
+        size = len(board)
+        used_cells: Set[Tuple[int, int]] = set()
+
+        for i, (r, c) in enumerate(path):
+            if not (0 <= r < size and 0 <= c < size):
+                return False
+            if (r, c) in used_cells:
+                return False
+            if board[r][c] != word[i]:
+                return False
+
+            # Check adjacency if not the first letter
+            if i > 0:
+                prev_r, prev_c = path[i-1]
+                if abs(r - prev_r) > 1 or abs(c - prev_c) > 1:
+                    return False
+
+            used_cells.add((r, c))
+
+        return True
+
     def submit_word(self, lobby_id: str, player_id: str, submission: WordSubmission) -> dict:
         """Handles a word submission from a player."""
+        from family_boggle.powerups import powerup_manager
+
         if lobby_id not in self.lobbies:
             return {"valid": False, "reason": "Lobby not found"}
-            
+
         lobby = self.lobbies[lobby_id]
         if lobby.status != "playing":
             return {"valid": False, "reason": "Game not in progress"}
-            
+
         player = next((p for p in lobby.players if p.id == player_id), None)
         if not player:
             return {"valid": False, "reason": "Player not found"}
-            
+
         word = submission.word.upper()
         if word in player.found_words:
             return {"valid": False, "reason": "Word already found"}
-            
-        # Validate on board
-        if not self.board_gen or not self.board_gen.is_word_on_board(word, submission.path):
+
+        # Get the player's current board (may be different from lobby board if protected by lock)
+        player_board = powerup_manager.get_player_board(lobby_id, player_id, lobby.board)
+
+        # Validate on the player's board
+        if not self._is_word_on_board(word, submission.path, player_board):
             return {"valid": False, "reason": "Word not on board"}
             
         # Validate in dictionary

@@ -210,32 +210,24 @@ async def websocket_endpoint(
                     })
 
                     if powerup == "shuffle":
-                        # Get players with armed locks before shuffle
-                        locked_players = powerup_manager.get_locked_players(lobby_id)
-                        old_board = [row[:] for row in lobby.board]  # Copy current board
+                        # Get players with armed locks before shuffle (returns dict of player_id -> saved_board)
+                        # Consume locks moves their saved boards to player_boards for word validation
+                        protected_players_boards = powerup_manager.consume_locks(lobby_id)
+                        protected_player_ids = list(protected_players_boards.keys())
 
                         # Generate new board
                         game_engine.board_gen.generate()
                         lobby.board = game_engine.board_gen.grid
                         new_board = lobby.board
 
-                        # Consume all armed locks
-                        protected_player_ids = powerup_manager.consume_locks(lobby_id)
-
-                        # Send personalized board updates
-                        for conn_ws, conn_lobby_id in manager.active_connections:
-                            if conn_lobby_id == lobby_id:
-                                # Find which player this connection belongs to
-                                # We need to check the URL params - for now, broadcast to all
-                                pass
-
-                        # Broadcast new board to everyone (protected players will restore theirs)
+                        # Broadcast board update with each protected player's individual saved board
                         await manager.broadcast(lobby_id, {
                             "type": "board_update",
                             "data": {
                                 "board": new_board,
                                 "protected_players": protected_player_ids,
-                                "old_board": old_board if protected_player_ids else None
+                                "protected_boards": protected_players_boards if protected_player_ids else None,
+                                "shuffled_by": player_id
                             }
                         })
 
