@@ -338,7 +338,6 @@ export function useAudio(): AudioManager {
     }
 
     const oldAudio = currentMusicRef.current;
-    const oldAudioSrc = currentMusicSrcRef.current;
     const targetVolume = isMusicMuted ? 0 : musicVolume;
 
     // Create new audio element for music
