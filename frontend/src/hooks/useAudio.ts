@@ -338,6 +338,7 @@ export function useAudio(): AudioManager {
     }
 
     const oldAudio = currentMusicRef.current;
+    const oldAudioSrc = currentMusicSrcRef.current;
     const targetVolume = isMusicMuted ? 0 : musicVolume;
 
     // Create new audio element for music
@@ -355,33 +356,48 @@ export function useAudio(): AudioManager {
 
       const playPromise = audio.play();
       if (playPromise !== undefined) {
-        playPromise.catch(() => {});
+        playPromise
+          .then(() => {
+            // Play succeeded - update refs and start crossfade
+            currentMusicRef.current = audio;
+            currentMusicSrcRef.current = src;
+
+            crossfadeIntervalRef.current = setInterval(() => {
+              step++;
+              const progress = step / steps;
+
+              // Fade out old
+              if (oldAudio) {
+                oldAudio.volume = Math.max(0, startVolume * (1 - progress));
+              }
+              // Fade in new
+              audio.volume = targetVolume * progress;
+
+              if (step >= steps) {
+                if (crossfadeIntervalRef.current) {
+                  clearInterval(crossfadeIntervalRef.current);
+                  crossfadeIntervalRef.current = null;
+                }
+                // Stop old audio completely
+                if (oldAudio) {
+                  oldAudio.pause();
+                  oldAudio.currentTime = 0;
+                }
+                audio.volume = targetVolume;
+              }
+            }, stepTime);
+          })
+          .catch(() => {
+            // Crossfade play failed - keep old audio playing, don't update refs
+            // Restore old audio volume in case it was modified
+            if (oldAudio) {
+              oldAudio.volume = targetVolume;
+            }
+            console.warn('Crossfade play failed, keeping current track');
+          });
       }
-
-      crossfadeIntervalRef.current = setInterval(() => {
-        step++;
-        const progress = step / steps;
-
-        // Fade out old
-        if (oldAudio) {
-          oldAudio.volume = Math.max(0, startVolume * (1 - progress));
-        }
-        // Fade in new
-        audio.volume = targetVolume * progress;
-
-        if (step >= steps) {
-          if (crossfadeIntervalRef.current) {
-            clearInterval(crossfadeIntervalRef.current);
-            crossfadeIntervalRef.current = null;
-          }
-          // Stop old audio completely
-          if (oldAudio) {
-            oldAudio.pause();
-            oldAudio.currentTime = 0;
-          }
-          audio.volume = targetVolume;
-        }
-      }, stepTime);
+      // Don't update refs here - wait for play promise
+      return;
     } else {
       // No crossfade - stop previous immediately
       if (oldAudio) {

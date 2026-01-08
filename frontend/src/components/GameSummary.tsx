@@ -9,11 +9,16 @@ import confetti from 'canvas-confetti';
 import { WordAwardAnimation } from './summary/WordAwardAnimation';
 import { Trophy, Sparkles, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
 
-// iOS detection - confetti and spring animations cause lag
+// Mobile detection - confetti and spring animations cause lag on mobile devices
 const IS_IOS = typeof navigator !== 'undefined' && (
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 );
+
+const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+
+// Use reduced animations on all mobile devices for consistent smooth performance
+const IS_MOBILE = IS_IOS || IS_ANDROID;
 
 export const GameSummary = () => {
   const { results, winner, wordAwards, longestWordFound, longestPossibleWord, allPossibleWords, totalPossibleWords, players, playerId, playersWantingPlayAgain, resetSession } = useGameStore(
@@ -93,12 +98,12 @@ export const GameSummary = () => {
     if (phase === 'celebrating') {
       // Play victory sounds
       playVictoryFanfare();
-      if (!IS_IOS) {
-        playConfettiBurst(); // Skip on iOS - multiple sounds cause lag
+      if (!IS_MOBILE) {
+        playConfettiBurst(); // Skip on mobile - multiple sounds cause lag
       }
 
-      // iOS: simplified confetti - fewer particles, no repeated bursts
-      if (IS_IOS) {
+      // Mobile: simplified confetti - fewer particles, no repeated bursts
+      if (IS_MOBILE) {
         confetti({
           particleCount: 50,
           spread: 70,
@@ -114,7 +119,7 @@ export const GameSummary = () => {
           colors: ['#8b5cf6', '#22c55e', '#f97316', '#eab308']
         });
 
-        // Secondary bursts - Android/Desktop only
+        // Secondary bursts - Desktop only
         const duration = 2 * 1000;
         const animationEnd = Date.now() + duration;
         const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
@@ -173,7 +178,7 @@ export const GameSummary = () => {
             className="flex-1 flex flex-col items-center justify-center p-6"
           >
             {/* Longest Word Award Animation */}
-            {/* iOS: use tween instead of spring for smoother animations */}
+            {/* Mobile: use tween instead of spring for smoother animations */}
             <motion.div
               initial={{ scale: 0, rotate: -180 }}
               animate={{ scale: 1, rotate: 0 }}
@@ -182,7 +187,7 @@ export const GameSummary = () => {
             >
               <div className="relative">
                 <Trophy className="w-24 h-24 text-yellow-500" />
-                {/* iOS: use CSS animation class instead of Framer Motion infinite loop */}
+                {/* Mobile: use CSS animation class instead of Framer Motion infinite loop */}
                 <div className="absolute inset-0 flex items-center justify-center ios-pulse">
                   <Sparkles className="w-32 h-32 text-yellow-400/30" />
                 </div>
@@ -241,7 +246,7 @@ export const GameSummary = () => {
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                transition={IS_IOS ? { type: 'tween', duration: 0.3, ease: 'backOut' } : { type: 'spring', damping: 12 }}
+                transition={IS_MOBILE ? { type: 'tween', duration: 0.3, ease: 'backOut' } : { type: 'spring', damping: 12 }}
                 className="inline-block"
               >
                 <MonsterAvatar name={winner?.character || 'Blobby'} size={150} isWinner={true} />

@@ -6,6 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Family Boggle is a multiplayer word game with a Netflix-style dark theme UI. Players swipe letters on a grid to form words, earn points based on letter difficulty, and can use power-ups for competitive advantages.
 
+## Performance Priority
+
+**Smooth, fast animations are the highest priority for this project.** The game's replayability depends on responsive, lag-free interactions. Slow or choppy animations frustrate players and hurt the overall experience.
+
+Key focus areas:
+- GameBoard touch/swipe interactions must feel instant and fluid
+- All UI transitions and animations should run at 60fps
+- Avoid heavy re-renders during gameplay
+- Optimize any animation-related code paths first
+
 ## Development Commands
 
 ### Frontend (React/Vite/TypeScript)
