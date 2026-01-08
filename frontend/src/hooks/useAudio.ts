@@ -1,6 +1,6 @@
 /**
  * Audio manager hook for Family Boggle game.
- * Handles all sound effects and background music.
+ * Uses Web Audio API for reliable, consistent sound playback.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -51,174 +51,108 @@ const MUSIC = {
   countdownRiser: `${AUDIO_BASE}/music/countdown_riser.wav`,
 };
 
-// Audio cache for preloading - stores template elements
-const MAX_AUDIO_CACHE_SIZE = 25;
-const audioCache: Map<string, HTMLAudioElement> = new Map();
-const audioCacheOrder: string[] = []; // Track access order for LRU
+// Web Audio API context and buffer cache
+let audioContext: AudioContext | null = null;
+const bufferCache: Map<string, AudioBuffer> = new Map();
+const loadingPromises: Map<string, Promise<AudioBuffer | null>> = new Map();
 
-// Pool of active audio instances for cleanup
-const activeAudioPool: HTMLAudioElement[] = [];
-const MAX_ACTIVE_AUDIO = 20; // Max concurrent sounds
+// Track if audio context has been resumed (required on mobile)
+let audioContextResumed = false;
 
-// Track if audio has been unlocked (required on mobile)
-let audioUnlocked = false;
+// Get or create AudioContext
+function getAudioContext(): AudioContext {
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    audioContext = new AudioContextClass();
+  }
+  return audioContext;
+}
 
-// Callbacks to run after audio is unlocked
-const pendingAudioCallbacks: Array<() => void> = [];
+// Resume audio context (required after user interaction on mobile)
+async function resumeAudioContext(): Promise<void> {
+  if (audioContextResumed) return;
 
-function unlockAudio(): void {
-  if (audioUnlocked) return;
-  
-  // Create a silent audio context to unlock audio on mobile
+  const ctx = getAudioContext();
+  if (ctx.state === 'suspended') {
+    try {
+      await ctx.resume();
+      audioContextResumed = true;
+      console.log('AudioContext resumed');
+    } catch (e) {
+      console.warn('Failed to resume AudioContext:', e);
+    }
+  } else {
+    audioContextResumed = true;
+  }
+}
+
+// Load an audio file into an AudioBuffer
+async function loadAudioBuffer(src: string): Promise<AudioBuffer | null> {
+  // Return cached buffer if available
+  if (bufferCache.has(src)) {
+    return bufferCache.get(src)!;
+  }
+
+  // Return existing promise if already loading
+  if (loadingPromises.has(src)) {
+    return loadingPromises.get(src)!;
+  }
+
+  // Start loading
+  const loadPromise = (async () => {
+    try {
+      const response = await fetch(src);
+      if (!response.ok) {
+        console.warn(`Failed to fetch audio: ${src}`);
+        return null;
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      const ctx = getAudioContext();
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      bufferCache.set(src, audioBuffer);
+      return audioBuffer;
+    } catch (e) {
+      console.warn(`Failed to load audio: ${src}`, e);
+      return null;
+    } finally {
+      loadingPromises.delete(src);
+    }
+  })();
+
+  loadingPromises.set(src, loadPromise);
+  return loadPromise;
+}
+
+// Play an audio buffer with Web Audio API
+function playBuffer(buffer: AudioBuffer, volume: number = 1.0): AudioBufferSourceNode | null {
   try {
-    const AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof window.AudioContext }).webkitAudioContext;
-    if (AudioContext) {
-      const ctx = new AudioContext();
-      const buffer = ctx.createBuffer(1, 1, 22050);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
-      ctx.resume();
-    }
-    
-    // Also try to play/pause all cached audio elements to unlock them
-    audioCache.forEach((audio) => {
-      const playPromise = audio.play();
-      if (playPromise) {
-        playPromise.then(() => {
-          audio.pause();
-          audio.currentTime = 0;
-        }).catch(() => {
-          // Ignore - not all audio may be ready
-        });
-      }
-    });
-    
-    audioUnlocked = true;
-    console.log('Audio unlocked');
-    
-    // Run any pending audio callbacks
-    while (pendingAudioCallbacks.length > 0) {
-      const callback = pendingAudioCallbacks.shift();
-      if (callback) {
-        try {
-          callback();
-        } catch (e) {
-          console.warn('Pending audio callback failed:', e);
-        }
-      }
-    }
+    const ctx = getAudioContext();
+
+    // Create nodes
+    const source = ctx.createBufferSource();
+    const gainNode = ctx.createGain();
+
+    // Configure
+    source.buffer = buffer;
+    gainNode.gain.value = volume;
+
+    // Connect: source -> gain -> destination
+    source.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    // Play immediately
+    source.start(0);
+
+    return source;
   } catch (e) {
-    console.warn('Failed to unlock audio:', e);
+    console.warn('Failed to play audio buffer:', e);
+    return null;
   }
 }
 
-// Add a callback to run after audio is unlocked
-function onAudioUnlocked(callback: () => void): void {
-  if (audioUnlocked) {
-    callback();
-  } else {
-    pendingAudioCallbacks.push(callback);
-  }
-}
-
-// Unlock audio on first user interaction
-if (typeof window !== 'undefined') {
-  const unlockHandler = () => {
-    unlockAudio();
-    document.removeEventListener('touchstart', unlockHandler);
-    document.removeEventListener('touchend', unlockHandler);
-    document.removeEventListener('click', unlockHandler);
-    document.removeEventListener('keydown', unlockHandler);
-  };
-  document.addEventListener('touchstart', unlockHandler, { passive: true });
-  document.addEventListener('touchend', unlockHandler, { passive: true });
-  document.addEventListener('click', unlockHandler, { passive: true });
-  document.addEventListener('keydown', unlockHandler, { passive: true });
-}
-
-function getAudio(src: string): HTMLAudioElement {
-  if (!audioCache.has(src)) {
-    const audio = new Audio(src);
-    audio.preload = 'auto';
-    audioCache.set(src, audio);
-    audioCacheOrder.push(src);
-
-    // LRU eviction - remove oldest entries when cache exceeds limit
-    while (audioCacheOrder.length > MAX_AUDIO_CACHE_SIZE) {
-      const oldest = audioCacheOrder.shift();
-      if (oldest) {
-        const oldAudio = audioCache.get(oldest);
-        if (oldAudio) {
-          oldAudio.pause();
-          oldAudio.src = ''; // Release resources
-        }
-        audioCache.delete(oldest);
-      }
-    }
-  } else {
-    // Move to end of access order (most recently used)
-    const idx = audioCacheOrder.indexOf(src);
-    if (idx !== -1) {
-      audioCacheOrder.splice(idx, 1);
-      audioCacheOrder.push(src);
-    }
-  }
-  return audioCache.get(src)!;
-}
-
-// Create a fresh audio instance for reliable playback
-// This prevents issues where reusing the same Audio element causes sounds to not play
-function createFreshAudio(src: string): HTMLAudioElement {
-  const audio = new Audio(src);
-  audio.preload = 'auto';
-
-  // Track in pool for cleanup
-  activeAudioPool.push(audio);
-
-  // Clean up after playback ends
-  audio.addEventListener('ended', () => {
-    const idx = activeAudioPool.indexOf(audio);
-    if (idx !== -1) {
-      activeAudioPool.splice(idx, 1);
-    }
-    audio.src = ''; // Release resources
-  }, { once: true });
-
-  // Also clean up on error
-  audio.addEventListener('error', () => {
-    const idx = activeAudioPool.indexOf(audio);
-    if (idx !== -1) {
-      activeAudioPool.splice(idx, 1);
-    }
-  }, { once: true });
-
-  // If pool is too large, clean up oldest non-playing sounds
-  while (activeAudioPool.length > MAX_ACTIVE_AUDIO) {
-    const oldest = activeAudioPool.shift();
-    if (oldest && oldest.paused) {
-      oldest.src = '';
-    } else if (oldest) {
-      // If still playing, put it back and try the next
-      activeAudioPool.push(oldest);
-      break;
-    }
-  }
-
-  return audio;
-}
-
-// Preload an audio file so it's ready to play instantly
-function preloadAudio(src: string): void {
-  const audio = getAudio(src);
-  // Force the browser to start loading
-  audio.load();
-}
-
-// Preload commonly used SFX for faster playback
+// Preload commonly used SFX
 function preloadCommonSfx(): void {
-  // Preload all SFX that are used during gameplay
   const commonSfx = [
     SFX.letterSelect,
     SFX.wordValid,
@@ -236,18 +170,36 @@ function preloadCommonSfx(): void {
     SFX.gameEnd,
   ];
 
-  // Also preload chain sounds
+  // Preload chain sounds
   for (let i = 1; i <= 10; i++) {
     commonSfx.push(SFX.letterChain(i));
   }
 
-  commonSfx.forEach(src => preloadAudio(src));
+  // Load all in parallel
+  commonSfx.forEach(src => loadAudioBuffer(src));
 }
 
-// Preload common sounds when module loads
+// Resume audio on first user interaction
 if (typeof window !== 'undefined') {
-  // Delay preloading slightly to not block initial page load
-  setTimeout(preloadCommonSfx, 500);
+  const resumeHandler = () => {
+    resumeAudioContext();
+    // Start preloading after context is ready
+    preloadCommonSfx();
+
+    document.removeEventListener('touchstart', resumeHandler);
+    document.removeEventListener('touchend', resumeHandler);
+    document.removeEventListener('click', resumeHandler);
+    document.removeEventListener('keydown', resumeHandler);
+  };
+  document.addEventListener('touchstart', resumeHandler, { passive: true });
+  document.addEventListener('touchend', resumeHandler, { passive: true });
+  document.addEventListener('click', resumeHandler, { passive: true });
+  document.addEventListener('keydown', resumeHandler, { passive: true });
+
+  // Also preload after a delay even without interaction
+  setTimeout(() => {
+    preloadCommonSfx();
+  }, 1000);
 }
 
 export interface AudioManager {
@@ -314,12 +266,8 @@ export function useAudio(): AudioManager {
 
   const [isMusicMuted, setIsMusicMuted] = useState(() => {
     const saved = localStorage.getItem('boggle-music-muted');
-    // Default to NOT muted if no preference saved
     return saved === 'true';
   });
-
-  // Track pending music to play after audio is unlocked
-  const pendingMusicRef = useRef<{ src: string; loop: boolean } | null>(null);
 
   const [sfxVolume, setSfxVolumeState] = useState(() => {
     const saved = localStorage.getItem('boggle-sfx-volume');
@@ -331,7 +279,9 @@ export function useAudio(): AudioManager {
     return saved ? parseFloat(saved) : 0.4;
   });
 
+  // Music uses HTML Audio for looping (Web Audio looping is more complex)
   const currentMusicRef = useRef<HTMLAudioElement | null>(null);
+  const currentMusicSrcRef = useRef<string | null>(null);
 
   // Save settings to localStorage
   useEffect(() => {
@@ -357,107 +307,65 @@ export function useAudio(): AudioManager {
     }
   }, [musicVolume, isMusicMuted]);
 
-  const playSfx = useCallback((src: string, volume?: number) => {
+  // Play SFX using Web Audio API - much more reliable than HTML Audio
+  const playSfx = useCallback(async (src: string, volume?: number) => {
     if (isMuted) return;
 
-    const doPlaySfx = () => {
-      try {
-        // Create a fresh audio instance for each play
-        // This prevents conflicts when sounds are triggered rapidly
-        const audio = createFreshAudio(src);
-        audio.volume = volume ?? sfxVolume;
+    // Ensure context is resumed
+    await resumeAudioContext();
 
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch((e) => {
-            console.warn('Audio play failed:', e.message);
-            // On failure, clean up the audio element
-            const idx = activeAudioPool.indexOf(audio);
-            if (idx !== -1) {
-              activeAudioPool.splice(idx, 1);
-            }
-            audio.src = '';
-          });
-        }
-      } catch (e) {
-        // Ignore audio errors
-      }
-    };
+    // Get or load the buffer
+    const buffer = await loadAudioBuffer(src);
+    if (!buffer) return;
 
-    // Try to unlock audio first
-    unlockAudio();
-
-    // If audio is unlocked, play immediately
-    if (audioUnlocked) {
-      doPlaySfx();
-    } else {
-      // Queue to play after unlock (only for important sounds like countdown)
-      onAudioUnlocked(doPlaySfx);
-    }
+    // Play with Web Audio API
+    playBuffer(buffer, volume ?? sfxVolume);
   }, [isMuted, sfxVolume]);
 
+  // Play music using HTML Audio (better for looping)
   const playMusic = useCallback((src: string, loop: boolean = true) => {
-    const doPlayMusic = () => {
-      try {
-        const audio = getAudio(src);
+    // If already playing this track, just update volume
+    if (currentMusicSrcRef.current === src && currentMusicRef.current && !currentMusicRef.current.paused) {
+      currentMusicRef.current.volume = isMusicMuted ? 0 : musicVolume;
+      return;
+    }
 
-        // If already playing this track, just update volume and return
-        if (currentMusicRef.current === audio && !audio.paused) {
-          audio.volume = isMusicMuted ? 0 : musicVolume;
-          return;
-        }
+    // Stop previous music
+    if (currentMusicRef.current) {
+      currentMusicRef.current.pause();
+      currentMusicRef.current.currentTime = 0;
+    }
 
-        // Stop previous music if different track
-        if (currentMusicRef.current && currentMusicRef.current !== audio) {
-          currentMusicRef.current.pause();
-          currentMusicRef.current.currentTime = 0;
-        }
+    // Create new audio element for music
+    const audio = new Audio(src);
+    audio.loop = loop;
+    audio.volume = isMusicMuted ? 0 : musicVolume;
+    audio.preload = 'auto';
 
-        audio.loop = loop;
-        audio.volume = isMusicMuted ? 0 : musicVolume;
-        audio.currentTime = 0;
-
-        // Always try to play
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch((e) => {
-            console.warn('Music play failed:', e.message);
-            // Try loading and playing again
-            audio.load();
-            setTimeout(() => {
-              audio.play().catch(() => {});
-            }, 100);
-          });
-        }
-
-        currentMusicRef.current = audio;
-      } catch (e) {
-        console.warn('Music error:', e);
-        // Queue retry for when audio is unlocked
-        pendingMusicRef.current = { src, loop };
-      }
-    };
-
-    // Try to unlock audio first
-    unlockAudio();
-
-    // If audio is unlocked, play immediately; otherwise queue it
-    if (audioUnlocked) {
-      doPlayMusic();
-    } else {
-      // Store pending music and queue callback
-      pendingMusicRef.current = { src, loop };
-      onAudioUnlocked(() => {
-        if (pendingMusicRef.current && pendingMusicRef.current.src === src) {
-          doPlayMusic();
-        }
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((e) => {
+        console.warn('Music play failed:', e.message);
+        // Retry after user interaction
+        const retryPlay = () => {
+          audio.play().catch(() => {});
+          document.removeEventListener('click', retryPlay);
+          document.removeEventListener('touchstart', retryPlay);
+        };
+        document.addEventListener('click', retryPlay, { once: true });
+        document.addEventListener('touchstart', retryPlay, { once: true });
       });
     }
+
+    currentMusicRef.current = audio;
+    currentMusicSrcRef.current = src;
   }, [isMusicMuted, musicVolume]);
 
-  // Preload a music track so it's ready to play
   const preloadMusicTrack = useCallback((src: string) => {
-    preloadAudio(src);
+    // Preload music by creating a temporary audio element
+    const audio = new Audio(src);
+    audio.preload = 'auto';
+    audio.load();
   }, []);
 
   const stopMusic = useCallback(() => {
@@ -465,6 +373,7 @@ export function useAudio(): AudioManager {
       currentMusicRef.current.pause();
       currentMusicRef.current.currentTime = 0;
       currentMusicRef.current = null;
+      currentMusicSrcRef.current = null;
     }
   }, []);
 
@@ -523,7 +432,6 @@ export function useAudio(): AudioManager {
     // Music
     playGameplayMusic: () => {
       playMusic(MUSIC.gameplay);
-      // Preload intense track so it's ready when timer hits 30s
       preloadMusicTrack(MUSIC.gameplayIntense);
     },
     playGameplayIntenseMusic: () => playMusic(MUSIC.gameplayIntense),

@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { useAudioContext } from '../contexts/AudioContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Snowflake, Bomb, RotateCw, Lock } from 'lucide-react';
+import { Snowflake, Bomb, RotateCw, Lock, Shield } from 'lucide-react';
 
 // Letter point values (same as backend scoring.py)
 const LETTER_SCORES: Record<string, number> = {
@@ -737,7 +737,8 @@ export const GameBoard = () => {
         if (existingIndex !== -1) {
           // Backtrack to this cell
           currentPathRef.current = currentPath.slice(0, existingIndex + 1);
-          audioRef.current.playLetterSelect();
+          // iOS: Skip sounds during touch for smooth performance
+          if (!IS_IOS) audioRef.current.playLetterSelect();
         } else if (isAdjacent(lastCell, cell)) {
           // Adjacent cell - add to path
           currentPathRef.current = [...currentPath, cell];
@@ -745,7 +746,8 @@ export const GameBoard = () => {
         } else {
           // Not adjacent - start fresh sequence
           currentPathRef.current = [cell];
-          audioRef.current.playLetterSelect();
+          // iOS: Skip sounds during touch for smooth performance
+          if (!IS_IOS) audioRef.current.playLetterSelect();
         }
 
         prevPathLengthRef.current = currentPathRef.current.length;
@@ -759,7 +761,8 @@ export const GameBoard = () => {
         tapModeActiveRef.current = false;
 
         currentPathRef.current = [cell];
-        audioRef.current.playLetterSelect();
+        // iOS: Skip sounds during touch for smooth performance
+        if (!IS_IOS) audioRef.current.playLetterSelect();
         prevPathLengthRef.current = 1;
       }
 
@@ -1083,14 +1086,56 @@ export const GameBoard = () => {
             <span className="text-xl sm:text-2xl font-black font-mono tabular-nums">{formattedTimer}</span>
           </div>
 
-          {/* Current Word (center) - Updated via ref, no React re-renders */}
-          {/* iOS: removed animate-pulse for performance - word changes provide visual feedback */}
+          {/* Lock Status Indicator - shown when lock is armed */}
+          {isLockArmed && (
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="frosted-glass px-2 py-2 flex items-center space-x-1 shrink-0 bg-green-500/20 border-2 border-green-400"
+            >
+              <Shield className="w-5 h-5 text-green-400" />
+              <span className="text-xs font-bold text-green-400 uppercase">Protected</span>
+            </motion.div>
+          )}
+
+          {/* Current Word / Word Result (center) - Shows result inline when available */}
           <div className="flex-1 text-center min-w-0 overflow-hidden">
-            <div
-              ref={wordDisplayRef}
-              className="text-lg sm:text-2xl font-black tracking-wider text-primary truncate"
-              style={{ display: 'none' }}
-            />
+            <AnimatePresence mode="wait">
+              {lastWordResult ? (
+                <motion.div
+                  key={lastWordResult.valid ? `valid-${lastWordResult.points}` : `invalid-${lastWordResult.reason}`}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ type: "tween", duration: 0.15 }}
+                  className="flex flex-col items-center justify-center"
+                >
+                  <span className={`text-sm sm:text-lg font-black ${lastWordResult.valid ? 'text-green-400' : 'text-red-400'}`}>
+                    {lastWordResult.valid ? `+${lastWordResult.points} POINTS!` : lastWordResult.reason}
+                  </span>
+                  {lastWordResult.powerup && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "tween", duration: 0.15, delay: 0.1 }}
+                      className="flex items-center gap-1 bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full text-xs"
+                    >
+                      {lastWordResult.powerup === 'freeze' && <Snowflake className="w-3 h-3" />}
+                      {lastWordResult.powerup === 'blowup' && <Bomb className="w-3 h-3" />}
+                      {lastWordResult.powerup === 'shuffle' && <RotateCw className="w-3 h-3" />}
+                      {lastWordResult.powerup === 'lock' && <Lock className="w-3 h-3" />}
+                      <span className="font-bold">+1</span>
+                    </motion.div>
+                  )}
+                </motion.div>
+              ) : (
+                <div
+                  ref={wordDisplayRef}
+                  className="text-lg sm:text-2xl font-black tracking-wider text-primary truncate"
+                  style={{ display: 'none' }}
+                />
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Score */}
@@ -1104,7 +1149,11 @@ export const GameBoard = () => {
       {/* The Board - Constrained square container that fits in available space */}
       <div className="flex items-center justify-center overflow-hidden min-h-0 py-1">
         <div
-          className="relative w-full"
+          className={`relative w-full transition-all duration-300 ${
+            isLockArmed
+              ? 'ring-4 ring-green-400/50 shadow-[0_0_20px_rgba(34,197,94,0.3)] rounded-2xl'
+              : ''
+          }`}
           style={{
             aspectRatio: '1/1',
             maxWidth: 'min(100%, calc(100svh - 280px))',
@@ -1222,41 +1271,6 @@ export const GameBoard = () => {
         })}
       </div>
 
-      {/* Word Result Popup - Positioned at top to not obscure game board */}
-      {/* iOS: use tween instead of spring for smoother animations */}
-      <AnimatePresence mode="wait">
-        {lastWordResult && (
-          <motion.div
-            key={lastWordResult.valid ? `valid-${lastWordResult.points}` : `invalid-${lastWordResult.reason}`}
-            initial={{ y: -20, opacity: 0, scale: 0.8 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ type: "tween", duration: 0.2, ease: "easeOut" }}
-            className={`
-              fixed left-1/2 top-20 -translate-x-1/2 px-6 py-3 rounded-full font-bold z-50 flex flex-col items-center
-              ${lastWordResult.valid ? 'bg-success text-white' : 'bg-error text-white'}
-            `}
-            style={{ transform: 'translate3d(-50%, 0, 0)' }}
-          >
-            <span>{lastWordResult.valid ? `+${lastWordResult.points} POINTS!` : lastWordResult.reason}</span>
-            {/* Powerup Earned Animation */}
-            {lastWordResult.powerup && (
-              <motion.div
-                initial={{ scale: 0, rotate: -180 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "tween", duration: 0.25, ease: "backOut", delay: 0.15 }}
-                className="flex items-center gap-2 mt-1 bg-yellow-500 text-black px-3 py-1 rounded-full text-sm"
-              >
-                {lastWordResult.powerup === 'freeze' && <Snowflake className="w-4 h-4" />}
-                {lastWordResult.powerup === 'blowup' && <Bomb className="w-4 h-4" />}
-                {lastWordResult.powerup === 'shuffle' && <RotateCw className="w-4 h-4" />}
-                {lastWordResult.powerup === 'lock' && <Lock className="w-4 h-4" />}
-                <span className="font-black uppercase text-xs">+1 {lastWordResult.powerup}!</span>
-              </motion.div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
