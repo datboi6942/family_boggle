@@ -101,27 +101,32 @@ class PowerUpManager:
         """Returns dict of player_id -> saved_board for all locked players."""
         return self.armed_locks.get(lobby_id, {})
 
-    def consume_locks(self, lobby_id: str) -> Dict[str, List[List[str]]]:
-        """Consumes all armed locks in a lobby.
+    def consume_locks_for_shuffle(self, lobby_id: str, new_board: List[List[str]]) -> Dict[str, List[List[str]]]:
+        """Consumes all armed locks when a shuffle happens.
+
+        Protected players keep their saved board for validation.
+        All other players are synced to the new board.
+
+        Args:
+            lobby_id: The lobby ID.
+            new_board: The new shuffled board that non-protected players will use.
 
         Returns:
             Dict mapping protected player IDs to their saved boards.
         """
-        if lobby_id not in self.armed_locks:
-            return {}
+        # Get protected players (those with armed locks)
+        protected_players = self.armed_locks.get(lobby_id, {}).copy()
 
-        # Move armed locks to player_boards so they're used for word validation
-        protected_players = self.armed_locks[lobby_id].copy()
+        # Clear ALL player boards first - everyone syncs to new board by default
+        self.player_boards[lobby_id] = {}
 
-        # Store the protected boards for word validation
-        if lobby_id not in self.player_boards:
-            self.player_boards[lobby_id] = {}
-
+        # Only protected players keep their saved boards
         for player_id, saved_board in protected_players.items():
             self.player_boards[lobby_id][player_id] = saved_board
 
         # Clear the armed locks
-        self.armed_locks[lobby_id] = {}
+        if lobby_id in self.armed_locks:
+            self.armed_locks[lobby_id] = {}
 
         return protected_players
 

@@ -210,15 +210,15 @@ async def websocket_endpoint(
                     })
 
                     if powerup == "shuffle":
-                        # Get players with armed locks before shuffle (returns dict of player_id -> saved_board)
-                        # Consume locks moves their saved boards to player_boards for word validation
-                        protected_players_boards = powerup_manager.consume_locks(lobby_id)
-                        protected_player_ids = list(protected_players_boards.keys())
-
-                        # Generate new board
+                        # Generate new board first
                         game_engine.board_gen.generate()
                         lobby.board = game_engine.board_gen.grid
                         new_board = lobby.board
+
+                        # Consume locks - protected players keep their saved boards,
+                        # everyone else syncs to the new board
+                        protected_players_boards = powerup_manager.consume_locks_for_shuffle(lobby_id, new_board)
+                        protected_player_ids = list(protected_players_boards.keys())
 
                         # Broadcast board update with each protected player's individual saved board
                         await manager.broadcast(lobby_id, {
