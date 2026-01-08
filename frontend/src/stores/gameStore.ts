@@ -98,6 +98,7 @@ interface GameState extends PersistedState {
   blockedCells: [number, number][];
   isFrozen: boolean;
   isLockArmed: boolean;  // Whether this player has an armed lock
+  lockJustConsumed: boolean;  // True briefly when lock blocks a shuffle (for animation)
   playersStillPlaying: string[];  // Player IDs still playing during waiting phase
   setTimer: (timer: number) => void;
   setBonusTime: (time: number) => void;
@@ -157,6 +158,7 @@ export const useGameStore = create<GameState>()(
   blockedCells: [],
   isFrozen: false,
   isLockArmed: false,
+  lockJustConsumed: false,
   playersStillPlaying: [],
 
   setTimer: (timer) => set({ timer }),
@@ -204,6 +206,7 @@ export const useGameStore = create<GameState>()(
     blockedCells: [],
     isFrozen: false,
     isLockArmed: false,
+    lockJustConsumed: false,
   }),
   updateFromGameState: (data) => set({
     status: data.status,
@@ -315,6 +318,7 @@ export const useGameStore = create<GameState>()(
     blockedCells: [],
     isFrozen: false,
     isLockArmed: false,
+    lockJustConsumed: false,
     playersStillPlaying: [],
   }),
 }),

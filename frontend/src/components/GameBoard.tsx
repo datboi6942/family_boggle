@@ -138,7 +138,7 @@ const CELL_STYLES = IS_IOS ? `
 
 export const GameBoard = () => {
   // Use shallow comparison to prevent unnecessary re-renders when unrelated state changes
-  const { playerId, board, boardSize, timer, bonusTime, lastWordResult, players, blockedCells, isFrozen, isLockArmed } = useGameStore(
+  const { playerId, board, boardSize, timer, bonusTime, lastWordResult, players, blockedCells, isFrozen, isLockArmed, lockJustConsumed } = useGameStore(
     useShallow(state => ({
       playerId: state.playerId,
       board: state.board,
@@ -150,6 +150,7 @@ export const GameBoard = () => {
       blockedCells: state.blockedCells,
       isFrozen: state.isFrozen,
       isLockArmed: state.isLockArmed,
+      lockJustConsumed: state.lockJustConsumed,
     }))
   );
 
@@ -613,6 +614,14 @@ export const GameBoard = () => {
       audioRef.current.playPowerupBomb();
     }
   }, [blockedCells]);
+
+  // Sound when lock blocks a shuffle
+  useEffect(() => {
+    if (lockJustConsumed) {
+      // Play the lock sound to indicate protection was activated
+      audioRef.current.playPowerupLock();
+    }
+  }, [lockJustConsumed]);
 
   // Cache board dimensions to avoid recalculating on every call
   const updateBoardDimensions = useCallback(() => {
@@ -1087,16 +1096,32 @@ export const GameBoard = () => {
           </div>
 
           {/* Lock Status Indicator - shown when lock is armed */}
-          {isLockArmed && (
-            <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="frosted-glass px-2 py-2 flex items-center space-x-1 shrink-0 bg-green-500/20 border-2 border-green-400"
-            >
-              <Shield className="w-5 h-5 text-green-400" />
-              <span className="text-xs font-bold text-green-400 uppercase">Protected</span>
-            </motion.div>
-          )}
+          <AnimatePresence mode="wait">
+            {lockJustConsumed ? (
+              <motion.div
+                key="lock-consumed"
+                initial={{ scale: 0, opacity: 0, rotate: -10 }}
+                animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                className="frosted-glass px-2 py-2 flex items-center space-x-1 shrink-0 bg-green-500/30 border-2 border-green-400 shadow-[0_0_20px_rgba(34,197,94,0.6)]"
+              >
+                <Shield className="w-5 h-5 text-green-400" />
+                <span className="text-xs font-bold text-green-400 uppercase">Blocked!</span>
+              </motion.div>
+            ) : isLockArmed ? (
+              <motion.div
+                key="lock-armed"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                className="frosted-glass px-2 py-2 flex items-center space-x-1 shrink-0 bg-green-500/20 border-2 border-green-400"
+              >
+                <Shield className="w-5 h-5 text-green-400" />
+                <span className="text-xs font-bold text-green-400 uppercase">Protected</span>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
 
           {/* Current Word / Word Result (center) - Shows result inline when available */}
           <div className="flex-1 text-center min-w-0 overflow-hidden">

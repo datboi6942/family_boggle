@@ -7,6 +7,9 @@ class BoggleBoard:
     # Vowels for adjacency checking
     VOWELS = {'A', 'E', 'I', 'O', 'U'}
 
+    # Rare/special letters that MUST touch a vowel to be usable
+    RARE_LETTERS = {'J', 'X', 'Q', 'Z'}
+
     # Official Boggle dice distributions for different board sizes
     # Standard 4x4 Boggle dice (16 dice)
     DICE_4X4 = [
@@ -45,6 +48,29 @@ class BoggleBoard:
         self.grid: List[List[str]] = []
         self.generate()
 
+    def _has_adjacent_vowel(self, r: int, c: int) -> bool:
+        """Check if a cell has at least one adjacent vowel."""
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < self.size and 0 <= nc < self.size:
+                    if self.grid[nr][nc] in self.VOWELS:
+                        return True
+        return False
+
+    def _get_landlocked_rare_letters(self) -> List[Tuple[int, int, str]]:
+        """Find all rare letters (J, X, Q, Z) that don't touch any vowels."""
+        landlocked = []
+        for r in range(self.size):
+            for c in range(self.size):
+                letter = self.grid[r][c]
+                if letter in self.RARE_LETTERS:
+                    if not self._has_adjacent_vowel(r, c):
+                        landlocked.append((r, c, letter))
+        return landlocked
+
     def _count_landlocked_consonants(self) -> int:
         """Count consonants that don't touch any vowels (landlocked)."""
         landlocked = 0
@@ -54,31 +80,19 @@ class BoggleBoard:
                 # Skip if this is a vowel
                 if letter in self.VOWELS:
                     continue
-                # Check if any adjacent cell has a vowel
-                has_adjacent_vowel = False
-                for dr in [-1, 0, 1]:
-                    for dc in [-1, 0, 1]:
-                        if dr == 0 and dc == 0:
-                            continue
-                        nr, nc = r + dr, c + dc
-                        if 0 <= nr < self.size and 0 <= nc < self.size:
-                            if self.grid[nr][nc] in self.VOWELS:
-                                has_adjacent_vowel = True
-                                break
-                    if has_adjacent_vowel:
-                        break
-                if not has_adjacent_vowel:
+                if not self._has_adjacent_vowel(r, c):
                     landlocked += 1
         return landlocked
 
     def _is_board_quality_acceptable(self) -> bool:
         """Check if the board has acceptable vowel-consonant distribution.
 
+        ALL consonants should ideally touch at least one vowel to be usable.
+
         Returns:
             True if the board is acceptable, False if it should be regenerated.
         """
         landlocked = self._count_landlocked_consonants()
-        total_cells = self.size * self.size
 
         # Count vowels
         vowel_count = sum(
@@ -86,22 +100,108 @@ class BoggleBoard:
             if self.grid[r][c] in self.VOWELS
         )
 
-        # Stricter thresholds for smaller boards
+        # STRICT thresholds - no landlocked consonants allowed!
         if self.size == 4:
-            # 4x4: Allow max 2 landlocked consonants, need at least 4 vowels
-            return landlocked <= 2 and vowel_count >= 4
+            # 4x4: No landlocked consonants, need at least 4 vowels
+            return landlocked == 0 and vowel_count >= 4
         elif self.size == 5:
-            # 5x5: Allow max 4 landlocked consonants, need at least 6 vowels
-            return landlocked <= 4 and vowel_count >= 6
+            # 5x5: No landlocked consonants, need at least 6 vowels
+            return landlocked == 0 and vowel_count >= 6
         else:
-            # 6x6: Allow max 6 landlocked consonants, need at least 9 vowels
-            return landlocked <= 6 and vowel_count >= 9
+            # 6x6: No landlocked consonants, need at least 9 vowels
+            return landlocked == 0 and vowel_count >= 9
+
+    def _get_all_landlocked_consonants(self) -> List[Tuple[int, int, str]]:
+        """Find all consonants that don't touch any vowels."""
+        landlocked = []
+        for r in range(self.size):
+            for c in range(self.size):
+                letter = self.grid[r][c]
+                if letter not in self.VOWELS and not self._has_adjacent_vowel(r, c):
+                    landlocked.append((r, c, letter))
+        return landlocked
+
+    def _fix_landlocked_consonants(self) -> None:
+        """Swap landlocked consonants with vowels to ensure all consonants touch a vowel.
+
+        Strategy: Place a vowel directly adjacent to each landlocked consonant
+        by swapping the landlocked consonant with a nearby vowel.
+        """
+        max_fix_attempts = 50  # More attempts for complex boards
+        for attempt in range(max_fix_attempts):
+            landlocked = self._get_all_landlocked_consonants()
+            if not landlocked:
+                return  # All consonants now touch vowels!
+
+            # Sort landlocked consonants - prioritize rare letters first
+            landlocked.sort(key=lambda x: (x[2] not in self.RARE_LETTERS, random.random()))
+
+            # For each landlocked consonant, find the best vowel to swap with
+            for land_r, land_c, land_letter in landlocked:
+                # Find all vowels and their distances to this landlocked consonant
+                vowels_with_dist = []
+                for r in range(self.size):
+                    for c in range(self.size):
+                        if self.grid[r][c] in self.VOWELS:
+                            # Manhattan distance
+                            dist = abs(r - land_r) + abs(c - land_c)
+                            # Check if this vowel is adjacent (dist 1 means orthogonal, dist 2 could be diagonal or 2 steps)
+                            is_adjacent = (abs(r - land_r) <= 1 and abs(c - land_c) <= 1 and dist > 0)
+                            vowels_with_dist.append((r, c, dist, is_adjacent))
+
+                if not vowels_with_dist:
+                    continue
+
+                # Sort by distance (prefer closer vowels)
+                vowels_with_dist.sort(key=lambda x: (x[2], random.random()))
+
+                # Try to find a vowel that when swapped will fix this consonant
+                for vow_r, vow_c, dist, is_adjacent in vowels_with_dist:
+                    if is_adjacent:
+                        # This vowel is already adjacent - swapping would just move the problem
+                        # Instead, we need to swap the landlocked consonant INTO the vowel position
+                        # The vowel position is adjacent to other cells that might help
+
+                        # Check what's adjacent to the vowel position
+                        # If we put the consonant there, will it have a vowel neighbor?
+                        would_have_vowel = False
+                        for dr in [-1, 0, 1]:
+                            for dc in [-1, 0, 1]:
+                                if dr == 0 and dc == 0:
+                                    continue
+                                nr, nc = vow_r + dr, vow_c + dc
+                                if 0 <= nr < self.size and 0 <= nc < self.size:
+                                    if (nr, nc) != (land_r, land_c):  # Not the cell we're swapping from
+                                        if self.grid[nr][nc] in self.VOWELS:
+                                            would_have_vowel = True
+                                            break
+                        if would_have_vowel:
+                            # Good swap - the consonant will have a vowel neighbor
+                            self.grid[land_r][land_c], self.grid[vow_r][vow_c] = \
+                                self.grid[vow_r][vow_c], self.grid[land_r][land_c]
+                            break
+                    else:
+                        # Vowel is not adjacent - swap and the vowel will now be adjacent
+                        # to the consonant's old neighbors
+                        self.grid[land_r][land_c], self.grid[vow_r][vow_c] = \
+                            self.grid[vow_r][vow_c], self.grid[land_r][land_c]
+                        break
+                else:
+                    # No good swap found, just swap with closest vowel
+                    if vowels_with_dist:
+                        vow_r, vow_c, _, _ = vowels_with_dist[0]
+                        self.grid[land_r][land_c], self.grid[vow_r][vow_c] = \
+                            self.grid[vow_r][vow_c], self.grid[land_r][land_c]
+
+                # After one swap, recheck all landlocked
+                break
 
     def generate(self) -> None:
         """Generates a random board grid using official Boggle dice.
 
-        Ensures the board has good vowel-consonant distribution by
-        regenerating if too many consonants are landlocked.
+        Ensures ALL consonants can reach vowels by:
+        1. Trying multiple random generations
+        2. Fixing any landlocked consonants by swapping with vowels
         """
         # Select the appropriate dice set based on board size
         if self.size == 4:
@@ -111,7 +211,7 @@ class BoggleBoard:
         else:
             dice = list(self.DICE_6X6)
 
-        max_attempts = 10  # Prevent infinite loops
+        max_attempts = 30  # More attempts for stricter requirements
         for attempt in range(max_attempts):
             random.shuffle(dice)
             letters = [random.choice(d) for d in dice]
@@ -123,8 +223,9 @@ class BoggleBoard:
             if self._is_board_quality_acceptable():
                 return  # Good board found
 
-        # If we couldn't find a good board after max attempts,
-        # use the last generated one (this should be rare)
+        # If we couldn't find a perfect board, fix it by swapping
+        # This ensures ALL consonants touch at least one vowel
+        self._fix_landlocked_consonants()
 
     def is_word_on_board(self, word: str, path: List[Tuple[int, int]]) -> bool:
         """Validates if a word is actually present on the board following a path.
