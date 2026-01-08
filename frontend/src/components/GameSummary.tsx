@@ -48,12 +48,9 @@ export const GameSummary = () => {
   }, []);
 
   // Stable audio function refs that always use the latest audio context
+  // Now uses crossfade, so no need for stopMusic or delay
   const playSummaryMusic = useCallback(() => {
-    audio.stopMusic();
-    // Small delay to ensure clean transition
-    setTimeout(() => {
-      audio.playSummaryMusic();
-    }, 100);
+    audio.playSummaryMusic(); // Will crossfade from gameplay music
   }, [audio]);
 
   const playVictoryFanfare = useCallback(() => audio.playVictoryFanfare(), [audio]);

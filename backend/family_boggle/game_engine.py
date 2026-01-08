@@ -132,12 +132,15 @@ class GameEngine:
         player.score += points
         player.found_words.append(word)
 
-        # Check for power-up: 5+ letters OR contains rare letter (J, X, Q, Z)
+        # Check for power-up: 5+ letters OR 3+ letter word containing rare letter (J, X, Q, Z)
         earned_powerup = None
-        has_rare_letter = any(letter in RARE_LETTERS for letter in word)
-        if len(word) >= 5 or has_rare_letter:
+        word_upper = word.upper()
+        has_rare_letter = any(letter in RARE_LETTERS for letter in word_upper)
+        # Award powerup for: long words (5+) OR any valid word (3+) with a rare letter
+        if len(word) >= 5 or (len(word) >= 3 and has_rare_letter):
             earned_powerup = random.choice(["freeze", "blowup", "shuffle", "lock"])
             player.powerups.append(earned_powerup)
+            logger.info("powerup_earned", player_id=player_id, word=word, powerup=earned_powerup, has_rare=has_rare_letter)
 
         return {
             "valid": True,

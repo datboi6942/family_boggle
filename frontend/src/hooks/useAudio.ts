@@ -282,6 +282,7 @@ export function useAudio(): AudioManager {
   // Music uses HTML Audio for looping (Web Audio looping is more complex)
   const currentMusicRef = useRef<HTMLAudioElement | null>(null);
   const currentMusicSrcRef = useRef<string | null>(null);
+  const crossfadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Save settings to localStorage
   useEffect(() => {
@@ -323,38 +324,86 @@ export function useAudio(): AudioManager {
   }, [isMuted, sfxVolume]);
 
   // Play music using HTML Audio (better for looping)
-  const playMusic = useCallback((src: string, loop: boolean = true) => {
+  const playMusic = useCallback((src: string, loop: boolean = true, crossfade: boolean = false) => {
+    // Clear any existing crossfade
+    if (crossfadeIntervalRef.current) {
+      clearInterval(crossfadeIntervalRef.current);
+      crossfadeIntervalRef.current = null;
+    }
+
     // If already playing this track, just update volume
     if (currentMusicSrcRef.current === src && currentMusicRef.current && !currentMusicRef.current.paused) {
       currentMusicRef.current.volume = isMusicMuted ? 0 : musicVolume;
       return;
     }
 
-    // Stop previous music
-    if (currentMusicRef.current) {
-      currentMusicRef.current.pause();
-      currentMusicRef.current.currentTime = 0;
-    }
+    const oldAudio = currentMusicRef.current;
+    const targetVolume = isMusicMuted ? 0 : musicVolume;
 
     // Create new audio element for music
     const audio = new Audio(src);
     audio.loop = loop;
-    audio.volume = isMusicMuted ? 0 : musicVolume;
     audio.preload = 'auto';
 
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise.catch((e) => {
-        console.warn('Music play failed:', e.message);
-        // Retry after user interaction
-        const retryPlay = () => {
-          audio.play().catch(() => {});
-          document.removeEventListener('click', retryPlay);
-          document.removeEventListener('touchstart', retryPlay);
-        };
-        document.addEventListener('click', retryPlay, { once: true });
-        document.addEventListener('touchstart', retryPlay, { once: true });
-      });
+    if (crossfade && oldAudio && !oldAudio.paused) {
+      // Start new track at 0 volume, crossfade over 500ms
+      audio.volume = 0;
+      const startVolume = oldAudio.volume;
+      const steps = 10;
+      const stepTime = 50; // 500ms total
+      let step = 0;
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {});
+      }
+
+      crossfadeIntervalRef.current = setInterval(() => {
+        step++;
+        const progress = step / steps;
+
+        // Fade out old
+        if (oldAudio) {
+          oldAudio.volume = Math.max(0, startVolume * (1 - progress));
+        }
+        // Fade in new
+        audio.volume = targetVolume * progress;
+
+        if (step >= steps) {
+          if (crossfadeIntervalRef.current) {
+            clearInterval(crossfadeIntervalRef.current);
+            crossfadeIntervalRef.current = null;
+          }
+          // Stop old audio completely
+          if (oldAudio) {
+            oldAudio.pause();
+            oldAudio.currentTime = 0;
+          }
+          audio.volume = targetVolume;
+        }
+      }, stepTime);
+    } else {
+      // No crossfade - stop previous immediately
+      if (oldAudio) {
+        oldAudio.pause();
+        oldAudio.currentTime = 0;
+      }
+      audio.volume = targetVolume;
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((e) => {
+          console.warn('Music play failed:', e.message);
+          // Retry after user interaction
+          const retryPlay = () => {
+            audio.play().catch(() => {});
+            document.removeEventListener('click', retryPlay);
+            document.removeEventListener('touchstart', retryPlay);
+          };
+          document.addEventListener('click', retryPlay, { once: true });
+          document.addEventListener('touchstart', retryPlay, { once: true });
+        });
+      }
     }
 
     currentMusicRef.current = audio;
@@ -433,11 +482,12 @@ export function useAudio(): AudioManager {
     playGameplayMusic: () => {
       playMusic(MUSIC.gameplay);
       preloadMusicTrack(MUSIC.gameplayIntense);
+      preloadMusicTrack(MUSIC.summary); // Preload summary music for smooth transition
     },
-    playGameplayIntenseMusic: () => playMusic(MUSIC.gameplayIntense),
+    playGameplayIntenseMusic: () => playMusic(MUSIC.gameplayIntense, true, true), // crossfade
     preloadGameplayIntenseMusic: () => preloadMusicTrack(MUSIC.gameplayIntense),
     playMenuMusic: () => playMusic(MUSIC.menu),
-    playSummaryMusic: () => playMusic(MUSIC.summary),
+    playSummaryMusic: () => playMusic(MUSIC.summary, true, true), // crossfade from gameplay
     playCountdownRiser: () => playMusic(MUSIC.countdownRiser, false),
     stopMusic,
     pauseMusic,

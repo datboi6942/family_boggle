@@ -3,7 +3,10 @@ from typing import List, Tuple, Set, Optional
 
 class BoggleBoard:
     """Boggle board generator and validator."""
-    
+
+    # Vowels for adjacency checking
+    VOWELS = {'A', 'E', 'I', 'O', 'U'}
+
     # Official Boggle dice distributions for different board sizes
     # Standard 4x4 Boggle dice (16 dice)
     DICE_4X4 = [
@@ -12,7 +15,7 @@ class BoggleBoard:
         "DISTTY", "EEGHNW", "EEINSU", "EHRTVW",
         "EIOSST", "ELRTTY", "HIMNQU", "HLNNRZ",
     ]
-    
+
     # Big Boggle 5x5 dice (25 dice)
     DICE_5X5 = [
         "AAAFRS", "AAEEEE", "AAFIRS", "ADENNN", "AEEEEM",
@@ -21,7 +24,7 @@ class BoggleBoard:
         "DHHNOT", "DHLNOR", "EIIITT", "EMOTTT", "ENSSSU",
         "FIPRSY", "GORRVW", "HIPRRY", "NOOTUW", "OOOTTU",
     ]
-    
+
     # Super Big Boggle 6x6 dice (36 dice) - balanced vowel/consonant mix
     DICE_6X6 = [
         "AAAFRS", "AAEEEE", "AAEEOO", "AAFIRS", "ABDEIO", "ADENNN",
@@ -34,7 +37,7 @@ class BoggleBoard:
 
     def __init__(self, size: int = 6):
         """Initializes the board with a specific size.
-        
+
         Args:
             size: The dimensions of the board (4, 5, or 6).
         """
@@ -42,8 +45,64 @@ class BoggleBoard:
         self.grid: List[List[str]] = []
         self.generate()
 
+    def _count_landlocked_consonants(self) -> int:
+        """Count consonants that don't touch any vowels (landlocked)."""
+        landlocked = 0
+        for r in range(self.size):
+            for c in range(self.size):
+                letter = self.grid[r][c]
+                # Skip if this is a vowel
+                if letter in self.VOWELS:
+                    continue
+                # Check if any adjacent cell has a vowel
+                has_adjacent_vowel = False
+                for dr in [-1, 0, 1]:
+                    for dc in [-1, 0, 1]:
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < self.size and 0 <= nc < self.size:
+                            if self.grid[nr][nc] in self.VOWELS:
+                                has_adjacent_vowel = True
+                                break
+                    if has_adjacent_vowel:
+                        break
+                if not has_adjacent_vowel:
+                    landlocked += 1
+        return landlocked
+
+    def _is_board_quality_acceptable(self) -> bool:
+        """Check if the board has acceptable vowel-consonant distribution.
+
+        Returns:
+            True if the board is acceptable, False if it should be regenerated.
+        """
+        landlocked = self._count_landlocked_consonants()
+        total_cells = self.size * self.size
+
+        # Count vowels
+        vowel_count = sum(
+            1 for r in range(self.size) for c in range(self.size)
+            if self.grid[r][c] in self.VOWELS
+        )
+
+        # Stricter thresholds for smaller boards
+        if self.size == 4:
+            # 4x4: Allow max 2 landlocked consonants, need at least 4 vowels
+            return landlocked <= 2 and vowel_count >= 4
+        elif self.size == 5:
+            # 5x5: Allow max 4 landlocked consonants, need at least 6 vowels
+            return landlocked <= 4 and vowel_count >= 6
+        else:
+            # 6x6: Allow max 6 landlocked consonants, need at least 9 vowels
+            return landlocked <= 6 and vowel_count >= 9
+
     def generate(self) -> None:
-        """Generates a random board grid using official Boggle dice."""
+        """Generates a random board grid using official Boggle dice.
+
+        Ensures the board has good vowel-consonant distribution by
+        regenerating if too many consonants are landlocked.
+        """
         # Select the appropriate dice set based on board size
         if self.size == 4:
             dice = list(self.DICE_4X4)
@@ -51,14 +110,21 @@ class BoggleBoard:
             dice = list(self.DICE_5X5)
         else:
             dice = list(self.DICE_6X6)
-        
-        random.shuffle(dice)
-        
-        letters = [random.choice(d) for d in dice]
-        self.grid = [
-            letters[i * self.size : (i + 1) * self.size]
-            for i in range(self.size)
-        ]
+
+        max_attempts = 10  # Prevent infinite loops
+        for attempt in range(max_attempts):
+            random.shuffle(dice)
+            letters = [random.choice(d) for d in dice]
+            self.grid = [
+                letters[i * self.size : (i + 1) * self.size]
+                for i in range(self.size)
+            ]
+
+            if self._is_board_quality_acceptable():
+                return  # Good board found
+
+        # If we couldn't find a good board after max attempts,
+        # use the last generated one (this should be rare)
 
     def is_word_on_board(self, word: str, path: List[Tuple[int, int]]) -> bool:
         """Validates if a word is actually present on the board following a path.
