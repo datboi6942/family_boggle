@@ -375,13 +375,43 @@ export function useAudio(): AudioManager {
 
     const oldAudio = currentMusicRef.current;
     const targetVolume = isMusicMuted ? 0 : musicVolume;
+    const canCrossfade = crossfade && oldAudio && !oldAudio.paused;
 
     // Create new audio element for music
     const audio = new Audio(src);
     audio.loop = loop;
     audio.preload = 'auto';
 
-    if (crossfade && oldAudio && !oldAudio.paused) {
+    // Helper to start playing without crossfade
+    const playDirect = () => {
+      // Stop previous immediately
+      if (oldAudio) {
+        oldAudio.pause();
+        oldAudio.currentTime = 0;
+      }
+      audio.volume = targetVolume;
+
+      // Update refs BEFORE playing so they're available immediately
+      currentMusicRef.current = audio;
+      currentMusicSrcRef.current = src;
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((e) => {
+          console.warn('Music play failed:', e.message);
+          // Retry after user interaction
+          const retryPlay = () => {
+            audio.play().catch(() => {});
+            document.removeEventListener('click', retryPlay);
+            document.removeEventListener('touchstart', retryPlay);
+          };
+          document.addEventListener('click', retryPlay, { once: true });
+          document.addEventListener('touchstart', retryPlay, { once: true });
+        });
+      }
+    };
+
+    if (canCrossfade) {
       // Start new track at 0 volume, crossfade over 500ms
       audio.volume = 0;
       const startVolume = oldAudio.volume;
@@ -423,42 +453,14 @@ export function useAudio(): AudioManager {
             }, stepTime);
           })
           .catch(() => {
-            // Crossfade play failed - keep old audio playing, don't update refs
-            // Restore old audio volume in case it was modified
-            if (oldAudio) {
-              oldAudio.volume = targetVolume;
-            }
-            console.warn('Crossfade play failed, keeping current track');
+            // Crossfade play failed - fall back to direct play
+            console.warn('Crossfade play failed, falling back to direct play');
+            playDirect();
           });
       }
-      // Don't update refs here - wait for play promise
-      return;
     } else {
-      // No crossfade - stop previous immediately
-      if (oldAudio) {
-        oldAudio.pause();
-        oldAudio.currentTime = 0;
-      }
-      audio.volume = targetVolume;
-
-      // Update refs BEFORE playing so they're available immediately
-      currentMusicRef.current = audio;
-      currentMusicSrcRef.current = src;
-
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((e) => {
-          console.warn('Music play failed:', e.message);
-          // Retry after user interaction
-          const retryPlay = () => {
-            audio.play().catch(() => {});
-            document.removeEventListener('click', retryPlay);
-            document.removeEventListener('touchstart', retryPlay);
-          };
-          document.addEventListener('click', retryPlay, { once: true });
-          document.addEventListener('touchstart', retryPlay, { once: true });
-        });
-      }
+      // No crossfade possible - play directly
+      playDirect();
     }
   }, [isMusicMuted, musicVolume]);
 

@@ -605,22 +605,33 @@ export const GameBoard = () => {
   // Reset intense mode flag when component mounts (new game)
   useEffect(() => {
     intenseActivatedRef.current = false;
-    // Initialize lastTimerRef to a high value so the first real timer update works correctly
     lastTimerRef.current = 999;
   }, []);
 
-  // Timer sounds and intense mode trigger
+  // Intense music trigger - check on every timer change AND on an interval for reliability
   useEffect(() => {
-    // Skip if timer hasn't changed
-    if (timer === lastTimerRef.current) return;
+    // Check if we should switch to intense music (timer <= 30 and not already activated)
+    const checkIntenseMusic = () => {
+      if (!intenseActivatedRef.current && timer <= 30 && timer > 0) {
+        intenseActivatedRef.current = true;
+        audioRef.current.playGameplayIntenseMusic();
+      }
+    };
 
-    // Switch to INTENSE music when timer crosses below 30 seconds!
-    // Triggers when: timer is now <= 30 AND was previously > 30 (or uninitialized)
-    const crossedIntoIntense = timer <= 30 && timer > 0 && lastTimerRef.current > 30;
-    if (crossedIntoIntense && !intenseActivatedRef.current) {
-      intenseActivatedRef.current = true;
-      audioRef.current.playGameplayIntenseMusic();
+    // Check immediately when timer changes
+    if (timer !== lastTimerRef.current) {
+      checkIntenseMusic();
     }
+
+    // Also set up a backup interval check (in case effect timing is off)
+    const intervalId = setInterval(checkIntenseMusic, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [timer]);
+
+  // Timer warning sounds and game end
+  useEffect(() => {
+    if (timer === lastTimerRef.current) return;
 
     // Timer warning when 10 seconds or less
     if (timer <= 10 && timer > 0) {

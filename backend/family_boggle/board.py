@@ -319,6 +319,9 @@ class BoggleBoard:
         else:
             dice = list(self.DICE_6X6)
 
+        best_board = None
+        best_board_has_q = False
+
         max_attempts = 30  # More attempts for stricter requirements
         for attempt in range(max_attempts):
             random.shuffle(dice)
@@ -328,12 +331,28 @@ class BoggleBoard:
                 for i in range(self.size)
             ]
 
-            if self._is_board_quality_acceptable():
-                # Also check Q-U adjacency before accepting
-                if not self._find_qs_without_u():
-                    return  # Good board found with Q's touching U's
+            has_q = any('Q' in row for row in self.grid)
 
-        # If we couldn't find a perfect board, fix it by swapping
+            if self._is_board_quality_acceptable():
+                # Check Q-U adjacency
+                qs_without_u = self._find_qs_without_u()
+                if not qs_without_u:
+                    return  # Perfect board found!
+
+                # Board is good quality but Q needs U - save it as candidate
+                # Prefer boards with Q over boards without Q
+                if has_q and not best_board_has_q:
+                    best_board = [row[:] for row in self.grid]
+                    best_board_has_q = True
+                elif not best_board:
+                    best_board = [row[:] for row in self.grid]
+                    best_board_has_q = has_q
+
+        # Use the best board we found (preferring ones with Q)
+        if best_board:
+            self.grid = best_board
+
+        # Fix any remaining issues
         # This ensures ALL consonants touch at least one vowel
         self._fix_landlocked_consonants()
 
