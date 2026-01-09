@@ -60,6 +60,113 @@ class BoggleBoard:
                         return True
         return False
 
+    def _has_adjacent_u(self, r: int, c: int) -> bool:
+        """Check if a cell has at least one adjacent U."""
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < self.size and 0 <= nc < self.size:
+                    if self.grid[nr][nc] == 'U':
+                        return True
+        return False
+
+    def _get_adjacent_cells(self, r: int, c: int) -> List[Tuple[int, int]]:
+        """Get all valid adjacent cell coordinates."""
+        adjacent = []
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < self.size and 0 <= nc < self.size:
+                    adjacent.append((nr, nc))
+        return adjacent
+
+    def _find_qs_without_u(self) -> List[Tuple[int, int]]:
+        """Find all Q positions that don't have an adjacent U."""
+        qs_without_u = []
+        for r in range(self.size):
+            for c in range(self.size):
+                if self.grid[r][c] == 'Q' and not self._has_adjacent_u(r, c):
+                    qs_without_u.append((r, c))
+        return qs_without_u
+
+    def _fix_q_without_u(self) -> None:
+        """Ensure all Q's on the board touch at least one U.
+
+        Strategy: For each Q without an adjacent U, find a U elsewhere
+        on the board and swap it into an adjacent position.
+        """
+        max_attempts = 20
+        for _ in range(max_attempts):
+            qs_without_u = self._find_qs_without_u()
+            if not qs_without_u:
+                return  # All Q's now touch a U
+
+            for q_r, q_c in qs_without_u:
+                # Find all U positions on the board
+                u_positions = []
+                for r in range(self.size):
+                    for c in range(self.size):
+                        if self.grid[r][c] == 'U':
+                            # Don't use U's that are already adjacent to this Q
+                            if abs(r - q_r) > 1 or abs(c - q_c) > 1:
+                                u_positions.append((r, c))
+
+                if not u_positions:
+                    # No U available to swap - need to create one
+                    # Find a vowel adjacent to Q and replace it with U
+                    adjacent = self._get_adjacent_cells(q_r, q_c)
+                    for adj_r, adj_c in adjacent:
+                        if self.grid[adj_r][adj_c] in self.VOWELS:
+                            self.grid[adj_r][adj_c] = 'U'
+                            break
+                    else:
+                        # No adjacent vowel, swap adjacent cell with any vowel and make it U
+                        if adjacent:
+                            adj_r, adj_c = random.choice(adjacent)
+                            # Find any vowel on the board to swap
+                            for r in range(self.size):
+                                for c in range(self.size):
+                                    if self.grid[r][c] in self.VOWELS and (r, c) != (adj_r, adj_c):
+                                        # Swap and convert to U
+                                        self.grid[adj_r][adj_c], self.grid[r][c] = self.grid[r][c], self.grid[adj_r][adj_c]
+                                        self.grid[adj_r][adj_c] = 'U'
+                                        break
+                                else:
+                                    continue
+                                break
+                    continue
+
+                # Find adjacent cells to the Q where we can place a U
+                adjacent = self._get_adjacent_cells(q_r, q_c)
+
+                # Sort U's by distance to Q (prefer closer ones)
+                u_positions.sort(key=lambda pos: abs(pos[0] - q_r) + abs(pos[1] - q_c))
+
+                # Try to swap a U into an adjacent position
+                swapped = False
+                for u_r, u_c in u_positions:
+                    for adj_r, adj_c in adjacent:
+                        # Don't swap the Q itself
+                        if (adj_r, adj_c) == (q_r, q_c):
+                            continue
+                        # Don't swap another Q
+                        if self.grid[adj_r][adj_c] == 'Q':
+                            continue
+                        # Swap the U with the adjacent cell
+                        self.grid[u_r][u_c], self.grid[adj_r][adj_c] = \
+                            self.grid[adj_r][adj_c], self.grid[u_r][u_c]
+                        swapped = True
+                        break
+                    if swapped:
+                        break
+
+                # Only fix one Q per iteration, then recheck
+                break
+
     def _get_landlocked_rare_letters(self) -> List[Tuple[int, int, str]]:
         """Find all rare letters (J, X, Q, Z) that don't touch any vowels."""
         landlocked = []
@@ -202,6 +309,7 @@ class BoggleBoard:
         Ensures ALL consonants can reach vowels by:
         1. Trying multiple random generations
         2. Fixing any landlocked consonants by swapping with vowels
+        3. Ensuring all Q's touch at least one U (for QU words)
         """
         # Select the appropriate dice set based on board size
         if self.size == 4:
@@ -221,11 +329,16 @@ class BoggleBoard:
             ]
 
             if self._is_board_quality_acceptable():
-                return  # Good board found
+                # Also check Q-U adjacency before accepting
+                if not self._find_qs_without_u():
+                    return  # Good board found with Q's touching U's
 
         # If we couldn't find a perfect board, fix it by swapping
         # This ensures ALL consonants touch at least one vowel
         self._fix_landlocked_consonants()
+
+        # Ensure all Q's touch at least one U (essential for QU words)
+        self._fix_q_without_u()
 
     def is_word_on_board(self, word: str, path: List[Tuple[int, int]]) -> bool:
         """Validates if a word is actually present on the board following a path.
