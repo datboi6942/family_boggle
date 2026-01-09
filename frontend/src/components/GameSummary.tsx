@@ -74,6 +74,10 @@ export const GameSummary = () => {
 
   const totalFoundWords = foundWordsSet.size;
 
+  // Keep a ref to audio for cleanup
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+
   // Start summary music when summary phase begins
   useEffect(() => {
     if (!musicStartedRef.current) {
@@ -89,6 +93,13 @@ export const GameSummary = () => {
       return () => clearTimeout(backupTimeout);
     }
   }, [playSummaryMusic]);
+
+  // Cleanup: stop music when component unmounts (transitioning to lobby)
+  useEffect(() => {
+    return () => {
+      audioRef.current.stopMusic();
+    };
+  }, []);
 
   useEffect(() => {
     // If there are no word awards to animate, skip to longest-word or celebration

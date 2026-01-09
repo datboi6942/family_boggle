@@ -42,9 +42,11 @@ export const Lobby = () => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
-  // Start menu music
+  // Start menu music (stop any previous music first to handle transitions from summary)
   useEffect(() => {
     if (!musicStartedRef.current) {
+      // Explicitly stop any playing music (e.g., summary music from previous game)
+      audioRef.current.stopMusic();
       audioRef.current.playMenuMusic();
       musicStartedRef.current = true;
     }

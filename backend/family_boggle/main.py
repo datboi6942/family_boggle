@@ -233,12 +233,10 @@ async def websocket_endpoint(
 
                     effect = powerup_manager.apply_powerup(lobby_id, player_id, powerup, lobby.players)
 
-                    # For freeze, add bonus time only to the player who used it
+                    # For freeze, identify the player who used it (no bonus_time - the visual
+                    # freeze effect IS the benefit: their timer appears paused for 10 seconds)
                     if powerup == "freeze":
-                        bonus_time = 10  # 10 seconds bonus
-                        player.bonus_time += bonus_time
-                        effect["bonus_time"] = bonus_time
-                        effect["player_id"] = player_id  # Identify who gets the bonus
+                        effect["player_id"] = player_id
 
                     await manager.broadcast(lobby_id, {
                         "type": "powerup_event",
