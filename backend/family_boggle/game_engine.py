@@ -325,21 +325,21 @@ class GameEngine:
 
     def reset_lobby(self, lobby_id: str) -> bool:
         """Resets a lobby for a new game.
-        
+
         Args:
             lobby_id: The lobby to reset.
-            
+
         Returns:
             True if successful, False otherwise.
         """
         if lobby_id not in self.lobbies:
             return False
-            
+
         lobby = self.lobbies[lobby_id]
         lobby.status = "lobby"
         lobby.board = []
         lobby.timer = 0
-        
+
         # Reset all players
         for p in lobby.players:
             p.score = 0
@@ -347,6 +347,9 @@ class GameEngine:
             p.powerups = []
             p.is_ready = False
             p.wants_play_again = False
+
+        # Clear all powerup state (locks, protected boards, freezes, etc.)
+        powerup_manager.clear_lobby(lobby_id)
 
         logger.info("lobby_reset", lobby_id=lobby_id)
         return True
