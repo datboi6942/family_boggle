@@ -112,6 +112,15 @@ const CELL_STYLES = IS_IOS ? `
     color: #8B5CF6 !important;
   }
   .cell.last:not(.first) .cell-points { color: rgba(139, 92, 246, 0.7) !important; }
+
+  /* Frost effect for freeze powerup */
+  @keyframes frost-shimmer {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 0.9; }
+  }
+  .frost-overlay {
+    animation: frost-shimmer 2s ease-in-out infinite;
+  }
 ` : `
   .cell {
     transition: transform 0.08s ease-out, background 0.08s ease-out;
@@ -134,11 +143,35 @@ const CELL_STYLES = IS_IOS ? `
     color: #8B5CF6 !important;
   }
   .cell.last:not(.first) .cell-points { color: rgba(139, 92, 246, 0.7) !important; }
+
+  /* Frost effect for freeze powerup */
+  @keyframes frost-shimmer {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 0.8; }
+  }
+  @keyframes frost-pulse {
+    0%, 100% {
+      box-shadow: 0 0 20px rgba(96, 165, 250, 0.4),
+                  0 0 40px rgba(96, 165, 250, 0.2),
+                  inset 0 0 30px rgba(96, 165, 250, 0.1);
+    }
+    50% {
+      box-shadow: 0 0 30px rgba(96, 165, 250, 0.6),
+                  0 0 60px rgba(96, 165, 250, 0.3),
+                  inset 0 0 40px rgba(96, 165, 250, 0.15);
+    }
+  }
+  .frost-overlay {
+    animation: frost-shimmer 2s ease-in-out infinite;
+  }
+  .frost-border {
+    animation: frost-pulse 2s ease-in-out infinite;
+  }
 `;
 
 export const GameBoard = () => {
   // Use shallow comparison to prevent unnecessary re-renders when unrelated state changes
-  const { playerId, board, boardSize, timer, bonusTime, lastWordResult, players, blockedCells, isFrozen, isLockArmed, lockJustConsumed } = useGameStore(
+  const { playerId, board, boardSize, timer, bonusTime, lastWordResult, players, blockedCells, isFrozen, frozenTimerValue, isLockArmed, lockJustConsumed } = useGameStore(
     useShallow(state => ({
       playerId: state.playerId,
       board: state.board,
@@ -149,6 +182,7 @@ export const GameBoard = () => {
       players: state.players,
       blockedCells: state.blockedCells,
       isFrozen: state.isFrozen,
+      frozenTimerValue: state.frozenTimerValue,
       isLockArmed: state.isLockArmed,
       lockJustConsumed: state.lockJustConsumed,
     }))
@@ -580,10 +614,10 @@ export const GameBoard = () => {
       if (timer <= 10 && timer > 0) {
         audioRef.current.playTimerWarning();
       }
-      // Game end sound - only stop music if player has no bonus time remaining
+      // Game end sound when timer hits 0 and no bonus time
+      // DON'T stop music here - let GameSummary crossfade to summary music
       if (timer === 0 && lastTimerRef.current > 0 && bonusTime <= 0) {
         audioRef.current.playGameEnd();
-        audioRef.current.stopMusic();
       }
       lastTimerRef.current = timer;
     }
@@ -592,9 +626,9 @@ export const GameBoard = () => {
   // Handle bonus time running out (for players who used freeze)
   useEffect(() => {
     // If bonus time just hit 0 from a positive value, and main timer is already 0
+    // DON'T stop music here - let GameSummary crossfade to summary music
     if (bonusTime === 0 && lastBonusTimeRef.current > 0 && timer === 0) {
       audioRef.current.playGameEnd();
-      audioRef.current.stopMusic();
     }
     lastBonusTimeRef.current = bonusTime;
   }, [bonusTime, timer]);
@@ -1093,12 +1127,15 @@ export const GameBoard = () => {
   }, [boardSize]);
 
   const formattedTimer = useMemo(() => {
-    // Use bonus time if main timer has run out
-    const displayTime = timer > 0 ? timer : bonusTime;
+    // When frozen, display the captured frozen timer value (timer appears paused)
+    // Otherwise use bonus time if main timer has run out
+    const displayTime = isFrozen && frozenTimerValue !== null
+      ? frozenTimerValue
+      : (timer > 0 ? timer : bonusTime);
     const mins = Math.floor(displayTime / 60);
     const secs = displayTime % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }, [timer, bonusTime]);
+  }, [timer, bonusTime, isFrozen, frozenTimerValue]);
 
   const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
@@ -1202,10 +1239,12 @@ export const GameBoard = () => {
       {/* The Board - Constrained square container that fits in available space */}
       <div className="flex items-center justify-center overflow-hidden min-h-0 py-1">
         <div
-          className={`relative w-full transition-all duration-300 ${
-            isLockArmed
-              ? 'ring-4 ring-green-400/50 shadow-[0_0_20px_rgba(34,197,94,0.3)] rounded-2xl'
-              : ''
+          className={`relative w-full transition-all duration-300 rounded-2xl ${
+            isFrozen
+              ? 'frost-border ring-4 ring-blue-400/60 border-2 border-blue-300/50'
+              : isLockArmed
+                ? 'ring-4 ring-green-400/50 shadow-[0_0_20px_rgba(34,197,94,0.3)]'
+                : ''
           }`}
           style={{
             aspectRatio: '1/1',
@@ -1213,6 +1252,16 @@ export const GameBoard = () => {
             maxHeight: 'calc(100svh - 280px)',
           }}
         >
+          {/* Frost overlay when frozen */}
+          {isFrozen && (
+            <div
+              className="frost-overlay absolute inset-0 rounded-2xl pointer-events-none z-30"
+              style={{
+                background: 'linear-gradient(135deg, rgba(147, 197, 253, 0.15) 0%, rgba(96, 165, 250, 0.1) 50%, rgba(147, 197, 253, 0.15) 100%)',
+                backdropFilter: 'brightness(1.05) saturate(0.9)',
+              }}
+            />
+          )}
           {/* Grid of letters - absolutely positioned to fill the square container */}
           <div
             ref={boardRef}

@@ -97,6 +97,7 @@ interface GameState extends PersistedState {
   challenges: ChallengeDefinition[];
   blockedCells: [number, number][];
   isFrozen: boolean;
+  frozenTimerValue: number | null;  // Timer value when freeze started (display this while frozen)
   isLockArmed: boolean;  // Whether this player has an armed lock
   lockJustConsumed: boolean;  // True briefly when lock blocks a shuffle (for animation)
   playersStillPlaying: string[];  // Player IDs still playing during waiting phase
@@ -159,6 +160,7 @@ export const useGameStore = create<GameState>()(
   challenges: [],
   blockedCells: [],
   isFrozen: false,
+  frozenTimerValue: null,
   isLockArmed: false,
   lockJustConsumed: false,
   playersStillPlaying: [],
@@ -208,6 +210,7 @@ export const useGameStore = create<GameState>()(
     lastWordResult: null,
     blockedCells: [],
     isFrozen: false,
+    frozenTimerValue: null,
     isLockArmed: false,
     lockJustConsumed: false,
     playersWantingPlayAgain: [],
@@ -237,14 +240,22 @@ export const useGameStore = create<GameState>()(
   }),
   setPowerup: (data: any, myPlayerId?: string) => {
     if (data.type === 'freeze') {
-      // Only the player who used freeze gets bonus time
+      // Only the player who used freeze gets the freeze effect
+      // Don't apply freeze if game is already over (waiting/summary status or isTimeUp)
       if (data.player_id === myPlayerId) {
         if (freezeTimeout) clearTimeout(freezeTimeout);
-        set((state) => ({
-          isFrozen: true,
-          bonusTime: state.bonusTime + (data.bonus_time || 10)  // Add to personal bonus time
-        }));
-        freezeTimeout = setTimeout(() => set({ isFrozen: false }), 10000);
+        set((state) => {
+          // Ignore freeze if player's time is already up or game is ending
+          if (state.isTimeUp || state.status === 'waiting' || state.status === 'summary') {
+            return state; // No changes
+          }
+          return {
+            isFrozen: true,
+            frozenTimerValue: state.timer,  // Capture current timer to display while frozen
+          };
+        });
+        // After 10 seconds, unfreeze and clear the frozen timer value
+        freezeTimeout = setTimeout(() => set({ isFrozen: false, frozenTimerValue: null }), 10000);
       }
     } else if (data.type === 'blowup') {
       // Blowup affects everyone EXCEPT the player who used it
@@ -324,6 +335,7 @@ export const useGameStore = create<GameState>()(
     challenges: [],
     blockedCells: [],
     isFrozen: false,
+    frozenTimerValue: null,
     isLockArmed: false,
     lockJustConsumed: false,
     playersStillPlaying: [],
