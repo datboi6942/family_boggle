@@ -873,301 +873,555 @@ def generate_lobby_lead(freq: float, duration: float) -> np.ndarray:
     return lead
 
 
-def generate_menu_music(duration_seconds: float = 30) -> np.ndarray:
-    """Generate EPIC upbeat, catchy, head-banging lobby music with all the layers!"""
-    # FAST tempo for head-banging energy!
-    lobby_bpm = 132  # Even faster!
-    beat_dur = 60 / lobby_bpm
-    bar_dur = beat_dur * 4
-    section_duration = 4 * bar_dur
-    num_sections = int(np.ceil(duration_seconds / section_duration))
+def generate_cinematic_sub_bass(freq: float, duration: float) -> np.ndarray:
+    """Generate deep, rumbling sub bass for cinematic tension."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
 
-    result = np.zeros(int(SAMPLE_RATE * duration_seconds))
+    # Pure sub bass with slight movement
+    sub = sine_wave(freq, duration, amplitude=0.6)
+    sub += sine_wave(freq * 0.5, duration, amplitude=0.3)  # Even deeper sub
 
-    # Generate all drums
-    kick = generate_lobby_kick()
-    snare = generate_snare()
-    hihat = generate_hihat_closed()
-    hihat_o = generate_hihat_open()
-    clap = generate_blue_monday_clap()
-    perc = generate_blue_monday_perc_hit()
+    # Add slight saturation for presence
+    sub = np.tanh(sub * 1.3) * 0.9
 
-    sixteenth = beat_dur / 4
-    eighth = beat_dur / 2
+    # Slow amplitude modulation for movement
+    mod = 1 + 0.1 * np.sin(2 * np.pi * 0.25 * t)
+    sub *= mod
 
-    # E minor - energetic key
-    root = 164.81  # E3
+    # Smooth envelope
+    env = adsr_envelope(duration, attack=0.1, decay=0.2, sustain=0.8, release=0.3)
+    sub = sub[:len(env)] * env
 
-    # SUPER catchy riff!
-    riff_notes = [
-        (root * 2, 0.5),           # E4
-        (root * 2 * 1.5, 0.25),    # B4
-        (root * 2, 0.25),          # E4
-        (root * 1.5, 0.5),         # B3
-        (root * 2 * 1.335, 0.5),   # G4
-        (root * 2, 0.25),          # E4
-        (root * 1.5, 0.25),        # B3
-        (root, 0.5),               # E3
-    ]
+    return low_pass_filter(sub, cutoff=120)
 
-    # Counter melody
-    counter_melody = [
-        (root * 4, eighth), (0, eighth), (root * 3, eighth), (root * 4, eighth),
-        (root * 3, beat_dur), (root * 2.67, eighth), (root * 2, eighth),
-    ]
 
-    # Arpeggio pattern (Em chord)
-    em_arp = [164.81, 196.00, 246.94, 329.63, 246.94, 196.00]
-    g_arp = [196.00, 246.94, 293.66, 392.00, 293.66, 246.94]
-    c_arp = [130.81, 164.81, 196.00, 261.63, 196.00, 164.81]
-    d_arp = [146.83, 185.00, 220.00, 293.66, 220.00, 185.00]
+def generate_dark_pad(freqs: list, duration: float) -> np.ndarray:
+    """Generate dark, atmospheric pad with subtle movement."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+    result = np.zeros(num_samples)
 
-    # Pad chords
-    em_pad = [329.63, 392.00, 493.88]
-    g_pad = [392.00, 493.88, 587.33]
-    c_pad = [261.63, 329.63, 392.00]
-    d_pad = [293.66, 369.99, 440.00]
+    for freq in freqs:
+        # Multiple detuned oscillators for width
+        tone = sawtooth_wave(freq, duration, amplitude=0.06)
+        tone += sawtooth_wave(freq * 1.003, duration, amplitude=0.05)
+        tone += sawtooth_wave(freq * 0.997, duration, amplitude=0.05)
+        tone += triangle_wave(freq * 0.5, duration, amplitude=0.04)  # Sub octave
 
-    for section in range(num_sections):
-        section_start = section * section_duration
+        result += tone
 
-        # ===== DRUMS =====
-        for bar in range(4):
-            bar_start = section_start + bar * bar_dur
+    # Dark filter with slow movement
+    result = low_pass_filter(result, cutoff=1800)
 
-            # FOUR-ON-THE-FLOOR kick with extra hits
-            kick_times = [0, 1, 2, 3]
-            if bar % 2 == 1:
-                kick_times = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]  # Double time feel
-            for beat in kick_times:
-                t = bar_start + beat * beat_dur
-                pos = int(t * SAMPLE_RATE)
-                vol = 0.95 if beat in [0, 1, 2, 3] else 0.7
-                if pos + len(kick) < len(result):
-                    result[pos:pos + len(kick)] += kick * vol
+    # Slow envelope
+    env = adsr_envelope(duration, attack=0.4, decay=0.3, sustain=0.6, release=0.5)
+    result = result[:len(env)] * env
 
-            # Snare on 2 and 4
-            for beat in [1, 3]:
-                t = bar_start + beat * beat_dur
-                pos = int(t * SAMPLE_RATE)
-                if pos + len(snare) < len(result):
-                    result[pos:pos + len(snare)] += snare * 0.75
-
-            # Claps layered
-            for beat in [1, 3]:
-                t = bar_start + beat * beat_dur
-                pos = int(t * SAMPLE_RATE)
-                if pos + len(clap) < len(result):
-                    result[pos:pos + len(clap)] += clap * 0.5
-
-            # Driving 16th note hi-hats with open hats
-            for i in range(16):
-                t = bar_start + i * sixteenth
-                pos = int(t * SAMPLE_RATE)
-                if i in [4, 12]:  # Open hats
-                    hat = hihat_o
-                    vol = 0.4
-                else:
-                    hat = hihat
-                    vol = 0.55 if i % 4 == 0 else 0.35
-                if pos + len(hat) < len(result):
-                    result[pos:pos + len(hat)] += hat * vol
-
-            # Percussion accents
-            for i in [2, 6, 10, 14]:
-                t = bar_start + i * sixteenth
-                pos = int(t * SAMPLE_RATE)
-                if pos + len(perc) < len(result):
-                    result[pos:pos + len(perc)] += perc * 0.25
-
-        # ===== MAIN SYNTH RIFF =====
-        riff_time = section_start
-        for freq, dur in riff_notes:
-            pos = int(riff_time * SAMPLE_RATE)
-            note_dur = dur * beat_dur
-            stab = generate_lobby_synth_stab(freq, note_dur)
-            if pos + len(stab) < len(result):
-                result[pos:pos + len(stab)] += stab * 0.55
-            riff_time += note_dur
-
-        # Repeat riff with variation
-        riff_time = section_start + 2 * bar_dur
-        for freq, dur in riff_notes:
-            pos = int(riff_time * SAMPLE_RATE)
-            note_dur = dur * beat_dur
-            stab = generate_lobby_synth_stab(freq * 1.0595, note_dur)
-            if pos + len(stab) < len(result):
-                result[pos:pos + len(stab)] += stab * 0.5
-            riff_time += note_dur
-
-        # ===== COUNTER MELODY (every other section) =====
-        if section % 2 == 1:
-            melody_time = section_start + bar_dur
-            for freq, dur in counter_melody:
-                if freq > 0:
-                    pos = int(melody_time * SAMPLE_RATE)
-                    note = generate_lobby_lead(freq, dur * 0.9)
-                    if pos + len(note) < len(result):
-                        result[pos:pos + len(note)] += note * 0.3
-                melody_time += dur
-
-        # ===== ARPEGGIOS =====
-        arp_patterns = [em_arp, g_arp, c_arp, d_arp]
-        for bar in range(4):
-            bar_start = section_start + bar * bar_dur
-            arp = arp_patterns[bar % len(arp_patterns)]
-
-            for i in range(16):
-                t = bar_start + i * sixteenth
-                pos = int(t * SAMPLE_RATE)
-                freq = arp[i % len(arp)]
-                note = generate_lobby_arp_note(freq, sixteenth * 0.75)
-                if pos + len(note) < len(result):
-                    result[pos:pos + len(note)] += note * 0.2
-
-        # ===== PADS =====
-        pad_chords = [em_pad, g_pad, c_pad, d_pad]
-        for bar in range(4):
-            bar_start = section_start + bar * bar_dur
-            pos = int(bar_start * SAMPLE_RATE)
-            pad = generate_lobby_pad(pad_chords[bar % len(pad_chords)], bar_dur)
-            end = min(pos + len(pad), len(result))
-            if end > pos:
-                result[pos:end] += pad[:end - pos] * 0.2
-
-    # ===== PUMPING BASS =====
-    bass_root = 82.41  # E2
-    bass_pattern = [1, 1, 1.5, 1, 1.335, 1, 1.5, 2]
-
-    for section in range(num_sections):
-        section_start = section * section_duration
-
-        for bar in range(4):
-            bar_start = section_start + bar * bar_dur
-
-            for i in range(8):
-                t = bar_start + i * eighth
-                pos = int(t * SAMPLE_RATE)
-
-                freq = bass_root * bass_pattern[i % len(bass_pattern)]
-                note_dur = eighth * 0.85
-
-                bass = sawtooth_wave(freq, note_dur, amplitude=0.45)
-                bass += sawtooth_wave(freq * 1.003, note_dur, amplitude=0.3)
-                bass += sine_wave(freq * 0.5, note_dur, amplitude=0.35)
-
-                env = adsr_envelope(note_dur, attack=0.003, decay=0.04, sustain=0.6, release=0.04)
-                bass = bass[:len(env)] * env
-                bass = low_pass_filter(bass, cutoff=700)
-                bass = np.tanh(bass * 1.5) * 0.8
-
-                if pos + len(bass) < len(result):
-                    result[pos:pos + len(bass)] += bass * 0.45
-
-    # Add energy with delay
-    delayed = delay(result, delay_time=beat_dur * 0.5, feedback=0.25)
-    result = result * 0.8 + delayed * 0.2
-
-    # Master processing
-    result = np.clip(result, -1, 1)
-    result = low_pass_filter(result, cutoff=16000)
-    result = normalize(result, target_db=-4)
-    result = fade_in(result, 0.15)
-    result = fade_out(result, 0.25)
+    # Add depth with chorus
+    result = chorus(result, depth=0.004, rate=0.3)
 
     return result
 
 
-def generate_summary_music(duration_seconds: float = 45) -> np.ndarray:
-    """Generate celebratory summary/results music."""
-    # More upbeat and triumphant
-    section_duration = 4 * BAR_DURATION
+def generate_tension_riser(duration: float, start_freq: float = 80, end_freq: float = 400) -> np.ndarray:
+    """Generate a tension-building riser element."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+
+    # Exponential frequency sweep
+    freq = start_freq * (end_freq / start_freq) ** (t / duration)
+
+    # Generate with pitch sweep
+    riser = np.zeros(num_samples)
+    phase = 0
+    for i in range(num_samples):
+        riser[i] = 0.3 * np.sin(phase)
+        riser[i] += 0.15 * np.sin(phase * 2)  # Harmonic
+        phase += 2 * np.pi * freq[i] / SAMPLE_RATE
+
+    # Add noise layer
+    noise_layer = noise(duration, amplitude=0.15)
+    noise_layer = high_pass_filter(noise_layer, cutoff=2000)
+    noise_layer *= t / duration  # Fade in
+
+    riser += noise_layer
+
+    # Intensity envelope
+    riser *= (t / duration) ** 1.5
+
+    return riser
+
+
+def generate_industrial_hit() -> np.ndarray:
+    """Generate an industrial/metallic percussion hit."""
+    duration = 0.3
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # Metallic body
+    hit = sine_wave(120, duration, amplitude=0.4)
+    hit += sine_wave(180, duration, amplitude=0.25)
+    hit += sine_wave(350, duration, amplitude=0.15)
+
+    # Noise burst
+    noise_hit = noise(duration, amplitude=0.4)
+    noise_hit = high_pass_filter(noise_hit, cutoff=1500)
+    noise_hit = low_pass_filter(noise_hit, cutoff=6000)
+
+    hit += noise_hit
+
+    # Sharp decay
+    hit *= np.exp(-12 * t)
+
+    # Add sub thump
+    thump = sine_wave(50, 0.15, amplitude=0.5)
+    thump *= np.exp(-15 * np.linspace(0, 0.15, len(thump), False))
+    hit[:len(thump)] += thump
+
+    return normalize(hit) * 0.7
+
+
+def generate_cinematic_kick() -> np.ndarray:
+    """Generate a deep, cinematic kick drum."""
+    duration = 0.4
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # Very deep pitch sweep
+    freq = 100 * np.exp(-25 * t) + 35
+    kick = np.zeros(len(t))
+    phase = 0
+    for i in range(len(t)):
+        kick[i] = np.sin(phase)
+        phase += 2 * np.pi * freq[i] / SAMPLE_RATE
+
+    # Add sub layer
+    sub = sine_wave(35, duration, amplitude=0.4)
+    sub *= np.exp(-8 * t)
+    kick += sub
+
+    # Punchy transient
+    click = noise(0.015, amplitude=0.5)
+    click = low_pass_filter(click, cutoff=3000)
+    kick[:len(click)] += click
+
+    kick *= np.exp(-6 * t)
+    kick = low_pass_filter(kick, cutoff=180)
+
+    return normalize(kick) * 0.9
+
+
+def generate_dark_stab(freqs: list, duration: float) -> np.ndarray:
+    """Generate dark, filtered synth stab."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+    result = np.zeros(num_samples)
+
+    for freq in freqs:
+        tone = sawtooth_wave(freq, duration, amplitude=0.2)
+        tone += square_wave(freq, duration, amplitude=0.1)
+        tone += sawtooth_wave(freq * 1.005, duration, amplitude=0.12)
+        result += tone
+
+    # Filter envelope - sweep down for dark feel
+    # Apply in chunks for time-varying filter
+    chunk_size = 512
+    filtered = np.zeros(num_samples)
+    for i in range(0, num_samples, chunk_size):
+        chunk_end = min(i + chunk_size, num_samples)
+        chunk = result[i:chunk_end]
+        chunk_time = i / SAMPLE_RATE
+        cutoff = 3000 * np.exp(-8 * chunk_time) + 500
+        if len(chunk) > 0:
+            filtered[i:chunk_end] = low_pass_filter(chunk, cutoff=cutoff)[:chunk_end - i]
+
+    result = filtered
+
+    # Sharp envelope
+    env = adsr_envelope(duration, attack=0.005, decay=0.15, sustain=0.2, release=0.1)
+    result = result[:len(env)] * env
+
+    return result
+
+
+def generate_menu_music(duration_seconds: float = 60) -> np.ndarray:
+    """Generate dark, cinematic menu music - military/action game style.
+
+    Inspired by tension-building, atmospheric electronic music with:
+    - Deep, pulsing sub bass
+    - Dark atmospheric pads
+    - Industrial percussion
+    - Tension-building elements
+    - Minor key, ominous feel
+    """
+    # Slower, more ominous tempo
+    bpm = 95
+    beat_dur = 60 / bpm
+    bar_dur = beat_dur * 4
+    section_duration = 8 * bar_dur  # Longer sections for development
     num_sections = int(np.ceil(duration_seconds / section_duration))
-
-    # Major key for victory feel
-    root = 261.63  # C
-
-    # Triumphant chord progression: C - G - Am - F
-    chords = [
-        [root, root * 1.26, root * 1.5],  # C major
-        [root * 1.5, root * 1.5 * 1.26, root * 1.5 * 1.5],  # G major
-        [root * 1.68, root * 2, root * 2.52],  # Am
-        [root * 1.33, root * 1.68, root * 2],  # F major
-    ]
 
     result = np.zeros(int(SAMPLE_RATE * duration_seconds))
 
-    # Pad layer
+    # Generate percussion
+    kick = generate_cinematic_kick()
+    industrial = generate_industrial_hit()
+    hihat = generate_hihat_closed()
+
+    sixteenth = beat_dur / 4
+    eighth = beat_dur / 2
+
+    # D minor - dark and ominous
+    root = 73.42  # D2
+
+    # Dark chord progression: Dm - Bb - Gm - A (tension)
+    dm_chord = [146.83, 174.61, 220.00]  # D3, F3, A3
+    bb_chord = [116.54, 146.83, 174.61]  # Bb2, D3, F3
+    gm_chord = [98.00, 116.54, 146.83]   # G2, Bb2, D3
+    a_chord = [110.00, 138.59, 164.81]   # A2, C#3, E3 (dominant for tension)
+
+    # Higher pad voicings for atmosphere
+    dm_pad = [293.66, 349.23, 440.00]
+    bb_pad = [233.08, 293.66, 349.23]
+    gm_pad = [196.00, 233.08, 293.66]
+    a_pad = [220.00, 277.18, 329.63]
+
     for section in range(num_sections):
-        for bar in range(4):
-            bar_start = section * section_duration + bar * BAR_DURATION
-            chord_freqs = chords[bar % len(chords)]
+        section_start = section * section_duration
+        section_intensity = min(1.0, 0.6 + section * 0.1)  # Build intensity
 
+        # ===== SUB BASS PULSE =====
+        bass_pattern = [
+            (root, 2), (root, 1), (root * 1.5, 1),
+            (root * 0.79, 2), (root * 0.79, 1), (root, 1),  # Bb
+            (root * 0.67, 2), (root * 0.67, 1), (root * 0.79, 1),  # G
+            (root * 0.75, 2), (root * 0.75, 2),  # A - tension hold
+        ]
+
+        bass_time = section_start
+        for freq, beats in bass_pattern:
+            dur = beats * beat_dur
+            pos = int(bass_time * SAMPLE_RATE)
+            sub = generate_cinematic_sub_bass(freq, dur)
+            if pos + len(sub) < len(result):
+                result[pos:pos + len(sub)] += sub * 0.5 * section_intensity
+            bass_time += dur
+
+        # ===== CINEMATIC DRUMS =====
+        for bar in range(8):
+            bar_start = section_start + bar * bar_dur
+
+            # Sparse, heavy kicks - half notes mostly
+            kick_pattern = [0, 2] if bar % 2 == 0 else [0, 1.5, 3]
+            for beat in kick_pattern:
+                t = bar_start + beat * beat_dur
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(kick) < len(result):
+                    result[pos:pos + len(kick)] += kick * 0.8 * section_intensity
+
+            # Industrial hits on offbeats (sparse)
+            if bar % 2 == 1:
+                for beat in [1, 3]:
+                    t = bar_start + beat * beat_dur
+                    pos = int(t * SAMPLE_RATE)
+                    if pos + len(industrial) < len(result):
+                        result[pos:pos + len(industrial)] += industrial * 0.5 * section_intensity
+
+            # Subtle hi-hats (only in later sections)
+            if section >= 1:
+                for i in range(8):
+                    t = bar_start + i * eighth
+                    pos = int(t * SAMPLE_RATE)
+                    vol = 0.2 if i % 2 == 0 else 0.12
+                    if pos + len(hihat) < len(result):
+                        result[pos:pos + len(hihat)] += hihat * vol * section_intensity
+
+        # ===== DARK PADS =====
+        pad_progression = [dm_pad, dm_pad, bb_pad, bb_pad, gm_pad, gm_pad, a_pad, a_pad]
+        for bar in range(8):
+            bar_start = section_start + bar * bar_dur
             pos = int(bar_start * SAMPLE_RATE)
-            if pos >= len(result):
-                continue
-
-            pad = np.zeros(int(SAMPLE_RATE * BAR_DURATION))
-            for freq in chord_freqs:
-                tone = sawtooth_wave(freq, BAR_DURATION, amplitude=0.1)
-                tone += sine_wave(freq, BAR_DURATION, amplitude=0.08)
-                pad += tone
-
-            env = adsr_envelope(BAR_DURATION, attack=0.15, decay=0.2, sustain=0.7, release=0.3)
-            pad = pad * env
-            pad = low_pass_filter(pad, cutoff=2500)
-
+            pad = generate_dark_pad(pad_progression[bar], bar_dur)
             end = min(pos + len(pad), len(result))
             if end > pos:
-                result[pos:end] += pad[:end-pos] * 0.4
+                result[pos:end] += pad[:end - pos] * 0.35
 
-    # Add light drums
-    drums = generate_drum_pattern(4)
-    drums = loop(drums, num_sections)
-    if len(drums) > len(result):
-        drums = drums[:len(result)]
-    else:
-        padded_drums = np.zeros(len(result))
-        padded_drums[:len(drums)] = drums
-        drums = padded_drums
-    drums = drums * 0.25
+        # ===== DARK STABS (sparse, rhythmic) =====
+        stab_chords = [dm_chord, dm_chord, bb_chord, bb_chord, gm_chord, gm_chord, a_chord, a_chord]
+        for bar in range(8):
+            bar_start = section_start + bar * bar_dur
+            # Stab on beat 1 of each bar
+            pos = int(bar_start * SAMPLE_RATE)
+            stab = generate_dark_stab(stab_chords[bar], beat_dur)
+            if pos + len(stab) < len(result):
+                result[pos:pos + len(stab)] += stab * 0.4 * section_intensity
 
-    result = result + drums
+            # Extra stab on "and" of 3 (syncopation)
+            if bar % 2 == 0:
+                pos2 = int((bar_start + 2.5 * beat_dur) * SAMPLE_RATE)
+                stab2 = generate_dark_stab(stab_chords[bar], beat_dur * 0.5)
+                if pos2 + len(stab2) < len(result):
+                    result[pos2:pos2 + len(stab2)] += stab2 * 0.25 * section_intensity
 
-    # Add bell/glockenspiel melody
-    melody_notes = [
-        (523.25, 0.5), (659.25, 0.25), (783.99, 0.25),
-        (880.00, 0.5), (783.99, 0.5),
-        (659.25, 0.5), (523.25, 0.5),
-        (587.33, 0.5), (523.25, 0.5),
+        # ===== TENSION RISERS (at end of sections) =====
+        if section < num_sections - 1:
+            riser_start = section_start + 7 * bar_dur
+            pos = int(riser_start * SAMPLE_RATE)
+            riser = generate_tension_riser(bar_dur)
+            if pos + len(riser) < len(result):
+                result[pos:pos + len(riser)] += riser * 0.3
+
+    # Add dark reverb
+    result = reverb(result, room_size=0.6)
+
+    # Subtle delay for depth
+    delayed = delay(result, delay_time=beat_dur * 0.75, feedback=0.2)
+    result = result * 0.85 + delayed * 0.15
+
+    # Master processing
+    result = np.clip(result, -1, 1)
+    result = low_pass_filter(result, cutoff=14000)
+    result = normalize(result, target_db=-4)
+    result = fade_in(result, 0.5)
+    result = fade_out(result, 1.0)
+
+    return result
+
+
+def generate_warm_pad(freqs: list, duration: float) -> np.ndarray:
+    """Generate warm, lush pad for summary screen."""
+    num_samples = int(SAMPLE_RATE * duration)
+    result = np.zeros(num_samples)
+
+    for freq in freqs:
+        # Warm detuned oscillators
+        tone = triangle_wave(freq, duration, amplitude=0.08)
+        tone += sine_wave(freq, duration, amplitude=0.06)
+        tone += sawtooth_wave(freq * 1.002, duration, amplitude=0.04)
+        tone += sawtooth_wave(freq * 0.998, duration, amplitude=0.04)
+        result += tone
+
+    # Warm filter
+    result = low_pass_filter(result, cutoff=3000)
+
+    # Smooth envelope
+    env = adsr_envelope(duration, attack=0.3, decay=0.2, sustain=0.7, release=0.4)
+    result = result[:len(env)] * env
+
+    # Lush chorus
+    result = chorus(result, depth=0.003, rate=0.5)
+
+    return result
+
+
+def generate_pluck_note(freq: float, duration: float) -> np.ndarray:
+    """Generate a soft pluck/bell sound."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+
+    # Soft bell-like tone
+    note = sine_wave(freq, duration, amplitude=0.2)
+    note += sine_wave(freq * 2, duration, amplitude=0.08)
+    note += sine_wave(freq * 3, duration, amplitude=0.03)
+    note += triangle_wave(freq, duration, amplitude=0.1)
+
+    # Pluck envelope
+    env = np.exp(-4 * t)
+    note *= env
+
+    return note
+
+
+def generate_soft_kick() -> np.ndarray:
+    """Generate a soft, mellow kick for summary."""
+    duration = 0.2
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    freq = 80 * np.exp(-20 * t) + 50
+    kick = np.zeros(len(t))
+    phase = 0
+    for i in range(len(t)):
+        kick[i] = np.sin(phase)
+        phase += 2 * np.pi * freq[i] / SAMPLE_RATE
+
+    kick *= np.exp(-10 * t)
+    kick = low_pass_filter(kick, cutoff=150)
+
+    return normalize(kick) * 0.5
+
+
+def generate_brush_hit() -> np.ndarray:
+    """Generate soft brush/shaker percussion."""
+    duration = 0.1
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    brush = noise(duration, amplitude=0.25)
+    brush = high_pass_filter(brush, cutoff=4000)
+    brush = low_pass_filter(brush, cutoff=10000)
+    brush *= np.exp(-25 * t)
+
+    return normalize(brush) * 0.3
+
+
+def generate_summary_music(duration_seconds: float = 60) -> np.ndarray:
+    """Generate pleasant, chill summary music - sophisticated and not repetitive.
+
+    Features:
+    - Warm, evolving pad harmonies
+    - Soft melodic elements that vary
+    - Gentle percussion
+    - Multiple sections with different feels
+    - Suitable for repeated listening
+    """
+    bpm = 85  # Relaxed tempo
+    beat_dur = 60 / bpm
+    bar_dur = beat_dur * 4
+    section_duration = 8 * bar_dur  # Long sections
+    num_sections = int(np.ceil(duration_seconds / section_duration))
+
+    result = np.zeros(int(SAMPLE_RATE * duration_seconds))
+
+    eighth = beat_dur / 2
+    sixteenth = beat_dur / 4
+
+    # Generate soft percussion
+    soft_kick = generate_soft_kick()
+    brush = generate_brush_hit()
+
+    # Rich chord progressions in different sections
+    # Section A: C major feel - warm and triumphant
+    c_pad = [261.63, 329.63, 392.00]  # C E G
+    am_pad = [220.00, 261.63, 329.63]  # A C E
+    f_pad = [174.61, 220.00, 261.63]  # F A C
+    g_pad = [196.00, 246.94, 293.66]  # G B D
+
+    # Section B: More colorful - add 7ths and 9ths
+    cmaj7_pad = [261.63, 329.63, 392.00, 493.88]  # C E G B
+    fmaj7_pad = [174.61, 220.00, 261.63, 329.63]  # F A C E
+    dm7_pad = [146.83, 174.61, 220.00, 261.63]  # D F A C
+    em7_pad = [164.81, 196.00, 246.94, 293.66]  # E G B D
+
+    # Multiple melody variations
+    melody_a = [
+        (523.25, 1), (659.25, 0.5), (587.33, 0.5),
+        (523.25, 1), (493.88, 1),
+        (440.00, 0.5), (493.88, 0.5), (523.25, 2),
     ]
 
+    melody_b = [
+        (659.25, 0.5), (698.46, 0.5), (783.99, 1),
+        (659.25, 1), (587.33, 0.5), (523.25, 0.5),
+        (587.33, 2), (0, 1),
+    ]
+
+    melody_c = [
+        (783.99, 0.5), (698.46, 0.5), (659.25, 0.5), (587.33, 0.5),
+        (523.25, 2), (587.33, 1),
+        (523.25, 1), (493.88, 1),
+    ]
+
+    # Arpeggio patterns
+    c_arp = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63]
+    f_arp = [174.61, 220.00, 261.63, 349.23, 261.63, 220.00]
+    g_arp = [196.00, 246.94, 293.66, 392.00, 293.66, 246.94]
+    am_arp = [220.00, 261.63, 329.63, 440.00, 329.63, 261.63]
+
+    melodies = [melody_a, melody_b, melody_c]
+
     for section in range(num_sections):
-        pos = int(section * section_duration * SAMPLE_RATE)
-        if pos >= len(result):
-            continue
-        note_pos = pos
+        section_start = section * section_duration
+        section_type = section % 3  # Varies the feel
 
-        for freq, dur in melody_notes:
-            if note_pos >= len(result):
-                break
+        # ===== WARM PADS =====
+        if section_type == 0:
+            pad_progression = [c_pad, am_pad, f_pad, g_pad, c_pad, am_pad, f_pad, g_pad]
+        elif section_type == 1:
+            pad_progression = [cmaj7_pad, fmaj7_pad, dm7_pad, g_pad, cmaj7_pad, em7_pad, fmaj7_pad, g_pad]
+        else:
+            pad_progression = [f_pad, c_pad, dm7_pad, am_pad, f_pad, g_pad, c_pad, c_pad]
 
-            note = sine_wave(freq * 2, dur, amplitude=0.15)  # Higher octave
-            note += sine_wave(freq * 4, dur, amplitude=0.05)
+        for bar in range(8):
+            bar_start = section_start + bar * bar_dur
+            pos = int(bar_start * SAMPLE_RATE)
+            pad = generate_warm_pad(pad_progression[bar], bar_dur)
+            end = min(pos + len(pad), len(result))
+            if end > pos:
+                result[pos:end] += pad[:end - pos] * 0.3
 
-            env = pluck_envelope(dur)
-            note = note[:len(env)] * env
+        # ===== SOFT PERCUSSION (every other section) =====
+        if section % 2 == 1:
+            for bar in range(8):
+                bar_start = section_start + bar * bar_dur
 
-            end = min(note_pos + len(note), len(result))
-            if end > note_pos:
-                result[note_pos:end] += note[:end-note_pos]
+                # Soft kick on 1 and 3
+                for beat in [0, 2]:
+                    t = bar_start + beat * beat_dur
+                    pos = int(t * SAMPLE_RATE)
+                    if pos + len(soft_kick) < len(result):
+                        result[pos:pos + len(soft_kick)] += soft_kick * 0.6
 
-            note_pos += int(dur * SAMPLE_RATE)
+                # Brush on offbeats
+                for i in range(8):
+                    t = bar_start + i * eighth
+                    pos = int(t * SAMPLE_RATE)
+                    vol = 0.4 if i % 2 == 1 else 0.25
+                    if pos + len(brush) < len(result):
+                        result[pos:pos + len(brush)] += brush * vol
 
-    result = reverb(result, room_size=0.4)
-    result = normalize(result, target_db=-6)
-    result = fade_in(result, 0.3)
-    result = fade_out(result, 1.0)
+        # ===== MELODIC PLUCKS =====
+        melody = melodies[section % len(melodies)]
+        melody_start = section_start + bar_dur  # Start after first bar
+        melody_time = melody_start
+
+        for freq, beats in melody:
+            if freq > 0:
+                pos = int(melody_time * SAMPLE_RATE)
+                dur = beats * beat_dur
+                note = generate_pluck_note(freq, dur)
+                if pos + len(note) < len(result):
+                    result[pos:pos + len(note)] += note * 0.35
+            melody_time += beats * beat_dur
+
+        # ===== ARPEGGIOS (alternating sections) =====
+        if section_type != 1:
+            arp_progression = [c_arp, f_arp, am_arp, g_arp]
+            for bar in range(4, 8):  # Second half of section
+                bar_start = section_start + bar * bar_dur
+                arp = arp_progression[(bar - 4) % len(arp_progression)]
+
+                for i in range(12):  # Triplet feel
+                    t = bar_start + i * (beat_dur / 3)
+                    pos = int(t * SAMPLE_RATE)
+                    freq = arp[i % len(arp)]
+                    note = generate_pluck_note(freq * 2, beat_dur / 3)  # Higher octave
+                    if pos + len(note) < len(result):
+                        result[pos:pos + len(note)] += note * 0.15
+
+        # ===== BASS NOTES (subtle) =====
+        bass_notes = [130.81, 110.00, 87.31, 98.00]  # C, A, F, G
+        for bar in range(8):
+            bar_start = section_start + bar * bar_dur
+            pos = int(bar_start * SAMPLE_RATE)
+
+            bass_freq = bass_notes[bar % len(bass_notes)]
+            bass = sine_wave(bass_freq, bar_dur * 0.8, amplitude=0.25)
+            bass += sine_wave(bass_freq * 0.5, bar_dur * 0.8, amplitude=0.15)
+
+            env = adsr_envelope(bar_dur * 0.8, attack=0.1, decay=0.2, sustain=0.6, release=0.3)
+            bass = bass[:len(env)] * env
+            bass = low_pass_filter(bass, cutoff=200)
+
+            if pos + len(bass) < len(result):
+                result[pos:pos + len(bass)] += bass * 0.35
+
+    # Warm reverb
+    result = reverb(result, room_size=0.5)
+
+    # Master processing
+    result = np.clip(result, -1, 1)
+    result = low_pass_filter(result, cutoff=12000)
+    result = normalize(result, target_db=-5)
+    result = fade_in(result, 0.5)
+    result = fade_out(result, 1.5)
 
     return result
 
