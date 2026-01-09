@@ -565,6 +565,9 @@ export const GameBoard = () => {
   // Track if intense mode has been activated
   const intenseActivatedRef = useRef(false);
 
+  // Track last bonus time for detecting when it runs out
+  const lastBonusTimeRef = useRef(bonusTime);
+
   // Timer sounds and intense mode trigger
   useEffect(() => {
     if (timer !== lastTimerRef.current) {
@@ -577,14 +580,24 @@ export const GameBoard = () => {
       if (timer <= 10 && timer > 0) {
         audioRef.current.playTimerWarning();
       }
-      // Game end sound
-      if (timer === 0 && lastTimerRef.current > 0) {
+      // Game end sound - only stop music if player has no bonus time remaining
+      if (timer === 0 && lastTimerRef.current > 0 && bonusTime <= 0) {
         audioRef.current.playGameEnd();
         audioRef.current.stopMusic();
       }
       lastTimerRef.current = timer;
     }
-  }, [timer]);
+  }, [timer, bonusTime]);
+
+  // Handle bonus time running out (for players who used freeze)
+  useEffect(() => {
+    // If bonus time just hit 0 from a positive value, and main timer is already 0
+    if (bonusTime === 0 && lastBonusTimeRef.current > 0 && timer === 0) {
+      audioRef.current.playGameEnd();
+      audioRef.current.stopMusic();
+    }
+    lastBonusTimeRef.current = bonusTime;
+  }, [bonusTime, timer]);
 
   // Word result sounds
   useEffect(() => {

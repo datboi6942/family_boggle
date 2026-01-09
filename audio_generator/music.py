@@ -561,8 +561,71 @@ def generate_blue_monday_perc_hit() -> np.ndarray:
     return normalize(hit) * 0.35
 
 
+def generate_sweep_riser(duration: float, start_freq: float = 200, end_freq: float = 2000) -> np.ndarray:
+    """Generate a sweep riser for transitions."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+
+    # Exponential frequency sweep
+    freq = start_freq * (end_freq / start_freq) ** (t / duration)
+
+    riser = np.zeros(num_samples)
+    phase = 0
+    for i in range(num_samples):
+        riser[i] = 0.15 * np.sin(phase)
+        riser[i] += 0.08 * np.sin(phase * 2)
+        phase += 2 * np.pi * freq[i] / SAMPLE_RATE
+
+    # Add filtered noise sweep
+    noise_sweep = noise(duration, amplitude=0.12)
+    noise_sweep = high_pass_filter(noise_sweep, cutoff=1000)
+    noise_sweep *= (t / duration)  # Fade in
+
+    riser += noise_sweep
+    riser *= (t / duration) ** 1.2  # Build intensity
+
+    return riser
+
+
+def generate_sub_drop(duration: float = 0.3) -> np.ndarray:
+    """Generate a satisfying sub bass drop hit."""
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # Pitch dropping sub
+    freq = 80 * np.exp(-8 * t) + 30
+    drop = np.zeros(len(t))
+    phase = 0
+    for i in range(len(t)):
+        drop[i] = np.sin(phase)
+        phase += 2 * np.pi * freq[i] / SAMPLE_RATE
+
+    drop *= np.exp(-6 * t)
+    drop = low_pass_filter(drop, cutoff=100)
+
+    return normalize(drop) * 0.6
+
+
+def generate_fx_hit() -> np.ndarray:
+    """Generate an impact/transition hit."""
+    duration = 0.4
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
+
+    # Layered impact
+    hit = sine_wave(60, duration, amplitude=0.4)
+    hit += noise(duration, amplitude=0.3)
+    hit = low_pass_filter(hit, cutoff=2000)
+    hit *= np.exp(-8 * t)
+
+    # Add high crack
+    crack = noise(0.02, amplitude=0.5)
+    crack = high_pass_filter(crack, cutoff=3000)
+    hit[:len(crack)] += crack
+
+    return normalize(hit) * 0.7
+
+
 def generate_gameplay_loop(duration_seconds: float = 60) -> np.ndarray:
-    """Generate Blue Monday style gameplay music - iconic 80s synth-pop with all the layers."""
+    """Generate sophisticated gameplay music with progressive builds and rich layers."""
     # Blue Monday tempo: ~130 BPM
     bm_bpm = 130
     beat_dur = 60 / bm_bpm
@@ -764,6 +827,47 @@ def generate_gameplay_loop(duration_seconds: float = 60) -> np.ndarray:
                     if pos + len(note) < len(result):
                         result[pos:pos + len(note)] += note * 0.35
                 lead_time += dur
+
+        # ===== TRANSITION EFFECTS (between sections) =====
+        # Add riser before even-numbered sections for build-up feel
+        if section > 0 and section % 2 == 0:
+            riser_dur = bar_dur
+            riser_start = section_start - riser_dur
+            if riser_start >= 0:
+                pos = int(riser_start * SAMPLE_RATE)
+                riser = generate_sweep_riser(riser_dur, 300, 1500)
+                if pos + len(riser) < len(result):
+                    result[pos:pos + len(riser)] += riser * 0.35
+
+        # Add sub drop on beat 1 of every 4th section for impact
+        if section % 4 == 0 and section > 0:
+            pos = int(section_start * SAMPLE_RATE)
+            drop = generate_sub_drop(0.4)
+            if pos + len(drop) < len(result):
+                result[pos:pos + len(drop)] += drop * 0.5
+
+        # ===== COUNTER MELODY (sections 3, 7, 11...) =====
+        if section % 4 == 3:
+            counter_melody = [
+                (440.00, eighth), (0, eighth), (392.00, eighth), (440.00, eighth),
+                (523.25, beat_dur), (440.00, eighth), (392.00, eighth),
+                (349.23, beat_dur), (0, beat_dur),
+            ]
+            counter_time = section_start + 2 * bar_dur
+            for freq, dur in counter_melody:
+                if freq > 0:
+                    pos = int(counter_time * SAMPLE_RATE)
+                    note = generate_blue_monday_lead(freq * 0.5, dur * 0.85)
+                    if pos + len(note) < len(result):
+                        result[pos:pos + len(note)] += note * 0.25
+                counter_time += dur
+
+        # ===== ENERGY BUILD (intensity increases with section) =====
+        # Subtle volume boost for later sections
+        section_boost = 1.0 + (section / num_sections) * 0.15
+        section_end = int(min((section + 1) * section_duration, duration_seconds) * SAMPLE_RATE)
+        section_start_samples = int(section_start * SAMPLE_RATE)
+        result[section_start_samples:section_end] *= min(section_boost, 1.15)
 
     # Add delay effect to the whole mix for that 80s feel
     delayed = delay(result, delay_time=beat_dur * 0.75, feedback=0.2)
@@ -1613,6 +1717,42 @@ def generate_gameplay_intense(duration_seconds: float = 90) -> np.ndarray:
             if pos + len(note) < len(result):
                 result[pos:pos + len(note)] += note * 0.4
             lead_time += dur
+
+        # ===== INTENSE RISERS (every 2 sections) =====
+        if section % 2 == 1 and section < num_sections - 1:
+            riser_dur = bar_dur * 0.75
+            riser_start = section_start + 3 * bar_dur + beat_dur
+            pos = int(riser_start * SAMPLE_RATE)
+            riser = generate_sweep_riser(riser_dur, 500, 3000)
+            if pos + len(riser) < len(result):
+                result[pos:pos + len(riser)] += riser * 0.4
+
+        # ===== IMPACT DROPS (every 4 sections) =====
+        if section % 4 == 0:
+            pos = int(section_start * SAMPLE_RATE)
+            drop = generate_sub_drop(0.5)
+            if pos + len(drop) < len(result):
+                result[pos:pos + len(drop)] += drop * 0.6
+
+        # ===== EXTRA HIGH SYNTH STABS (urgent feel) =====
+        high_stab_freqs = [dm_chord[0] * 2, c_chord[0] * 2, bb_chord[0] * 2, a_chord[0] * 2]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            # Quick high stabs on offbeats
+            for beat in [0.75, 2.75]:
+                pos = int((bar_start + beat * beat_dur) * SAMPLE_RATE)
+                high_note = sine_wave(high_stab_freqs[bar], beat_dur * 0.2, amplitude=0.12)
+                high_note += sine_wave(high_stab_freqs[bar] * 1.5, beat_dur * 0.2, amplitude=0.06)
+                env = adsr_envelope(beat_dur * 0.2, attack=0.002, decay=0.03, sustain=0.3, release=0.05)
+                high_note = high_note[:len(env)] * env
+                if pos + len(high_note) < len(result):
+                    result[pos:pos + len(high_note)] += high_note
+
+        # ===== PROGRESSIVE INTENSITY =====
+        intensity = 1.0 + (section / num_sections) * 0.2
+        section_end = int(min((section + 1) * section_duration, duration_seconds) * SAMPLE_RATE)
+        section_start_samples = int(section_start * SAMPLE_RATE)
+        result[section_start_samples:section_end] *= min(intensity, 1.2)
 
     # More aggressive delay
     delayed = delay(result, delay_time=beat_dur * 0.5, feedback=0.3)

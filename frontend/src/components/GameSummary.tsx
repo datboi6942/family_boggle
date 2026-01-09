@@ -460,12 +460,12 @@ export const GameSummary = () => {
                           </div>
                         </div>
 
-                        {/* Show completed challenges first */}
+                        {/* Show all completed challenges */}
                         {completedChallenges.length > 0 && (
                           <div className="mb-3">
                             <div className="text-xs font-bold text-green-400 mb-2 uppercase tracking-wide">Completed</div>
-                            <div className="grid gap-2">
-                              {completedChallenges.slice(0, 10).map((challenge, i) => {
+                            <div className="grid gap-2 max-h-64 overflow-y-auto">
+                              {completedChallenges.map((challenge, i) => {
                                 const difficultyColors = {
                                   very_easy: 'text-gray-400',
                                   easy: 'text-blue-400',
@@ -486,7 +486,7 @@ export const GameSummary = () => {
                                     key={challenge.id || i}
                                     initial={{ opacity: 0, x: -10 }}
                                     animate={{ opacity: 1, x: 0 }}
-                                    transition={{ delay: 1.2 + playerIndex * 0.1 + i * 0.05 }}
+                                    transition={{ delay: 1.2 + playerIndex * 0.1 + Math.min(i, 10) * 0.05 }}
                                     className="flex items-center justify-between p-2 rounded-lg bg-green-500/10 border border-green-500/30"
                                   >
                                     <div className="flex-1">
@@ -509,11 +509,6 @@ export const GameSummary = () => {
                                   </motion.div>
                                 );
                               })}
-                              {completedChallenges.length > 10 && (
-                                <div className="text-xs text-center text-white/40 py-1">
-                                  +{completedChallenges.length - 10} more completed
-                                </div>
-                              )}
                             </div>
                           </div>
                         )}
