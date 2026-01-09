@@ -10,6 +10,7 @@ const AUDIO_BASE = '/audio';
 
 const SFX = {
   letterSelect: `${AUDIO_BASE}/sfx/letter_select.wav`,
+  firstTouch: `${AUDIO_BASE}/sfx/first_touch.wav`,
   letterChain: (n: number) => `${AUDIO_BASE}/sfx/letter_chain_${Math.min(n, 10)}.wav`,
   wordValid: `${AUDIO_BASE}/sfx/word_valid.wav`,
   wordInvalid: `${AUDIO_BASE}/sfx/word_invalid.wav`,
@@ -151,10 +152,41 @@ function playBuffer(buffer: AudioBuffer, volume: number = 1.0): AudioBufferSourc
   }
 }
 
+// Synchronous play from cache - for use during touch events
+// This NEVER awaits, so it won't cause microtask scheduling delays
+// If the buffer isn't cached, it will be loaded async but won't block
+function playSfxSync(src: string, volume: number, isMuted: boolean): void {
+  if (isMuted) return;
+
+  const buffer = bufferCache.get(src);
+  if (buffer) {
+    // Buffer is cached - play immediately with no async overhead
+    playBuffer(buffer, volume);
+  } else {
+    // Not cached - load async (won't block touch handler)
+    loadAudioBuffer(src).then(loadedBuffer => {
+      if (loadedBuffer) playBuffer(loadedBuffer, volume);
+    });
+  }
+}
+
+// Deferred play - schedules sound to play AFTER the current event handler completes
+// This is crucial for iOS where ANY work during touch can cause frame drops
+function playSfxDeferred(src: string, volume: number, isMuted: boolean): void {
+  if (isMuted) return;
+
+  // Use queueMicrotask for minimal delay while still deferring
+  // This allows the touch handler to complete before we do any audio work
+  queueMicrotask(() => {
+    playSfxSync(src, volume, isMuted);
+  });
+}
+
 // Preload commonly used SFX
 function preloadCommonSfx(): void {
   const commonSfx = [
     SFX.letterSelect,
+    SFX.firstTouch,
     SFX.wordValid,
     SFX.wordInvalid,
     SFX.wordAlreadyFound,
@@ -215,7 +247,11 @@ export interface AudioManager {
 
   // Sound effects
   playLetterSelect: () => void;
+  playFirstTouch: () => void;
   playLetterChain: (chainLength: number) => void;
+  // iOS-optimized versions that defer playback to after touch handler completes
+  playFirstTouchDeferred: () => void;
+  playLetterChainDeferred: (chainLength: number) => void;
   playWordValid: () => void;
   playWordInvalid: () => void;
   playWordAlreadyFound: () => void;
@@ -462,7 +498,11 @@ export function useAudio(): AudioManager {
 
     // Sound effects
     playLetterSelect: () => playSfx(SFX.letterSelect),
+    playFirstTouch: () => playSfx(SFX.firstTouch),
     playLetterChain: (n: number) => playSfx(SFX.letterChain(n)),
+    // iOS-optimized deferred versions - these schedule playback after touch handler
+    playFirstTouchDeferred: () => playSfxDeferred(SFX.firstTouch, sfxVolume, isMuted),
+    playLetterChainDeferred: (n: number) => playSfxDeferred(SFX.letterChain(n), sfxVolume, isMuted),
     playWordValid: () => playSfx(SFX.wordValid),
     playWordInvalid: () => playSfx(SFX.wordInvalid),
     playWordAlreadyFound: () => playSfx(SFX.wordAlreadyFound),

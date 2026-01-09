@@ -14,26 +14,32 @@ from synth import (
 
 
 def generate_letter_select() -> np.ndarray:
-    """Ultra-satisfying pop sound when selecting a letter."""
-    duration = 0.12
+    """Ultra-satisfying pop sound when selecting the FIRST letter.
 
-    # Main tone - bright and snappy
-    freq = 1200
-    wave = sine_wave(freq, duration, amplitude=0.35)
-    wave += sine_wave(freq * 2, duration, amplitude=0.15)  # Octave
-    wave += sine_wave(freq * 3, duration, amplitude=0.08)  # Fifth above
+    This is the sound that plays when you touch the first letter to
+    start building a word. It should feel instant, responsive, and
+    satisfying - like a premium UI interaction.
+    """
+    duration = 0.09  # Very short for instant feedback
 
-    # Add subtle sub bass thump for weight
-    sub = sine_wave(150, 0.05, amplitude=0.25)
-    sub *= np.exp(-30 * np.linspace(0, 0.05, len(sub), False))
+    # Main tone - bright, bell-like "pop"
+    freq = 1100  # Slightly lower for more body
+    wave = sine_wave(freq, duration, amplitude=0.32)
+    wave += sine_wave(freq * 2, duration, amplitude=0.14)  # Octave
+    wave += sine_wave(freq * 1.5, duration, amplitude=0.08)  # Fifth
 
-    # Crisp attack transient
-    click = noise(0.008, amplitude=0.4)
-    click = high_pass_filter(click, cutoff=3000)
-    click = low_pass_filter(click, cutoff=8000)
+    # Sub thump for physical feedback feel
+    sub = sine_wave(120, 0.04, amplitude=0.35)
+    sub *= np.exp(-40 * np.linspace(0, 0.04, len(sub), False))
 
-    # Snappy envelope
-    env = adsr_envelope(duration, attack=0.001, decay=0.03, sustain=0.2, release=0.06)
+    # Crisp transient "pop"
+    click = noise(0.006, amplitude=0.45)
+    click = high_pass_filter(click, cutoff=3500)
+    click = low_pass_filter(click, cutoff=9000)
+    click *= np.exp(-100 * np.linspace(0, 0.006, len(click), False))
+
+    # Ultra-snappy envelope
+    env = adsr_envelope(duration, attack=0.001, decay=0.02, sustain=0.15, release=0.04)
     wave = wave[:len(env)] * env
 
     result = np.zeros(int(SAMPLE_RATE * duration))
@@ -41,7 +47,37 @@ def generate_letter_select() -> np.ndarray:
     result[:len(sub)] += sub
     result[:len(wave)] += wave
 
-    return normalize(fade_out(result, 0.02)) * 0.85
+    return normalize(fade_out(result, 0.015)) * 0.88
+
+
+def generate_first_touch() -> np.ndarray:
+    """Ultra-minimal first touch sound optimized for iOS performance.
+
+    This is an extremely short, lightweight sound that can be played
+    during touch events without causing any lag. It's designed to be
+    imperceptible in terms of performance impact.
+    """
+    duration = 0.05  # Extremely short
+
+    # Simple bright tone
+    freq = 1400
+    wave = sine_wave(freq, duration, amplitude=0.25)
+    wave += sine_wave(freq * 2, duration, amplitude=0.1)
+
+    # Very quick envelope
+    env = np.exp(-35 * np.linspace(0, duration, len(wave), False))
+    wave *= env
+
+    # Tiny click for attack
+    click = noise(0.004, amplitude=0.3)
+    click = high_pass_filter(click, cutoff=4000)
+    click *= np.exp(-150 * np.linspace(0, 0.004, len(click), False))
+
+    result = np.zeros(len(wave))
+    result[:len(click)] += click
+    result += wave
+
+    return normalize(result) * 0.75
 
 
 def generate_letter_chain() -> list:
@@ -92,61 +128,96 @@ def generate_letter_chain() -> list:
 
 
 def generate_word_valid() -> np.ndarray:
-    """Extremely satisfying celebration sound for valid words."""
-    duration = 0.55
+    """ULTRA satisfying word success sound - designed to be addictive!
 
-    # Epic rising arpeggio - C major 7th
-    notes = [
-        (523.25, 0.08),   # C5
-        (659.25, 0.08),   # E5
-        (783.99, 0.08),   # G5
-        (987.77, 0.08),   # B5
-        (1046.50, 0.20),  # C6 (hold)
-    ]
+    Inspired by the most satisfying game sounds: Wordle tile flip,
+    Candy Crush combo, mobile game reward sounds. This should trigger
+    dopamine and make players want to find more words.
+    """
+    duration = 0.42  # Snappy but full
 
     result = np.zeros(int(SAMPLE_RATE * duration))
 
-    # Main arpeggio with rich synth sound
-    pos = 0
-    for freq, note_dur in notes:
-        # Layered synth sound
-        note = sawtooth_wave(freq, note_dur * 1.5, amplitude=0.18)
-        note += sawtooth_wave(freq * 1.002, note_dur * 1.5, amplitude=0.12)  # Detune
-        note += pulse_wave(freq, note_dur * 1.5, duty=0.3, amplitude=0.1)
-        note += sine_wave(freq, note_dur * 1.5, amplitude=0.12)
-
-        env = adsr_envelope(note_dur * 1.5, attack=0.003, decay=0.04, sustain=0.7, release=0.12)
-        note = note[:len(env)] * env
-        note = low_pass_filter(note, cutoff=4000)
-
-        end = min(pos + len(note), len(result))
-        result[pos:end] += note[:end-pos]
-        pos += int(note_dur * SAMPLE_RATE)
-
-    # Bright sparkle burst
-    sparkle = noise(0.2, amplitude=0.15)
-    sparkle = high_pass_filter(sparkle, cutoff=6000)
-    sparkle = low_pass_filter(sparkle, cutoff=12000)
-    t_sparkle = np.linspace(0, 0.2, len(sparkle), False)
-    sparkle *= np.exp(-8 * t_sparkle)
-    result[:len(sparkle)] += sparkle
-
-    # Satisfying "ding" bell tone
-    ding_freq = 2093.00  # C7
-    ding = sine_wave(ding_freq, 0.3, amplitude=0.12)
-    ding += sine_wave(ding_freq * 2, 0.3, amplitude=0.05)
-    ding *= pluck_envelope(0.3)
-    start_ding = int(0.15 * SAMPLE_RATE)
-    result[start_ding:start_ding+len(ding)] += ding
-
-    # Sub bass punch for weight
-    sub = sine_wave(130, 0.1, amplitude=0.2)
-    sub *= np.exp(-20 * np.linspace(0, 0.1, len(sub), False))
+    # === LAYER 1: Punchy initial impact with sub bass ===
+    # This gives the sound "weight" and physical satisfaction
+    sub_freq = 85
+    sub = sine_wave(sub_freq, 0.12, amplitude=0.45)
+    sub += sine_wave(sub_freq * 2, 0.12, amplitude=0.15)  # First harmonic
+    sub *= np.exp(-18 * np.linspace(0, 0.12, len(sub), False))
     result[:len(sub)] += sub
 
-    result = chorus(result, depth=0.002, rate=2.0)
-    result = reverb(result, room_size=0.35)
-    return normalize(fade_out(result, 0.08)) * 0.9
+    # === LAYER 2: Bright attack transient (the "click/pop") ===
+    # This makes it feel instant and responsive
+    click = noise(0.012, amplitude=0.5)
+    click = high_pass_filter(click, cutoff=2500)
+    click = low_pass_filter(click, cutoff=9000)
+    click *= np.exp(-80 * np.linspace(0, 0.012, len(click), False))
+    result[:len(click)] += click
+
+    # === LAYER 3: Main tonal "ding" - the satisfying bell ===
+    # This is the core of the satisfaction - a perfectly tuned resonant bell
+    bell_freq = 1318.51  # E6 - bright and pleasant
+    bell = sine_wave(bell_freq, 0.3, amplitude=0.28)
+    bell += sine_wave(bell_freq * 2, 0.3, amplitude=0.12)  # Octave
+    bell += sine_wave(bell_freq * 3, 0.3, amplitude=0.05)  # Fifth above
+    bell += sine_wave(bell_freq * 0.5, 0.3, amplitude=0.08)  # Octave below for body
+
+    # Bell envelope - fast attack, medium decay
+    bell_env = np.zeros(len(bell))
+    attack_samples = int(0.003 * SAMPLE_RATE)
+    bell_env[:attack_samples] = np.linspace(0, 1, attack_samples)
+    bell_env[attack_samples:] = np.exp(-6 * np.linspace(0, 0.3 - 0.003, len(bell) - attack_samples, False))
+    bell *= bell_env
+    result[:len(bell)] += bell
+
+    # === LAYER 4: Rising "success" sweep (subtle but important) ===
+    # This subconsciously signals "you did it!"
+    sweep_dur = 0.15
+    t_sweep = np.linspace(0, sweep_dur, int(SAMPLE_RATE * sweep_dur), False)
+    sweep_freq = 400 + 800 * (t_sweep / sweep_dur) ** 0.7  # Fast rise
+    sweep = np.zeros(len(t_sweep))
+    phase = 0
+    for i in range(len(t_sweep)):
+        sweep[i] = 0.12 * np.sin(phase)
+        sweep[i] += 0.06 * np.sin(phase * 1.5)  # Add harmonic
+        phase += 2 * np.pi * sweep_freq[i] / SAMPLE_RATE
+    sweep *= np.sin(np.pi * t_sweep / sweep_dur)  # Smooth in/out
+    result[:len(sweep)] += sweep
+
+    # === LAYER 5: Sparkle shimmer (the "magic dust") ===
+    # High frequency content that adds polish and excitement
+    sparkle = noise(0.18, amplitude=0.18)
+    sparkle = high_pass_filter(sparkle, cutoff=5500)
+    sparkle = low_pass_filter(sparkle, cutoff=14000)
+    t_sparkle = np.linspace(0, 0.18, len(sparkle), False)
+    # Builds slightly then fades - creates "bloom" effect
+    sparkle *= np.sin(np.pi * t_sparkle / 0.18) ** 0.5
+    result[:len(sparkle)] += sparkle
+
+    # === LAYER 6: Final harmonic "bloom" chord (very subtle) ===
+    # This extends the satisfaction and gives it a sense of completion
+    bloom_start = int(0.06 * SAMPLE_RATE)
+    bloom_dur = 0.25
+    bloom_freqs = [659.25, 830.61, 1046.50, 1318.51]  # E major spread
+    bloom = np.zeros(int(SAMPLE_RATE * bloom_dur))
+    for i, freq in enumerate(bloom_freqs):
+        tone = sine_wave(freq, bloom_dur, amplitude=0.04)
+        # Slight delay stagger for richness
+        delay_samples = int(i * 0.008 * SAMPLE_RATE)
+        if delay_samples < len(bloom) - len(tone):
+            bloom[delay_samples:delay_samples+len(tone)] += tone
+    bloom *= adsr_envelope(bloom_dur, attack=0.02, decay=0.08, sustain=0.4, release=0.12)
+    if bloom_start + len(bloom) <= len(result):
+        result[bloom_start:bloom_start+len(bloom)] += bloom
+
+    # === Final processing ===
+    # Light reverb for polish (not too much - keep it punchy)
+    result = reverb(result, room_size=0.2)
+
+    # Ensure clean fade out
+    result = fade_out(result, 0.04)
+
+    return normalize(result) * 0.92
 
 
 def generate_word_invalid() -> np.ndarray:
@@ -744,6 +815,7 @@ def generate_all_effects(output_dir: str = "output/sfx"):
 
     # Basic interactions
     save_wav(generate_letter_select(), f"{output_dir}/letter_select.wav")
+    save_wav(generate_first_touch(), f"{output_dir}/first_touch.wav")
 
     # Letter chain sounds (1-10)
     chain_sounds = generate_letter_chain()

@@ -697,13 +697,16 @@ export const GameBoard = () => {
   }, [boardSize, updateBoardDimensions]);
 
   // Play chain sound immediately when path grows
-  // iOS: DISABLED entirely - even throttled sounds cause lag during touch events
+  // iOS: Uses deferred playback to avoid blocking touch handlers
   const playChainSound = useCallback((pathLength: number) => {
-    if (IS_IOS) return; // Skip chain sounds on iOS for buttery smooth performance
-
     const now = Date.now();
     if (now - lastSoundTimeRef.current > 50) {
-      audioRef.current.playLetterChain(pathLength);
+      if (IS_IOS) {
+        // iOS: Use deferred playback - schedules after touch handler completes
+        audioRef.current.playLetterChainDeferred(pathLength);
+      } else {
+        audioRef.current.playLetterChain(pathLength);
+      }
       lastSoundTimeRef.current = now;
     }
   }, []);
@@ -759,8 +762,12 @@ export const GameBoard = () => {
         if (existingIndex !== -1) {
           // Backtrack to this cell
           currentPathRef.current = currentPath.slice(0, existingIndex + 1);
-          // iOS: Skip sounds during touch for smooth performance
-          if (!IS_IOS) audioRef.current.playLetterSelect();
+          // iOS: Use deferred playback to avoid blocking touch
+          if (IS_IOS) {
+            audioRef.current.playFirstTouchDeferred();
+          } else {
+            audioRef.current.playLetterSelect();
+          }
         } else if (isAdjacent(lastCell, cell)) {
           // Adjacent cell - add to path
           currentPathRef.current = [...currentPath, cell];
@@ -768,8 +775,12 @@ export const GameBoard = () => {
         } else {
           // Not adjacent - start fresh sequence
           currentPathRef.current = [cell];
-          // iOS: Skip sounds during touch for smooth performance
-          if (!IS_IOS) audioRef.current.playLetterSelect();
+          // iOS: Use deferred playback to avoid blocking touch
+          if (IS_IOS) {
+            audioRef.current.playFirstTouchDeferred();
+          } else {
+            audioRef.current.playLetterSelect();
+          }
         }
 
         prevPathLengthRef.current = currentPathRef.current.length;
@@ -783,8 +794,12 @@ export const GameBoard = () => {
         tapModeActiveRef.current = false;
 
         currentPathRef.current = [cell];
-        // iOS: Skip sounds during touch for smooth performance
-        if (!IS_IOS) audioRef.current.playLetterSelect();
+        // iOS: Use deferred playback to avoid blocking touch
+        if (IS_IOS) {
+          audioRef.current.playFirstTouchDeferred();
+        } else {
+          audioRef.current.playLetterSelect();
+        }
         prevPathLengthRef.current = 1;
       }
 
