@@ -441,6 +441,10 @@ export function useAudio(): AudioManager {
       }
       audio.volume = targetVolume;
 
+      // Update refs BEFORE playing so they're available immediately
+      currentMusicRef.current = audio;
+      currentMusicSrcRef.current = src;
+
       const playPromise = audio.play();
       if (playPromise !== undefined) {
         playPromise.catch((e) => {
@@ -456,9 +460,6 @@ export function useAudio(): AudioManager {
         });
       }
     }
-
-    currentMusicRef.current = audio;
-    currentMusicSrcRef.current = src;
   }, [isMusicMuted, musicVolume]);
 
   const preloadMusicTrack = useCallback((src: string) => {

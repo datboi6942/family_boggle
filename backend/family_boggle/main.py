@@ -311,7 +311,8 @@ async def run_game_loop(lobby_id: str):
     # 2. Playing Phase
     game_engine.start_game(lobby_id) # Generates board
     lobby.status = "playing"
-    lobby.timer = settings.GAME_DURATION_SECONDS
+    # 4x4 boards get 2 minutes (less words available), larger boards get 3 minutes
+    lobby.timer = 120 if lobby.board_size == 4 else settings.GAME_DURATION_SECONDS
 
     # Reset per-player time states
     for player in lobby.players:

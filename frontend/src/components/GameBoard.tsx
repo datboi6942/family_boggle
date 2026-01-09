@@ -602,25 +602,38 @@ export const GameBoard = () => {
   // Track last bonus time for detecting when it runs out
   const lastBonusTimeRef = useRef(bonusTime);
 
+  // Reset intense mode flag when component mounts (new game)
+  useEffect(() => {
+    intenseActivatedRef.current = false;
+    // Initialize lastTimerRef to a high value so the first real timer update works correctly
+    lastTimerRef.current = 999;
+  }, []);
+
   // Timer sounds and intense mode trigger
   useEffect(() => {
-    if (timer !== lastTimerRef.current) {
-      // Switch to INTENSE music when timer hits 30 seconds!
-      if (timer === 30 && !intenseActivatedRef.current) {
-        intenseActivatedRef.current = true;
-        audioRef.current.playGameplayIntenseMusic();
-      }
-      // Timer warning when 10 seconds or less
-      if (timer <= 10 && timer > 0) {
-        audioRef.current.playTimerWarning();
-      }
-      // Game end sound when timer hits 0 and no bonus time
-      // DON'T stop music here - let GameSummary crossfade to summary music
-      if (timer === 0 && lastTimerRef.current > 0 && bonusTime <= 0) {
-        audioRef.current.playGameEnd();
-      }
-      lastTimerRef.current = timer;
+    // Skip if timer hasn't changed
+    if (timer === lastTimerRef.current) return;
+
+    // Switch to INTENSE music when timer crosses below 30 seconds!
+    // Triggers when: timer is now <= 30 AND was previously > 30 (or uninitialized)
+    const crossedIntoIntense = timer <= 30 && timer > 0 && lastTimerRef.current > 30;
+    if (crossedIntoIntense && !intenseActivatedRef.current) {
+      intenseActivatedRef.current = true;
+      audioRef.current.playGameplayIntenseMusic();
     }
+
+    // Timer warning when 10 seconds or less
+    if (timer <= 10 && timer > 0) {
+      audioRef.current.playTimerWarning();
+    }
+
+    // Game end sound when timer hits 0 and no bonus time
+    // DON'T stop music here - let GameSummary crossfade to summary music
+    if (timer === 0 && lastTimerRef.current > 0 && bonusTime <= 0) {
+      audioRef.current.playGameEnd();
+    }
+
+    lastTimerRef.current = timer;
   }, [timer, bonusTime]);
 
   // Handle bonus time running out (for players who used freeze)
