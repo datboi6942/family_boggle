@@ -82,15 +82,8 @@ export const GameSummary = () => {
   useEffect(() => {
     if (!musicStartedRef.current) {
       musicStartedRef.current = true;
-      // Play summary music immediately
+      // Play summary music with crossfade from gameplay music
       playSummaryMusic();
-
-      // Backup: try again after a short delay in case first attempt failed
-      const backupTimeout = setTimeout(() => {
-        playSummaryMusic();
-      }, 500);
-
-      return () => clearTimeout(backupTimeout);
     }
   }, [playSummaryMusic]);
 
