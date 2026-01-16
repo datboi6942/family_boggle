@@ -42,12 +42,12 @@ class BoggleBoard:
         "HOPRST", "IPRSYY", "JKQWXZ", "NOOTUW", "OOOTTU", "OOOTUU",
     ]
 
-    # Minimum word counts for quality boards - 4x4 needs special attention
-    # since it has fewer cells but should still be fun to play
+    # Minimum word counts for quality boards across all sizes
+    # These thresholds ensure boards are consistently fun to play
     MIN_WORD_COUNTS = {
-        4: 100,  # 4x4 must have at least 100 possible words
-        5: 150,  # 5x5 should have more
-        6: 200,  # 6x6 has plenty of space
+        4: 100,   # 4x4: smaller board, fewer cells (16), aim for 100+ words
+        5: 250,   # 5x5: medium board (25 cells), should have plenty of words
+        6: 400,   # 6x6: large board (36 cells), expect many possible words
     }
 
     def __init__(self, size: int = 6, validator: Optional["DictionaryValidator"] = None):
@@ -378,13 +378,16 @@ class BoggleBoard:
     def generate(self) -> None:
         """Generates a random board grid using official Boggle dice.
 
-        For 4x4 boards especially, ensures the board has enough possible words
-        to be fun to play. Regenerates if word count is below threshold.
+        Ensures the board has enough possible words to be fun to play.
+        Regenerates if word count is below the size-specific threshold.
 
         Quality checks:
         1. ALL consonants must touch at least one vowel
         2. All Q's must touch at least one U
-        3. Board must have minimum word count (if validator provided)
+        3. Board must have minimum word count (if validator provided):
+           - 4x4: 100+ words
+           - 5x5: 250+ words
+           - 6x6: 400+ words
         """
         min_words = self.MIN_WORD_COUNTS.get(self.size, 100)
 
