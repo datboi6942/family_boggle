@@ -2,11 +2,16 @@ import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { MonsterAvatar } from '../MonsterAvatar';
 
-// iOS detection - spring animations cause lag
+// Mobile detection - spring animations cause lag on mobile devices
 const IS_IOS = typeof navigator !== 'undefined' && (
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 );
+
+const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+
+// Use simpler animations on ALL mobile devices for consistent smooth performance
+const IS_MOBILE = IS_IOS || IS_ANDROID;
 
 interface Finder {
   player_id: string;
@@ -56,7 +61,7 @@ export const FlyingWord: React.FC<FlyingWordProps> = ({
         <motion.div
           initial={{ scale: 0, opacity: 0, rotateX: -90 }}
           animate={{ scale: 1, opacity: 1, rotateX: 0 }}
-          transition={IS_IOS ? {
+          transition={IS_MOBILE ? {
             type: "tween",
             duration: 0.2,
             ease: "easeOut",
@@ -65,7 +70,7 @@ export const FlyingWord: React.FC<FlyingWordProps> = ({
             stiffness: 500,
             damping: 30,
           }}
-          onAnimationComplete={() => setTimeout(handleRevealComplete, IS_IOS ? 50 : 120)}
+          onAnimationComplete={() => setTimeout(handleRevealComplete, IS_MOBILE ? 50 : 120)}
           className={`frosted-glass px-6 py-4 flex flex-col items-center ${
             isUnique ? 'border-2 border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.5)]' : ''
           }`}
