@@ -89,8 +89,11 @@ class GameEngine:
         lobby = self.lobbies[lobby_id]
         if not all(p.is_ready for p in lobby.players):
             return False
-            
-        self.board_gen = BoggleBoard(size=lobby.board_size)
+
+        # Pass validator to BoggleBoard so it can ensure minimum word counts
+        # This is especially important for 4x4 boards which can sometimes
+        # generate with very few possible words
+        self.board_gen = BoggleBoard(size=lobby.board_size, validator=self.validator)
         lobby.board = self.board_gen.grid
         lobby.status = "countdown"
         lobby.timer = 3  # 3-2-1 countdown

@@ -1,5 +1,9 @@
 import random
-from typing import List, Tuple, Set, Optional
+from typing import List, Tuple, Set, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from family_boggle.dictionary import DictionaryValidator
+
 
 class BoggleBoard:
     """Boggle board generator and validator."""
@@ -38,14 +42,26 @@ class BoggleBoard:
         "HOPRST", "IPRSYY", "JKQWXZ", "NOOTUW", "OOOTTU", "OOOTUU",
     ]
 
-    def __init__(self, size: int = 6):
+    # Minimum word counts for quality boards - 4x4 needs special attention
+    # since it has fewer cells but should still be fun to play
+    MIN_WORD_COUNTS = {
+        4: 100,  # 4x4 must have at least 100 possible words
+        5: 150,  # 5x5 should have more
+        6: 200,  # 6x6 has plenty of space
+    }
+
+    def __init__(self, size: int = 6, validator: Optional["DictionaryValidator"] = None):
         """Initializes the board with a specific size.
 
         Args:
             size: The dimensions of the board (4, 5, or 6).
+            validator: Optional dictionary validator for word count checking.
+                       If provided, boards will be regenerated until they meet
+                       minimum word count thresholds.
         """
         self.size = size
         self.grid: List[List[str]] = []
+        self._validator = validator
         self.generate()
 
     def _has_adjacent_vowel(self, r: int, c: int) -> bool:
@@ -303,8 +319,8 @@ class BoggleBoard:
                 # After one swap, recheck all landlocked
                 break
 
-    def generate(self) -> None:
-        """Generates a random board grid using official Boggle dice.
+    def _generate_single_board(self) -> None:
+        """Generates a single random board without word count validation.
 
         Ensures ALL consonants can reach vowels by:
         1. Trying multiple random generations
@@ -358,6 +374,52 @@ class BoggleBoard:
 
         # Ensure all Q's touch at least one U (essential for QU words)
         self._fix_q_without_u()
+
+    def generate(self) -> None:
+        """Generates a random board grid using official Boggle dice.
+
+        For 4x4 boards especially, ensures the board has enough possible words
+        to be fun to play. Regenerates if word count is below threshold.
+
+        Quality checks:
+        1. ALL consonants must touch at least one vowel
+        2. All Q's must touch at least one U
+        3. Board must have minimum word count (if validator provided)
+        """
+        min_words = self.MIN_WORD_COUNTS.get(self.size, 100)
+
+        # If no validator provided, just generate a single board
+        if self._validator is None:
+            self._generate_single_board()
+            return
+
+        # With validator, ensure minimum word count
+        # Track best board in case we can't meet threshold
+        best_board: Optional[List[List[str]]] = None
+        best_word_count = 0
+
+        # O(n) complexity: max 10 full regeneration attempts
+        max_regen_attempts = 10
+        for regen in range(max_regen_attempts):
+            self._generate_single_board()
+
+            # Count words on this board
+            word_set = self._validator._word_set
+            words_found = self.find_all_words(word_set)
+            word_count = len(words_found)
+
+            # Track best board
+            if word_count > best_word_count:
+                best_word_count = word_count
+                best_board = [row[:] for row in self.grid]
+
+            # Check if this board meets minimum threshold
+            if word_count >= min_words:
+                return  # Good board found!
+
+        # Use the best board we found (even if below threshold)
+        if best_board:
+            self.grid = best_board
 
     def is_word_on_board(self, word: str, path: List[Tuple[int, int]]) -> bool:
         """Validates if a word is actually present on the board following a path.
