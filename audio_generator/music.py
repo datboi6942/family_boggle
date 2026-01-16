@@ -1366,166 +1366,376 @@ def generate_brush_hit() -> np.ndarray:
     return normalize(brush) * 0.3
 
 
+def generate_victory_synth_lead(freq: float, duration: float) -> np.ndarray:
+    """Generate bright, euphoric synth lead for victory music."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+
+    # Bright supersaw-style lead
+    lead = sawtooth_wave(freq, duration, amplitude=0.2)
+    lead += sawtooth_wave(freq * 1.005, duration, amplitude=0.15)
+    lead += sawtooth_wave(freq * 0.995, duration, amplitude=0.15)
+    lead += pulse_wave(freq, duration, duty=0.35, amplitude=0.12)
+    lead += sine_wave(freq * 2, duration, amplitude=0.08)  # Brightness
+
+    # Punchy envelope
+    env = adsr_envelope(duration, attack=0.005, decay=0.08, sustain=0.6, release=0.1)
+    lead = lead[:len(env)] * env
+
+    lead = low_pass_filter(lead, cutoff=6000)
+    lead = chorus(lead, depth=0.003, rate=1.5)
+
+    return lead
+
+
+def generate_victory_stab(freqs: list, duration: float) -> np.ndarray:
+    """Generate punchy, euphoric synth stab."""
+    num_samples = int(SAMPLE_RATE * duration)
+    result = np.zeros(num_samples)
+
+    for freq in freqs:
+        tone = sawtooth_wave(freq, duration, amplitude=0.18)
+        tone += sawtooth_wave(freq * 1.003, duration, amplitude=0.12)
+        tone += pulse_wave(freq, duration, duty=0.25, amplitude=0.1)
+        result += tone
+
+    # Super punchy envelope
+    env = adsr_envelope(duration, attack=0.002, decay=0.1, sustain=0.2, release=0.08)
+    result = result[:len(env)] * env
+
+    result = low_pass_filter(result, cutoff=5500)
+    result = chorus(result, depth=0.002, rate=2.0)
+
+    return result
+
+
+def generate_victory_bass(freq: float, duration: float) -> np.ndarray:
+    """Generate punchy, driving bass for victory music."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+
+    # Fat bass with sub
+    bass = sawtooth_wave(freq, duration, amplitude=0.35)
+    bass += sawtooth_wave(freq * 1.003, duration, amplitude=0.25)
+    bass += square_wave(freq * 0.5, duration, amplitude=0.25)  # Sub
+    bass += sine_wave(freq * 0.5, duration, amplitude=0.2)  # Sub sine
+
+    # Filter envelope for punch
+    chunk_size = 512
+    filtered = np.zeros(num_samples)
+    for i in range(0, num_samples, chunk_size):
+        chunk_end = min(i + chunk_size, num_samples)
+        chunk = bass[i:chunk_end]
+        chunk_time = i / SAMPLE_RATE
+        cutoff = 2500 * np.exp(-10 * chunk_time) + 400
+        if len(chunk) > 0:
+            filtered[i:chunk_end] = low_pass_filter(chunk, cutoff=cutoff)[:chunk_end - i]
+
+    bass = filtered
+
+    # Punchy envelope
+    env = adsr_envelope(duration, attack=0.003, decay=0.06, sustain=0.7, release=0.04)
+    bass = bass[:len(env)] * env
+
+    bass = np.tanh(bass * 1.3) * 0.85
+
+    return bass
+
+
+def generate_victory_arp(freq: float, duration: float) -> np.ndarray:
+    """Generate sparkling arpeggio note for victory music."""
+    num_samples = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, num_samples, False)
+
+    note = pulse_wave(freq, duration, duty=0.25, amplitude=0.18)
+    note += sawtooth_wave(freq, duration, amplitude=0.12)
+    note += sine_wave(freq * 2, duration, amplitude=0.1)  # Sparkle
+    note += sine_wave(freq * 3, duration, amplitude=0.05)  # Extra shimmer
+
+    env = adsr_envelope(duration, attack=0.002, decay=0.04, sustain=0.35, release=0.03)
+    note = note[:len(env)] * env
+    note = low_pass_filter(note, cutoff=5500)
+
+    return note
+
+
+def generate_victory_pad(freqs: list, duration: float) -> np.ndarray:
+    """Generate lush, euphoric pad for victory music."""
+    num_samples = int(SAMPLE_RATE * duration)
+    result = np.zeros(num_samples)
+
+    for freq in freqs:
+        tone = sawtooth_wave(freq, duration, amplitude=0.07)
+        tone += sawtooth_wave(freq * 1.004, duration, amplitude=0.05)
+        tone += sawtooth_wave(freq * 0.996, duration, amplitude=0.05)
+        tone += triangle_wave(freq, duration, amplitude=0.04)
+        result += tone
+
+    env = adsr_envelope(duration, attack=0.15, decay=0.15, sustain=0.7, release=0.25)
+    result = result[:len(env)] * env
+    result = low_pass_filter(result, cutoff=4000)
+    result = chorus(result, depth=0.004, rate=0.6)
+
+    return result
+
+
 def generate_summary_music(duration_seconds: float = 60) -> np.ndarray:
-    """Generate pleasant, chill summary music - sophisticated and not repetitive.
+    """Generate UPBEAT, ELECTRIC, CATCHY victory music - celebration time!
 
     Features:
-    - Warm, evolving pad harmonies
-    - Soft melodic elements that vary
-    - Gentle percussion
-    - Multiple sections with different feels
-    - Suitable for repeated listening
+    - Fast, driving tempo (128 BPM - dance music energy!)
+    - Punchy four-on-the-floor kick drums
+    - Euphoric synth stabs and leads
+    - Catchy, memorable melodies
+    - Sparkling arpeggios
+    - Uplifting major key progressions
+    - BUILD AND DROP moments!
     """
-    bpm = 85  # Relaxed tempo
+    # FAST dance tempo for celebration!
+    bpm = 128
     beat_dur = 60 / bpm
     bar_dur = beat_dur * 4
-    section_duration = 8 * bar_dur  # Long sections
+    section_duration = 4 * bar_dur
     num_sections = int(np.ceil(duration_seconds / section_duration))
 
     result = np.zeros(int(SAMPLE_RATE * duration_seconds))
 
-    eighth = beat_dur / 2
     sixteenth = beat_dur / 4
+    eighth = beat_dur / 2
 
-    # Generate soft percussion
-    soft_kick = generate_soft_kick()
-    brush = generate_brush_hit()
+    # Generate punchy drums
+    kick = generate_blue_monday_kick()
+    snare = generate_blue_monday_snare()
+    clap = generate_blue_monday_clap()
+    hihat = generate_blue_monday_hihat()
 
-    # Rich chord progressions in different sections
-    # Section A: C major feel - warm and triumphant
-    c_pad = [261.63, 329.63, 392.00]  # C E G
-    am_pad = [220.00, 261.63, 329.63]  # A C E
-    f_pad = [174.61, 220.00, 261.63]  # F A C
-    g_pad = [196.00, 246.94, 293.66]  # G B D
+    # UPLIFTING chord progression in F major - pure euphoria!
+    # F - Am - Dm - Bb - F - C - Dm - C (classic EDM euphoric progression)
+    f_chord = [349.23, 440.00, 523.25]  # F A C
+    am_chord = [440.00, 523.25, 659.25]  # A C E
+    dm_chord = [293.66, 349.23, 440.00]  # D F A
+    bb_chord = [233.08, 293.66, 349.23]  # Bb D F
+    c_chord = [261.63, 329.63, 392.00]  # C E G
 
-    # Section B: More colorful - add 7ths and 9ths
-    cmaj7_pad = [261.63, 329.63, 392.00, 493.88]  # C E G B
-    fmaj7_pad = [174.61, 220.00, 261.63, 329.63]  # F A C E
-    dm7_pad = [146.83, 174.61, 220.00, 261.63]  # D F A C
-    em7_pad = [164.81, 196.00, 246.94, 293.66]  # E G B D
+    # Higher pad voicings for euphoria
+    f_pad = [698.46, 880.00, 1046.50]
+    am_pad = [880.00, 1046.50, 1318.51]
+    dm_pad = [587.33, 698.46, 880.00]
+    bb_pad = [466.16, 587.33, 698.46]
+    c_pad = [523.25, 659.25, 783.99]
 
-    # Multiple melody variations
-    melody_a = [
-        (523.25, 1), (659.25, 0.5), (587.33, 0.5),
-        (523.25, 1), (493.88, 1),
-        (440.00, 0.5), (493.88, 0.5), (523.25, 2),
+    # Catchy arpeggio patterns
+    f_arp = [349.23, 440.00, 523.25, 698.46, 880.00, 698.46, 523.25, 440.00]
+    am_arp = [440.00, 523.25, 659.25, 880.00, 1046.50, 880.00, 659.25, 523.25]
+    dm_arp = [293.66, 349.23, 440.00, 587.33, 698.46, 587.33, 440.00, 349.23]
+    bb_arp = [233.08, 293.66, 349.23, 466.16, 587.33, 466.16, 349.23, 293.66]
+    c_arp = [261.63, 329.63, 392.00, 523.25, 659.25, 523.25, 392.00, 329.63]
+
+    # CATCHY VICTORY MELODY - triumphant and memorable!
+    victory_melody = [
+        # Bar 1-2: Iconic rising hook
+        (698.46, eighth), (0, sixteenth), (698.46, sixteenth),
+        (783.99, eighth), (880.00, eighth),
+        (1046.50, beat_dur * 0.75), (880.00, eighth), (783.99, sixteenth),
+        (698.46, beat_dur),
+        # Bar 2
+        (783.99, eighth), (0, sixteenth), (783.99, sixteenth),
+        (880.00, eighth), (1046.50, eighth),
+        (1174.66, beat_dur * 0.75), (1046.50, eighth), (880.00, sixteenth),
+        (783.99, beat_dur),
     ]
 
-    melody_b = [
-        (659.25, 0.5), (698.46, 0.5), (783.99, 1),
-        (659.25, 1), (587.33, 0.5), (523.25, 0.5),
-        (587.33, 2), (0, 1),
+    # Bass pattern - driving 8th notes
+    bass_root = 87.31  # F2
+    bass_pattern_bars = [
+        # Bar 1: F
+        [(bass_root, eighth)] * 8,
+        # Bar 2: Am
+        [(bass_root * 1.26, eighth)] * 8,  # A
+        # Bar 3: Dm
+        [(bass_root * 0.84, eighth)] * 8,  # D
+        # Bar 4: Bb -> C build
+        [(bass_root * 0.67, eighth)] * 4 + [(bass_root * 0.75, eighth)] * 4,  # Bb -> C
     ]
-
-    melody_c = [
-        (783.99, 0.5), (698.46, 0.5), (659.25, 0.5), (587.33, 0.5),
-        (523.25, 2), (587.33, 1),
-        (523.25, 1), (493.88, 1),
-    ]
-
-    # Arpeggio patterns
-    c_arp = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63]
-    f_arp = [174.61, 220.00, 261.63, 349.23, 261.63, 220.00]
-    g_arp = [196.00, 246.94, 293.66, 392.00, 293.66, 246.94]
-    am_arp = [220.00, 261.63, 329.63, 440.00, 329.63, 261.63]
-
-    melodies = [melody_a, melody_b, melody_c]
 
     for section in range(num_sections):
         section_start = section * section_duration
-        section_type = section % 3  # Varies the feel
+        is_drop_section = section % 2 == 1  # Every other section is the "drop"
 
-        # ===== WARM PADS =====
-        if section_type == 0:
-            pad_progression = [c_pad, am_pad, f_pad, g_pad, c_pad, am_pad, f_pad, g_pad]
-        elif section_type == 1:
-            pad_progression = [cmaj7_pad, fmaj7_pad, dm7_pad, g_pad, cmaj7_pad, em7_pad, fmaj7_pad, g_pad]
-        else:
-            pad_progression = [f_pad, c_pad, dm7_pad, am_pad, f_pad, g_pad, c_pad, c_pad]
-
-        for bar in range(8):
+        # ===== FOUR ON THE FLOOR KICK (THE GROOVE!) =====
+        for bar in range(4):
             bar_start = section_start + bar * bar_dur
-            pos = int(bar_start * SAMPLE_RATE)
-            pad = generate_warm_pad(pad_progression[bar], bar_dur)
-            end = min(pos + len(pad), len(result))
-            if end > pos:
-                result[pos:end] += pad[:end - pos] * 0.3
 
-        # ===== SOFT PERCUSSION (every other section) =====
-        if section % 2 == 1:
-            for bar in range(8):
-                bar_start = section_start + bar * bar_dur
+            if is_drop_section:
+                # Full energy kicks on every beat
+                for beat in range(4):
+                    t = bar_start + beat * beat_dur
+                    pos = int(t * SAMPLE_RATE)
+                    if pos + len(kick) < len(result):
+                        result[pos:pos + len(kick)] += kick * 0.95
 
-                # Soft kick on 1 and 3
+                # Extra offbeat kicks for drive
+                for beat in [0.5, 1.5, 2.5, 3.5]:
+                    t = bar_start + beat * beat_dur
+                    pos = int(t * SAMPLE_RATE)
+                    if pos + len(kick) < len(result):
+                        result[pos:pos + len(kick)] += kick * 0.5
+            else:
+                # Build section - sparser kicks
                 for beat in [0, 2]:
                     t = bar_start + beat * beat_dur
                     pos = int(t * SAMPLE_RATE)
-                    if pos + len(soft_kick) < len(result):
-                        result[pos:pos + len(soft_kick)] += soft_kick * 0.6
+                    if pos + len(kick) < len(result):
+                        result[pos:pos + len(kick)] += kick * 0.8
 
-                # Brush on offbeats
+        # ===== CLAPS AND SNARES ON 2 AND 4 =====
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            for beat in [1, 3]:
+                t = bar_start + beat * beat_dur
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(clap) < len(result):
+                    result[pos:pos + len(clap)] += clap * 0.7
+                if pos + len(snare) < len(result):
+                    result[pos:pos + len(snare)] += snare * 0.65
+
+        # ===== DRIVING HI-HATS =====
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            pattern = 16 if is_drop_section else 8  # 16th notes on drop, 8th on build
+
+            for i in range(pattern):
+                if pattern == 16:
+                    t = bar_start + i * sixteenth
+                    vol = 0.55 if i % 4 == 0 else (0.4 if i % 2 == 0 else 0.3)
+                else:
+                    t = bar_start + i * eighth
+                    vol = 0.5 if i % 2 == 0 else 0.35
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(hihat) < len(result):
+                    result[pos:pos + len(hihat)] += hihat * vol
+
+        # ===== EUPHORIC SYNTH STABS =====
+        stab_progression = [f_chord, am_chord, dm_chord, c_chord]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+
+            if is_drop_section:
+                # Stabs on beat 1 and offbeats for energy
+                stab_times = [0, 0.5, 1.5, 2, 3, 3.5]
+                for beat in stab_times:
+                    pos = int((bar_start + beat * beat_dur) * SAMPLE_RATE)
+                    vol = 0.55 if beat in [0, 2] else 0.35
+                    stab = generate_victory_stab(stab_progression[bar], beat_dur * 0.4)
+                    if pos + len(stab) < len(result):
+                        result[pos:pos + len(stab)] += stab * vol
+            else:
+                # Build section - just on beat 1
+                pos = int(bar_start * SAMPLE_RATE)
+                stab = generate_victory_stab(stab_progression[bar], beat_dur)
+                if pos + len(stab) < len(result):
+                    result[pos:pos + len(stab)] += stab * 0.45
+
+        # ===== LUSH PADS (constant euphoria) =====
+        pad_progression = [f_pad, am_pad, dm_pad, c_pad]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            pos = int(bar_start * SAMPLE_RATE)
+            pad = generate_victory_pad(pad_progression[bar], bar_dur)
+            end = min(pos + len(pad), len(result))
+            if end > pos:
+                vol = 0.35 if is_drop_section else 0.25
+                result[pos:end] += pad[:end - pos] * vol
+
+        # ===== SPARKLING ARPEGGIOS =====
+        arp_progression = [f_arp, am_arp, dm_arp, c_arp]
+        for bar in range(4):
+            bar_start = section_start + bar * bar_dur
+            arp = arp_progression[bar]
+
+            if is_drop_section:
+                # Fast 16th note arpeggios
+                for i in range(16):
+                    t = bar_start + i * sixteenth
+                    pos = int(t * SAMPLE_RATE)
+                    freq = arp[i % len(arp)]
+                    note = generate_victory_arp(freq, sixteenth * 0.75)
+                    if pos + len(note) < len(result):
+                        result[pos:pos + len(note)] += note * 0.28
+            else:
+                # Slower 8th note arpeggios on build
                 for i in range(8):
                     t = bar_start + i * eighth
                     pos = int(t * SAMPLE_RATE)
-                    vol = 0.4 if i % 2 == 1 else 0.25
-                    if pos + len(brush) < len(result):
-                        result[pos:pos + len(brush)] += brush * vol
-
-        # ===== MELODIC PLUCKS =====
-        melody = melodies[section % len(melodies)]
-        melody_start = section_start + bar_dur  # Start after first bar
-        melody_time = melody_start
-
-        for freq, beats in melody:
-            if freq > 0:
-                pos = int(melody_time * SAMPLE_RATE)
-                dur = beats * beat_dur
-                note = generate_pluck_note(freq, dur)
-                if pos + len(note) < len(result):
-                    result[pos:pos + len(note)] += note * 0.35
-            melody_time += beats * beat_dur
-
-        # ===== ARPEGGIOS (alternating sections) =====
-        if section_type != 1:
-            arp_progression = [c_arp, f_arp, am_arp, g_arp]
-            for bar in range(4, 8):  # Second half of section
-                bar_start = section_start + bar * bar_dur
-                arp = arp_progression[(bar - 4) % len(arp_progression)]
-
-                for i in range(12):  # Triplet feel
-                    t = bar_start + i * (beat_dur / 3)
-                    pos = int(t * SAMPLE_RATE)
                     freq = arp[i % len(arp)]
-                    note = generate_pluck_note(freq * 2, beat_dur / 3)  # Higher octave
+                    note = generate_victory_arp(freq, eighth * 0.7)
                     if pos + len(note) < len(result):
-                        result[pos:pos + len(note)] += note * 0.15
+                        result[pos:pos + len(note)] += note * 0.2
 
-        # ===== BASS NOTES (subtle) =====
-        bass_notes = [130.81, 110.00, 87.31, 98.00]  # C, A, F, G
-        for bar in range(8):
+        # ===== DRIVING BASS LINE =====
+        for bar in range(4):
             bar_start = section_start + bar * bar_dur
-            pos = int(bar_start * SAMPLE_RATE)
+            bar_pattern = bass_pattern_bars[bar]
 
-            bass_freq = bass_notes[bar % len(bass_notes)]
-            bass = sine_wave(bass_freq, bar_dur * 0.8, amplitude=0.25)
-            bass += sine_wave(bass_freq * 0.5, bar_dur * 0.8, amplitude=0.15)
+            bass_time = bar_start
+            for freq, dur in bar_pattern:
+                pos = int(bass_time * SAMPLE_RATE)
+                bass_note = generate_victory_bass(freq, dur * 0.85)
+                vol = 0.6 if is_drop_section else 0.45
+                if pos + len(bass_note) < len(result):
+                    result[pos:pos + len(bass_note)] += bass_note * vol
+                bass_time += dur
 
-            env = adsr_envelope(bar_dur * 0.8, attack=0.1, decay=0.2, sustain=0.6, release=0.3)
-            bass = bass[:len(env)] * env
-            bass = low_pass_filter(bass, cutoff=200)
+        # ===== CATCHY LEAD MELODY (on drop sections) =====
+        if is_drop_section:
+            melody_time = section_start
+            for freq, dur in victory_melody:
+                if freq > 0:
+                    pos = int(melody_time * SAMPLE_RATE)
+                    note = generate_victory_synth_lead(freq, dur * 0.9)
+                    if pos + len(note) < len(result):
+                        result[pos:pos + len(note)] += note * 0.45
+                melody_time += dur
 
-            if pos + len(bass) < len(result):
-                result[pos:pos + len(bass)] += bass * 0.35
+        # ===== RISER BEFORE DROPS =====
+        if not is_drop_section and section < num_sections - 1:
+            riser_dur = bar_dur
+            riser_start = section_start + 3 * bar_dur
+            pos = int(riser_start * SAMPLE_RATE)
+            riser = generate_sweep_riser(riser_dur, 400, 2500)
+            if pos + len(riser) < len(result):
+                result[pos:pos + len(riser)] += riser * 0.4
 
-    # Warm reverb
-    result = reverb(result, room_size=0.5)
+        # ===== IMPACT ON DROPS =====
+        if is_drop_section:
+            pos = int(section_start * SAMPLE_RATE)
+            drop = generate_sub_drop(0.4)
+            if pos + len(drop) < len(result):
+                result[pos:pos + len(drop)] += drop * 0.55
 
-    # Master processing
+        # ===== HIGH ENERGY PERC FILLS (before transitions) =====
+        if not is_drop_section:
+            fill_start = section_start + 3 * bar_dur + 2 * beat_dur
+            for i in range(8):
+                t = fill_start + i * sixteenth
+                pos = int(t * SAMPLE_RATE)
+                if pos + len(snare) < len(result):
+                    vol = 0.3 + (i / 8) * 0.4  # Build intensity
+                    result[pos:pos + len(snare)] += snare * vol
+
+    # Add bright delay for energy
+    delayed = delay(result, delay_time=beat_dur * 0.375, feedback=0.25)
+    result = result * 0.8 + delayed * 0.2
+
+    # Subtle reverb for space (less than before - keep it punchy!)
+    result = reverb(result, room_size=0.3)
+
+    # Master processing - LOUD and proud!
     result = np.clip(result, -1, 1)
-    result = low_pass_filter(result, cutoff=12000)
-    result = normalize(result, target_db=-5)
-    result = fade_in(result, 0.5)
-    result = fade_out(result, 1.5)
+    result = low_pass_filter(result, cutoff=15000)
+    result = normalize(result, target_db=-3)
+    result = fade_in(result, 0.3)
+    result = fade_out(result, 1.0)
 
     return result
 
