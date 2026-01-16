@@ -249,9 +249,12 @@ export const useGameStore = create<GameState>()(
           if (state.isTimeUp || state.status === 'waiting' || state.status === 'summary') {
             return state; // No changes
           }
+          // Add bonus time from freeze (extends game time after main timer ends)
+          const bonusSeconds = data.bonus_seconds || 10;
           return {
             isFrozen: true,
             frozenTimerValue: state.timer,  // Capture current timer to display while frozen
+            bonusTime: state.bonusTime + bonusSeconds,  // Accumulate bonus time from freeze
           };
         });
         // After 10 seconds, unfreeze and clear the frozen timer value
