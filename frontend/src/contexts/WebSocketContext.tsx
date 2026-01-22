@@ -16,6 +16,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
   const maxRetries = 3;
+  const connectRef = useRef<() => void>(() => {}); // Ref to hold latest connect function
   const {
     lobbyId,
     playerId,
@@ -32,7 +33,6 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     setPlayerTimeUp,
     updateBonusTimer,
     setPlayAgainUpdate,
-    setStatus,
     resetSession
   } = useGameStore();
 
@@ -220,11 +220,11 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
         console.log(`WebSocket disconnected, retrying in ${retryDelay}ms (attempt ${retryCountRef.current + 1}/${maxRetries})`);
         retryCountRef.current++;
 
-        retryTimeoutRef.current = setTimeout(() => {
-          if (thisConnectionId === connectionIdRef.current) {
-            connect();
-          }
-        }, retryDelay);
+         retryTimeoutRef.current = setTimeout(() => {
+           if (thisConnectionId === connectionIdRef.current) {
+             connectRef.current();
+           }
+         }, retryDelay);
       } else if (retryCountRef.current >= maxRetries) {
         console.error('Max WebSocket retry attempts reached');
         alert('Unable to connect to game server. Please try again.');
@@ -238,7 +238,12 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     };
 
     socketRef.current = socket;
-  }, [lobbyId, playerId, username, character, mode, status, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setWaitingPhase, setPlayerTimeUp, updateBonusTimer, setPlayAgainUpdate, setStatus, resetSession]);
+   }, [lobbyId, playerId, username, character, mode, status, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setWaitingPhase, setPlayerTimeUp, updateBonusTimer, setPlayAgainUpdate, resetSession]);
+
+  // Keep connectRef up to date with latest connect function
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   // Single unified effect for connection management
   useEffect(() => {
@@ -307,13 +312,50 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
-  const send = useCallback((type: string, data: any = {}) => {
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type, data }));
-    } else {
-      console.warn('WebSocket not connected, cannot send:', type);
+  const messageQueueRef = useRef<Array<{type: string, data: any}>>([]);
+  const flushScheduledRef = useRef(false);
+
+  const raf = typeof window !== 'undefined' ? window.requestAnimationFrame : (cb: () => void) => setTimeout(cb, 16);
+
+  const flushQueue = useCallback(() => {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      messageQueueRef.current = [];
+      flushScheduledRef.current = false;
+      return;
     }
+
+    const queue = messageQueueRef.current;
+    if (queue.length === 0) {
+      flushScheduledRef.current = false;
+      return;
+    }
+
+    // Send all queued messages as a single batch array
+    // The server expects individual messages, so we send them separately
+    // but we can combine them into a single WebSocket message to reduce overhead
+    const batch = queue.slice(); // copy
+    messageQueueRef.current = [];
+
+    // Send each message individually (maintains existing server compatibility)
+    for (const msg of batch) {
+      socketRef.current.send(JSON.stringify(msg));
+    }
+
+    flushScheduledRef.current = false;
   }, []);
+
+  const send = useCallback((type: string, data: any = {}) => {
+    // Add to queue
+    messageQueueRef.current.push({ type, data });
+
+    // Schedule flush if not already scheduled
+    if (!flushScheduledRef.current) {
+      flushScheduledRef.current = true;
+      raf(() => {
+        flushQueue();
+      });
+    }
+   }, [flushQueue, raf]);
 
   return (
     <WebSocketContext.Provider value={{ send }}>

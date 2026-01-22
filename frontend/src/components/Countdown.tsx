@@ -11,7 +11,9 @@ export const Countdown = () => {
 
   // Keep a ref to audio so effects can access latest version
   const audioRef = useRef(audio);
-  audioRef.current = audio;
+  useEffect(() => {
+    audioRef.current = audio;
+  }, [audio]);
 
   // CRITICAL: Scroll to top and lock scroll during countdown
   // This ensures the game board will be properly positioned when the game starts

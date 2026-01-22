@@ -1,87 +1,18 @@
-import { useRef, useCallback, useMemo, memo, useEffect } from 'react';
+import { useRef, useCallback, useMemo, useEffect } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { useAudioContext } from '../contexts/AudioContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Snowflake, Bomb, RotateCw, Lock, Shield } from 'lucide-react';
+import { PowerUpBar } from './PowerUpBar';
+import { LockProtectionAnimation } from './LockProtectionAnimation';
+import { BoardRenderer } from './BoardRenderer';
+import { useTouchController } from '../hooks/useTouchController';
 
 // Letter point values (same as backend scoring.py)
-const LETTER_SCORES: Record<string, number> = {
-  'A': 1, 'E': 1, 'I': 1, 'O': 1, 'N': 1, 'R': 1, 'T': 1, 'L': 1, 'S': 1,
-  'D': 2, 'G': 2, 'U': 2, 'C': 2, 'M': 2, 'P': 2, 'B': 2,
-  'H': 3, 'F': 3, 'W': 3, 'Y': 3, 'V': 3, 'K': 3,
-  'J': 5, 'X': 5,
-  'Q': 8, 'Z': 8,
-  'QU': 10  // QU tile is worth more (Q + U value)
-};
 
-// Rare letters that grant powerups when used - styled with gold color
-const RARE_LETTERS = new Set(['J', 'X', 'Q', 'Z', 'QU']);
-
-// Memoized timer component to isolate timer re-renders
-// iOS: use recording-pulse (transform-based) instead of animate-pulse (opacity-based)
-const TimerDisplay = memo(({ formattedTimer, isFrozen }: { formattedTimer: string; isFrozen: boolean }) => (
-  <div className={`flex items-center gap-2 ${isFrozen ? 'text-blue-400' : 'text-white'}`}>
-    {isFrozen ? <Snowflake className="w-4 h-4 animate-spin" /> : <div className="w-2 h-2 bg-red-500 rounded-full recording-pulse" />}
-    <span className="text-lg font-black font-mono tabular-nums">{formattedTimer}</span>
-  </div>
-));
-TimerDisplay.displayName = 'TimerDisplay';
-
-// Static cell component - NO dynamic props during drag, uses data attributes for styling
-const Cell = memo(({
-  letter,
-  isBlocked,
-  row,
-  col,
-  cellRef
-}: {
-  letter: string;
-  isBlocked: boolean;
-  row: number;
-  col: number;
-  cellRef: (el: HTMLDivElement | null) => void;
-}) => {
-  const upperLetter = letter.toUpperCase();
-  const points = LETTER_SCORES[upperLetter] ?? 1;
-  const isQU = upperLetter === 'QU';
-  const isRare = RARE_LETTERS.has(upperLetter);
-
-  const displayLetter = isQU ? (
-    <span>Q<span className="text-[0.7em]">u</span></span>
-  ) : letter;
-
-  return (
-    <div
-      ref={cellRef}
-      data-row={row}
-      data-col={col}
-      className={`
-        cell aspect-square flex items-center justify-center font-black
-        relative rounded-xl cursor-pointer select-none
-        ${isQU ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'}
-        ${isRare
-          ? 'bg-gradient-to-br from-yellow-500/30 to-amber-600/30 border-2 border-yellow-400/60 text-yellow-300 shadow-[0_0_12px_rgba(234,179,8,0.3)]'
-          : 'bg-white/10 border border-white/20 text-white'}
-        shadow-lg
-        ${isBlocked ? 'opacity-20 grayscale border-red-500 pointer-events-none' : ''}
-      `}
-    >
-      <span className="cell-index absolute top-0.5 left-1 text-[8px] sm:text-[10px] font-bold text-white/70 hidden" />
-      {displayLetter}
-      <span className={`cell-points absolute bottom-0.5 right-1 text-[8px] sm:text-[10px] font-bold ${isRare ? 'text-yellow-400/90' : 'text-primary/70'}`}>
-        {points}
-      </span>
-      {isBlocked && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Bomb className="text-red-500 w-1/2 h-1/2 opacity-50" />
-        </div>
-      )}
-    </div>
-  );
-});
-Cell.displayName = 'Cell';
+const DEBUG = false;
 
 // Detect iOS once at module load
 const IS_IOS = typeof navigator !== 'undefined' && (
@@ -181,10 +112,10 @@ export const GameBoard = () => {
       lastWordResult: state.lastWordResult,
       players: state.players,
       blockedCells: state.blockedCells,
-      isFrozen: state.isFrozen,
-      frozenTimerValue: state.frozenTimerValue,
-      isLockArmed: state.isLockArmed,
-      lockJustConsumed: state.lockJustConsumed,
+       isFrozen: state.isFrozen,
+       frozenTimerValue: state.frozenTimerValue,
+       isLockArmed: state.isLockArmed,
+       lockJustConsumed: state.lockJustConsumed,
     }))
   );
 
@@ -197,8 +128,7 @@ export const GameBoard = () => {
   const boardRef = useRef<HTMLDivElement>(null);
   const musicStartedRef = useRef(false);
   const lastTimerRef = useRef<number>(timer);
-  const lastSoundTimeRef = useRef(0);
-  const prevPathLengthRef = useRef(0);
+
 
   // Canvas ref for butter-smooth 60fps trail rendering (Android/Desktop)
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -214,30 +144,82 @@ export const GameBoard = () => {
   // Interpolation state for smoother trailing line
   const interpolatedTouchRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // Clear trail (canvas for Android, SVG for iOS)
+   const clearTrail = useCallback(() => {
+    if (DEBUG) console.log('clearTrail called', { IS_IOS, hasSVG: !!svgPathRef.current, hasCanvas: !!canvasRef.current });
+    // iOS: clear SVG path
+    if (IS_IOS && svgPathRef.current) {
+      svgPathRef.current.setAttribute('points', '');
+    }
+    // Android: clear canvas
+    if (!IS_IOS) {
+      const ctx = ctxRef.current;
+      const canvas = canvasRef.current;
+      if (ctx && canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+  }, [svgPathRef, ctxRef, canvasRef]);
+
   // Cell DOM refs for direct manipulation - NO REACT RE-RENDERS
   const cellRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // All path state in refs - NO React state during drag
-  const touchPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const currentPathRef = useRef<[number, number][]>([]);
-  const previousPathRef = useRef<Set<string>>(new Set()); // Track previously highlighted cells for efficient updates
-  const isDraggingRef = useRef(false);
-  const rafIdRef = useRef<number | null>(null);
-  const boardDimensionsRef = useRef<{ cellSize: number; gapSize: number; totalGapSpace: number } | null>(null);
-  const boardRectRef = useRef<DOMRect | null>(null);
-  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
-  const hasMovedRef = useRef(false);
-  const pathPointsRef = useRef<{ x: number; y: number }[]>([]); // Cached pixel positions
+  const handleCellRef = useCallback((key: string, el: HTMLDivElement | null) => {
+    if (el) {
+      cellRefsMap.current.set(key, el);
+    } else {
+      cellRefsMap.current.delete(key);
+    }
+  }, []);
 
-  // Tap mode state - allows tapping letters sequentially to build words
-  const tapModeActiveRef = useRef(false);
-  const lastTapTimeRef = useRef(0);
-  const tapSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const TAP_TIMEOUT_MS = 1500; // 1.5 seconds to tap next letter or auto-submit
+  // Animation loop ref
+  const rafIdRef = useRef<number | null>(null);
+
+  // Previous path for efficient cell highlight updates
+  const previousPathRef = useRef<Set<string>>(new Set());
 
   // Throttling for handleMove - limit to ~60fps (16ms between updates)
-  const lastMoveProcessTimeRef = useRef(0);
-  const MOVE_THROTTLE_MS = 16;
+
+
+  // Touch controller hook - manages all touch/swipe logic
+  const {
+    handleStart,
+    handleMove,
+    handleEnd,
+    touchPos: touchPosRef,
+    isDragging: isDraggingRef,
+    boardDimensions: boardDimensionsRef,
+    pathPoints: pathPointsRef,
+  } = useTouchController({
+    board,
+    boardSize,
+    blockedCells,
+    send,
+    audio,
+    onPathChange: (newPath) => {
+      // Update cell highlights when path changes
+      updateCellHighlights(newPath);
+      // Update path points for trail rendering
+      updatePathPoints(newPath);
+    },
+    onTouchStart: (_touchPos) => {
+      // Update touch position for interpolation
+      interpolatedTouchRef.current.x = _touchPos.x;
+      interpolatedTouchRef.current.y = _touchPos.y;
+      // Start animation loop for canvas trail
+      startAnimationLoop();
+    },
+    onTouchMove: (_touchPos) => {
+      void _touchPos; // unused parameter
+      // iOS: update SVG trail immediately with finger position
+      if (IS_IOS) {
+        updateIOSSvgTrail();
+      }
+    },
+    onTouchEnd: () => {
+      // Nothing needed for now
+    },
+  });
   
   // Inject cell styles once on mount
   useEffect(() => {
@@ -252,8 +234,7 @@ export const GameBoard = () => {
 
   // Direct DOM manipulation for cell highlighting - NO REACT RE-RENDERS
   // iOS: ultra-minimal DOM updates - skip index numbers and minimize class toggles
-  const updateCellHighlights = useCallback(() => {
-    const path = currentPathRef.current;
+  const updateCellHighlights = useCallback((path: [number, number][]) => {
     const cellRefs = cellRefsMap.current;
     const prevPath = previousPathRef.current;
 
@@ -311,21 +292,18 @@ export const GameBoard = () => {
         wordDisplay.style.display = 'none';
       }
     }
-  }, [board]);
+  }, [board, previousPathRef, cellRefsMap, wordDisplayRef, currentWordRef]);
 
   // Update path pixel positions for trail drawing
   // iOS: updates SVG polyline points attribute
   // Android: updates canvas path points
-  const updatePathPoints = useCallback(() => {
-    const path = currentPathRef.current;
+  const updatePathPoints = useCallback((path: [number, number][]) => {
+    if (DEBUG) console.log('updatePathPoints', { pathLength: path.length, hasDims: !!boardDimensionsRef.current });
     const dims = boardDimensionsRef.current;
 
     if (path.length === 0 || !dims) {
       pathPointsRef.current = [];
-      // iOS: clear SVG path
-      if (IS_IOS && svgPathRef.current) {
-        svgPathRef.current.setAttribute('points', '');
-      }
+      clearTrail();
       return;
     }
 
@@ -346,7 +324,7 @@ export const GameBoard = () => {
       }
       svgPathRef.current.setAttribute('points', pointsStr);
     }
-  }, []);
+  }, [boardDimensionsRef, isDraggingRef, pathPointsRef, touchPosRef, svgPathRef, clearTrail]);
 
   // iOS: update SVG trail with current finger position during drag
   const updateIOSSvgTrail = useCallback(() => {
@@ -358,7 +336,7 @@ export const GameBoard = () => {
     const touch = touchPosRef.current;
     const pointsStr = points.map(p => `${p.x},${p.y}`).join(' ') + ` ${touch.x},${touch.y}`;
     svgPathRef.current.setAttribute('points', pointsStr);
-  }, []);
+  }, [svgPathRef, isDraggingRef, pathPointsRef, touchPosRef]);
 
   // Canvas drawing function - ultra-optimized for 60fps
   // iOS: DISABLED - canvas during touch is fundamentally broken on iOS Safari
@@ -373,8 +351,8 @@ export const GameBoard = () => {
 
     const dpr = dprRef.current;
     const points = pathPointsRef.current;
-    const touchPos = touchPosRef.current;
-    const isDragging = isDraggingRef.current;
+    const touchPosVal = touchPosRef.current;
+    const isDraggingVal = isDraggingRef.current;
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -384,9 +362,9 @@ export const GameBoard = () => {
     const interp = interpolatedTouchRef.current;
 
     // Android/Desktop: smooth interpolation
-    if (isDragging) {
-      interp.x += (touchPos.x - interp.x) * 0.5;
-      interp.y += (touchPos.y - interp.y) * 0.5;
+    if (isDraggingVal) {
+      interp.x += (touchPosVal.x - interp.x) * 0.5;
+      interp.y += (touchPosVal.y - interp.y) * 0.5;
     }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -396,7 +374,7 @@ export const GameBoard = () => {
     for (let i = 1; i < points.length; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
-    if (isDragging) {
+    if (isDraggingVal) {
       ctx.lineTo(interp.x, interp.y);
     }
 
@@ -410,11 +388,15 @@ export const GameBoard = () => {
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-  }, []);
+  }, [isIOSRef, ctxRef, canvasRef, dprRef, pathPointsRef, touchPosRef, isDraggingRef, interpolatedTouchRef]);
+
+
 
   // Keep a ref to audio so effects can access latest version
   const audioRef = useRef(audio);
-  audioRef.current = audio;
+  useEffect(() => {
+    audioRef.current = audio;
+  }, [audio]);
 
   // Force scroll to top when game starts
   // This ensures the board is properly positioned and touch coordinates are accurate
@@ -436,64 +418,7 @@ export const GameBoard = () => {
     };
   }, []);
 
-  // Pre-computed cell centers for ultra-fast hit detection
-  const cellCentersRef = useRef<{ x: number; y: number }[][]>([]);
 
-  // Calculate board dimensions and cell centers (runs on BOTH iOS and Android)
-  // This is separate from canvas setup because iOS doesn't use canvas
-  useEffect(() => {
-    const board = boardRef.current;
-    if (!board) return;
-
-    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    const setupBoardDimensions = () => {
-      const rect = board.getBoundingClientRect();
-
-      // Update board dimensions
-      const computedStyle = getComputedStyle(board);
-      const gapSize = parseFloat(computedStyle.gap) || 8;
-      const totalGapSpace = (boardSize - 1) * gapSize;
-      const cellSize = (rect.width - totalGapSpace) / boardSize;
-      const cellPlusGap = cellSize + gapSize;
-
-      boardDimensionsRef.current = { cellSize, gapSize, totalGapSpace };
-
-      // Pre-compute all cell centers for O(1) hit detection
-      const centers: { x: number; y: number }[][] = [];
-      for (let r = 0; r < boardSize; r++) {
-        centers[r] = [];
-        for (let c = 0; c < boardSize; c++) {
-          centers[r][c] = {
-            x: c * cellPlusGap + cellSize / 2,
-            y: r * cellPlusGap + cellSize / 2
-          };
-        }
-      }
-      cellCentersRef.current = centers;
-    };
-
-    // Throttled resize handler
-    const throttledSetup = () => {
-      if (resizeTimeout) return;
-      resizeTimeout = setTimeout(() => {
-        setupBoardDimensions();
-        resizeTimeout = null;
-      }, 100);
-    };
-
-    // Initial setup
-    setupBoardDimensions();
-
-    // Handle resize with throttling
-    const resizeObserver = new ResizeObserver(throttledSetup);
-    resizeObserver.observe(board);
-
-    return () => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-      resizeObserver.disconnect();
-    };
-  }, [boardSize]);
 
   // Initialize canvas context (Android/Desktop only - iOS uses SVG)
   useEffect(() => {
@@ -564,14 +489,15 @@ export const GameBoard = () => {
     };
 
     rafIdRef.current = requestAnimationFrame(animate);
-  }, [drawTrail]);
+  }, [drawTrail, isIOSRef, rafIdRef, isDraggingRef, pathPointsRef]);
 
-  const stopAnimationLoop = useCallback(() => {
+    const stopAnimationLoop = useCallback(() => {
     if (rafIdRef.current !== null) {
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     }
-  }, []);
+    clearTrail();
+  }, [rafIdRef, clearTrail]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -610,9 +536,10 @@ export const GameBoard = () => {
 
   // Intense music trigger - check on every timer change AND on an interval for reliability
   useEffect(() => {
-    // Check if we should switch to intense music (timer <= 30 and not already activated)
+    // Check if we should switch to intense music (total remaining time <= 30 and not already activated)
     const checkIntenseMusic = () => {
-      if (!intenseActivatedRef.current && timer <= 30 && timer > 0) {
+      const totalRemainingTime = timer + bonusTime;
+      if (!intenseActivatedRef.current && totalRemainingTime <= 30 && totalRemainingTime > 0) {
         intenseActivatedRef.current = true;
         audioRef.current.playGameplayIntenseMusic();
       }
@@ -627,35 +554,30 @@ export const GameBoard = () => {
     const intervalId = setInterval(checkIntenseMusic, 1000);
 
     return () => clearInterval(intervalId);
-  }, [timer]);
+  }, [timer, bonusTime]);
 
-  // Timer warning sounds and game end
+  // Timer warning sounds and game end - handles both main timer and bonus time
   useEffect(() => {
-    if (timer === lastTimerRef.current) return;
-
-    // Timer warning when 10 seconds or less
-    if (timer <= 10 && timer > 0) {
+    const totalRemainingTime = timer + bonusTime;
+    const lastTotalTime = (lastTimerRef.current || 0) + (lastBonusTimeRef.current || 0);
+    
+    // Only check if total time actually changed
+    if (totalRemainingTime === lastTotalTime) return;
+    
+    // Timer warning when 10 seconds or less in total remaining time
+    if (totalRemainingTime <= 10 && totalRemainingTime > 0) {
       audioRef.current.playTimerWarning();
     }
 
-    // Game end sound when timer hits 0 and no bonus time
-    // DON'T stop music here - let GameSummary crossfade to summary music
-    if (timer === 0 && lastTimerRef.current > 0 && bonusTime <= 0) {
+    // Game end sound when total time hits 0 from a positive value
+    if (totalRemainingTime === 0 && lastTotalTime > 0) {
       audioRef.current.playGameEnd();
     }
 
+    // Update refs
     lastTimerRef.current = timer;
-  }, [timer, bonusTime]);
-
-  // Handle bonus time running out (for players who used freeze)
-  useEffect(() => {
-    // If bonus time just hit 0 from a positive value, and main timer is already 0
-    // DON'T stop music here - let GameSummary crossfade to summary music
-    if (bonusTime === 0 && lastBonusTimeRef.current > 0 && timer === 0) {
-      audioRef.current.playGameEnd();
-    }
     lastBonusTimeRef.current = bonusTime;
-  }, [bonusTime, timer]);
+  }, [timer, bonusTime]);
 
   // Word result sounds
   useEffect(() => {
@@ -673,12 +595,36 @@ export const GameBoard = () => {
     }
   }, [lastWordResult]);
 
-  // Frozen/powerup sounds
+   // Track previous isFrozen state to detect transitions
+  const prevIsFrozenRef = useRef(isFrozen);
+  const lastFreezeSoundTimeRef = useRef(0);
+
+   // Frozen/powerup sounds
   useEffect(() => {
-    if (isFrozen) {
-      audioRef.current.playPowerupFreeze();
+    console.log('FREEZE EFFECT: isFrozen changed', { 
+      prev: prevIsFrozenRef.current, 
+      current: isFrozen,
+      timer, 
+      bonusTime 
+    });
+    
+    // Detect transition from false to true (freeze activated)
+    if (!prevIsFrozenRef.current && isFrozen) {
+      const now = Date.now();
+      // Extra safety: only play if at least 500ms since last freeze sound
+      if (now - lastFreezeSoundTimeRef.current > 500) {
+        console.log('Freeze activated - playing sound');
+        audioRef.current.playPowerupFreeze();
+        lastFreezeSoundTimeRef.current = now;
+      } else {
+        console.log('Freeze sound throttled (too soon after previous)');
+      }
     }
-  }, [isFrozen]);
+    
+    // Update previous value
+    prevIsFrozenRef.current = isFrozen;
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [isFrozen]);
 
   useEffect(() => {
     if (blockedCells.length > 0) {
@@ -695,471 +641,61 @@ export const GameBoard = () => {
   }, [lockJustConsumed]);
 
   // Cache board dimensions to avoid recalculating on every call
-  const updateBoardDimensions = useCallback(() => {
-    const rect = boardRef.current?.getBoundingClientRect();
-    if (!rect) return null;
 
-    const computedStyle = boardRef.current ? getComputedStyle(boardRef.current) : null;
-    const gapSize = computedStyle ? parseFloat(computedStyle.gap) || 8 : 8;
-    const totalGapSpace = (boardSize - 1) * gapSize;
-    const cellSize = (rect.width - totalGapSpace) / boardSize;
-    
-    boardDimensionsRef.current = { cellSize, gapSize, totalGapSpace };
-    return boardDimensionsRef.current;
-  }, [boardSize]);
 
   // Get cell from coordinates relative to board
   // Must account for CSS grid gap (gap-2 = 0.5rem = 8px at default font size)
   // Uses cached rect during drag for performance
-  const getCellFromCoords = useCallback((clientX: number, clientY: number, useCachedRect = false): { cell: [number, number] | null; localX: number; localY: number } => {
-    // Use cached rect during drag, fresh rect otherwise
-    const rect = useCachedRect && boardRectRef.current
-      ? boardRectRef.current
-      : boardRef.current?.getBoundingClientRect();
-    if (!rect) return { cell: null, localX: 0, localY: 0 };
 
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
-
-    // Use cached dimensions or calculate if not available
-    let dims = boardDimensionsRef.current;
-    if (!dims) {
-      dims = updateBoardDimensions();
-      if (!dims) return { cell: null, localX, localY };
-    }
-
-    const { cellSize, gapSize } = dims;
-    const cellPlusGap = cellSize + gapSize;
-
-    // Find which cell we're in
-    const col = Math.floor(localX / cellPlusGap);
-    const row = Math.floor(localY / cellPlusGap);
-
-    if (row < 0 || row >= boardSize || col < 0 || col >= boardSize) {
-      return { cell: null, localX, localY };
-    }
-
-    // Calculate cell center accounting for gaps
-    const cellCenterX = col * cellPlusGap + cellSize / 2;
-    const cellCenterY = row * cellPlusGap + cellSize / 2;
-
-    // Distance from touch to cell center
-    const distSq = (localX - cellCenterX) ** 2 + (localY - cellCenterY) ** 2;
-    const hitRadiusSq = (cellSize * 0.45) ** 2;
-
-    if (distSq <= hitRadiusSq) {
-      return { cell: [row, col], localX, localY };
-    }
-
-    return { cell: null, localX, localY };
-  }, [boardSize, updateBoardDimensions]);
 
   // Play chain sound immediately when path grows
   // iOS: Uses deferred playback to avoid blocking touch handlers
-  const playChainSound = useCallback((pathLength: number) => {
-    const now = Date.now();
-    if (now - lastSoundTimeRef.current > 50) {
-      if (IS_IOS) {
-        // iOS: Use deferred playback - schedules after touch handler completes
-        audioRef.current.playLetterChainDeferred(pathLength);
-      } else {
-        audioRef.current.playLetterChain(pathLength);
-      }
-      lastSoundTimeRef.current = now;
-    }
-  }, []);
 
-  // Keep blockedCells in a ref for use in handlers
-  const blockedCellsRef = useRef(blockedCells);
-  blockedCellsRef.current = blockedCells;
 
-  const isCellBlocked = useCallback((r: number, c: number): boolean => {
-    return blockedCellsRef.current.some(([br, bc]) => br === r && bc === c);
-  }, []);
 
-  // Helper to check if two cells are adjacent
-  const isAdjacent = useCallback((cell1: [number, number], cell2: [number, number]): boolean => {
-    const rowDiff = Math.abs(cell1[0] - cell2[0]);
-    const colDiff = Math.abs(cell1[1] - cell2[1]);
-    return rowDiff <= 1 && colDiff <= 1 && !(rowDiff === 0 && colDiff === 0);
-  }, []);
 
-  const handleStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {
-    e.preventDefault();
 
-    // Cache the board rect at drag start to avoid repeated DOM measurements
-    boardRectRef.current = boardRef.current?.getBoundingClientRect() || null;
-    // Also cache dimensions
-    updateBoardDimensions();
 
-    const touch = 'touches' in e ? e.touches[0] : e;
-    const { cell, localX, localY } = getCellFromCoords(touch.clientX, touch.clientY, true);
 
-    if (cell && !isCellBlocked(cell[0], cell[1])) {
-      // Track initial position to distinguish clicks from drags
-      dragStartPosRef.current = { x: localX, y: localY };
-      hasMovedRef.current = false;
-      // Update in place to avoid allocation
-      touchPosRef.current.x = localX;
-      touchPosRef.current.y = localY;
-      // Initialize interpolated position to avoid jump from (0,0)
-      interpolatedTouchRef.current.x = localX;
-      interpolatedTouchRef.current.y = localY;
 
-      const now = Date.now();
-      const timeSinceLastTap = now - lastTapTimeRef.current;
-      const currentPath = currentPathRef.current;
 
-      // Check if we should continue a tap sequence
-      if (tapModeActiveRef.current && timeSinceLastTap < TAP_TIMEOUT_MS && currentPath.length > 0) {
-        const lastCell = currentPath[currentPath.length - 1];
-
-        // Check if this cell is already in the path (allow backtracking by tapping previous cell)
-        const existingIndex = currentPath.findIndex(([r, c]) => r === cell[0] && c === cell[1]);
-
-        if (existingIndex !== -1) {
-          // Backtrack to this cell
-          currentPathRef.current = currentPath.slice(0, existingIndex + 1);
-          // iOS: Use deferred playback to avoid blocking touch
-          if (IS_IOS) {
-            audioRef.current.playFirstTouchDeferred();
-          } else {
-            audioRef.current.playLetterSelect();
-          }
-        } else if (isAdjacent(lastCell, cell)) {
-          // Adjacent cell - add to path
-          currentPathRef.current = [...currentPath, cell];
-          playChainSound(currentPath.length + 1);
-        } else {
-          // Not adjacent - start fresh sequence
-          currentPathRef.current = [cell];
-          // iOS: Use deferred playback to avoid blocking touch
-          if (IS_IOS) {
-            audioRef.current.playFirstTouchDeferred();
-          } else {
-            audioRef.current.playLetterSelect();
-          }
-        }
-
-        prevPathLengthRef.current = currentPathRef.current.length;
-      } else {
-        // Start new sequence (either not in tap mode, or timed out)
-        // Cancel any existing tap timer
-        if (tapSubmitTimerRef.current) {
-          clearTimeout(tapSubmitTimerRef.current);
-          tapSubmitTimerRef.current = null;
-        }
-        tapModeActiveRef.current = false;
-
-        currentPathRef.current = [cell];
-        // iOS: Use deferred playback to avoid blocking touch
-        if (IS_IOS) {
-          audioRef.current.playFirstTouchDeferred();
-        } else {
-          audioRef.current.playLetterSelect();
-        }
-        prevPathLengthRef.current = 1;
-      }
-
-      // Set path in ref only - NO React state update
-      isDraggingRef.current = true;
-      updatePathPoints();
-      updateCellHighlights();
-
-      // Start animation loop and draw immediately
-      startAnimationLoop();
-    }
-  }, [getCellFromCoords, isCellBlocked, updateBoardDimensions, updatePathPoints, updateCellHighlights, isAdjacent, playChainSound, startAnimationLoop]);
 
   // Ultra-optimized move handler - uses pre-computed cell centers, minimal allocations
   // THROTTLED to ~60fps to prevent excessive processing on mobile
-  const handleMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
-    if (!isDraggingRef.current) return;
-    e.preventDefault();
 
-    const touch = 'touches' in e ? e.touches[0] : e;
-    const rect = boardRectRef.current;
-    if (!rect) return;
 
-    const localX = touch.clientX - rect.left;
-    const localY = touch.clientY - rect.top;
 
-    // ALWAYS update touch position for smooth trail drawing (not throttled)
-    touchPosRef.current.x = localX;
-    touchPosRef.current.y = localY;
 
-    // iOS: update SVG trail immediately with finger position
-    if (IS_IOS) {
-      updateIOSSvgTrail();
-    }
 
-    // Track if user has moved (to distinguish click from drag)
-    // Use higher threshold (15px) for mobile touch to avoid false positives
-    const startPos = dragStartPosRef.current;
-    if (startPos && !hasMovedRef.current) {
-      const dx = localX - startPos.x;
-      const dy = localY - startPos.y;
-      if (dx * dx + dy * dy > 225) { // 15 pixels squared
-        hasMovedRef.current = true;
-      }
-    }
 
-    // THROTTLE: Skip expensive cell detection if called too frequently
-    // iOS: no throttle needed - SVG updates are cheap and we want responsive cell detection
-    if (!IS_IOS) {
-      const now = performance.now();
-      if (now - lastMoveProcessTimeRef.current < MOVE_THROTTLE_MS) {
-        return; // Skip this frame, touch position is already updated for canvas
-      }
-      lastMoveProcessTimeRef.current = now;
-    }
 
-    // Use pre-computed dimensions
-    const dims = boardDimensionsRef.current;
-    const centers = cellCentersRef.current;
-    if (!dims || centers.length === 0) return;
 
-    const { cellSize, gapSize } = dims;
-    const cellPlusGap = cellSize + gapSize;
-    const col = Math.floor(localX / cellPlusGap);
-    const row = Math.floor(localY / cellPlusGap);
-
-    // Bounds check
-    if (row < 0 || row >= boardSize || col < 0 || col >= boardSize) return;
-
-    // Use pre-computed cell center for O(1) lookup
-    const center = centers[row]?.[col];
-    if (!center) return;
-
-    const dx = localX - center.x;
-    const dy = localY - center.y;
-    const distSq = dx * dx + dy * dy;
-    const hitRadiusSq = (cellSize * 0.45) ** 2;
-
-    if (distSq > hitRadiusSq) return;
-    if (isCellBlocked(row, col)) return;
-
-    const prevPath = currentPathRef.current;
-    const pathLen = prevPath.length;
-    if (pathLen === 0) return;
-
-    const last = prevPath[pathLen - 1];
-    if (last[0] === row && last[1] === col) return;
-
-    let pathChanged = false;
-
-    // Check if backtracking (going back to previous cell)
-    if (pathLen >= 2) {
-      const secondToLast = prevPath[pathLen - 2];
-      if (secondToLast[0] === row && secondToLast[1] === col) {
-        currentPathRef.current = prevPath.slice(0, -1);
-        pathChanged = true;
-      }
-    }
-
-    // Check adjacency for new cell
-    if (!pathChanged) {
-      const rowDiff = Math.abs(last[0] - row);
-      const colDiff = Math.abs(last[1] - col);
-
-      if (rowDiff <= 1 && colDiff <= 1) {
-        // Check if cell already in path
-        let existingIndex = -1;
-        for (let i = 0; i < pathLen; i++) {
-          if (prevPath[i][0] === row && prevPath[i][1] === col) {
-            existingIndex = i;
-            break;
-          }
-        }
-
-        if (existingIndex === -1) {
-          // New cell - add to path
-          playChainSound(pathLen + 1);
-          prevPathLengthRef.current = pathLen + 1;
-          currentPathRef.current = [...prevPath, [row, col] as [number, number]];
-          pathChanged = true;
-        } else if (existingIndex < pathLen - 2) {
-          // Backtrack to earlier cell
-          currentPathRef.current = prevPath.slice(0, existingIndex + 1);
-          pathChanged = true;
-        }
-      }
-    }
-
-    // Update DOM directly if path changed - NO React re-render
-    if (pathChanged) {
-      updatePathPoints();
-      updateCellHighlights();
-    }
-  }, [boardSize, playChainSound, isCellBlocked, updatePathPoints, updateCellHighlights, updateIOSSvgTrail]);
-
-  // Helper to submit word in tap mode
-  const submitTapWord = useCallback(() => {
-    const path = currentPathRef.current;
-    if (path.length >= 3) {
-      const word = path.map(([r, c]) => board[r][c]).join('');
-      send('submit_word', { word, path });
-    }
-
-    // Clear tap mode state
-    tapModeActiveRef.current = false;
-    currentPathRef.current = [];
-    pathPointsRef.current = [];
-    prevPathLengthRef.current = 0;
-    updateCellHighlights(); // This also clears the word display
-
-    // Clear trail (canvas or SVG)
-    if (IS_IOS) {
-      if (svgPathRef.current) {
-        svgPathRef.current.setAttribute('points', '');
-      }
-    } else {
-      const ctx = ctxRef.current;
-      const canvas = canvasRef.current;
-      if (ctx && canvas) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-    }
-  }, [board, send, updateCellHighlights]);
-
-  // Start/restart tap mode timer
-  const restartTapTimer = useCallback(() => {
-    // Clear existing timer
-    if (tapSubmitTimerRef.current) {
-      clearTimeout(tapSubmitTimerRef.current);
-    }
-    // Start new timer
-    tapSubmitTimerRef.current = setTimeout(() => {
-      submitTapWord();
-    }, TAP_TIMEOUT_MS);
-  }, [submitTapWord]);
-
-  const handleEnd = useCallback(() => {
-    // Mark drag as ended - animation loop will stop itself when path is cleared
-    isDraggingRef.current = false;
-
-    const path = currentPathRef.current;
-    const hadMovement = hasMovedRef.current;
-    const now = Date.now();
-
-    // Check if this was a tap (no movement) - path already updated in handleStart
-    if (!hadMovement && path.length >= 1) {
-      const timeSinceLastTap = now - lastTapTimeRef.current;
-
-      // Check if we're continuing a tap sequence (handleStart already updated the path)
-      if (tapModeActiveRef.current && timeSinceLastTap < TAP_TIMEOUT_MS) {
-        // This tap was already added in handleStart, just update timer
-        lastTapTimeRef.current = now;
-        restartTapTimer();
-      } else {
-        // Start new tap mode sequence
-        tapModeActiveRef.current = true;
-        lastTapTimeRef.current = now;
-        restartTapTimer();
-      }
-
-      // Keep the path and highlights visible, draw the trail
-      updatePathPoints();
-      updateCellHighlights();
-      drawTrail(); // Draw trail statically for tap mode (animation loop is stopped)
-
-      // Reset drag-specific state but keep tap state
-      dragStartPosRef.current = null;
-      hasMovedRef.current = false;
-      boardRectRef.current = null;
-      return;
-    }
-
-    // Reset drag state
-    dragStartPosRef.current = null;
-    hasMovedRef.current = false;
-    boardRectRef.current = null;
-
-    // If it was a drag with movement, submit and clear tap mode
-    if (hadMovement && path.length >= 3) {
-      // Cancel any tap timer
-      if (tapSubmitTimerRef.current) {
-        clearTimeout(tapSubmitTimerRef.current);
-        tapSubmitTimerRef.current = null;
-      }
-      tapModeActiveRef.current = false;
-
-      const word = path.map(([r, c]) => board[r][c]).join('');
-      send('submit_word', { word, path });
-    }
-
-    // If we were dragging (not in tap mode), clear everything
-    if (hadMovement || !tapModeActiveRef.current) {
-      // Cancel tap timer if dragging
-      if (tapSubmitTimerRef.current) {
-        clearTimeout(tapSubmitTimerRef.current);
-        tapSubmitTimerRef.current = null;
-      }
-      tapModeActiveRef.current = false;
-
-      // Clear path and update DOM
-      currentPathRef.current = [];
-      pathPointsRef.current = [];
-      prevPathLengthRef.current = 0;
-      updateCellHighlights(); // This also clears the word display
-
-      // Clear trail (canvas or SVG)
-      if (IS_IOS) {
-        if (svgPathRef.current) {
-          svgPathRef.current.setAttribute('points', '');
-        }
-      } else {
-        const ctx = ctxRef.current;
-        const canvas = canvasRef.current;
-        if (ctx && canvas) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-      }
-    }
-  }, [board, send, updateCellHighlights, updatePathPoints, restartTapTimer, drawTrail]);
-
-  // Cleanup tap timer on unmount (animation loop cleanup is handled separately)
-  useEffect(() => {
-    return () => {
-      if (tapSubmitTimerRef.current !== null) {
-        clearTimeout(tapSubmitTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Create a Set for O(1) blocked cell lookups
-  const blockedSet = useMemo(() => {
-    return new Set(blockedCells.map(([r, c]) => `${r}-${c}`));
-  }, [blockedCells]);
-
-  // Create stable ref callbacks for cells - prevents memo bypass
-  const cellRefCallbacks = useMemo(() => {
-    const callbacks = new Map<string, (el: HTMLDivElement | null) => void>();
-    for (let r = 0; r < boardSize; r++) {
-      for (let c = 0; c < boardSize; c++) {
-        const key = `${r}-${c}`;
-        callbacks.set(key, (el: HTMLDivElement | null) => {
-          if (el) {
-            cellRefsMap.current.set(key, el);
-          } else {
-            cellRefsMap.current.delete(key);
-          }
-        });
-      }
-    }
-    return callbacks;
-  }, [boardSize]);
+  // Convert blocked cells to string array for BoardRenderer
+  const blockedCellStrings = useMemo(() => 
+    blockedCells.map(([r, c]) => `${r}-${c}`), 
+    [blockedCells]
+  );
 
   const formattedTimer = useMemo(() => {
-    // When frozen, display the captured frozen timer value (timer appears paused)
-    // Otherwise use bonus time if main timer has run out
+    // When frozen, show the captured frozen timer value (timer appears paused)
+    // Otherwise show total time (timer + bonusTime)
     const displayTime = isFrozen && frozenTimerValue !== null
       ? frozenTimerValue
-      : (timer > 0 ? timer : bonusTime);
+      : timer + bonusTime;
     const mins = Math.floor(displayTime / 60);
     const secs = displayTime % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }, [timer, bonusTime, isFrozen, frozenTimerValue]);
+
+  // Show bonus time indicator when player has accumulated freeze time
+  const bonusTimeIndicator = useMemo(() => {
+    if (bonusTime > 0) {
+      const bonusMins = Math.floor(bonusTime / 60);
+      const bonusSecs = bonusTime % 60;
+      return `+${bonusMins}:${bonusSecs.toString().padStart(2, '0')}`;
+    }
+    return null;
+  }, [bonusTime]);
 
   const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
@@ -1181,7 +717,19 @@ export const GameBoard = () => {
           {/* Timer */}
           <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
             {isFrozen ? <Snowflake className="w-5 h-5 animate-spin" /> : <div className="w-3 h-3 bg-red-500 rounded-full recording-pulse" />}
-            <span className="text-xl sm:text-2xl font-black font-mono tabular-nums">{formattedTimer}</span>
+            <div className="flex flex-col items-start">
+              <span className="text-xl sm:text-2xl font-black font-mono tabular-nums">{formattedTimer}</span>
+               {bonusTimeIndicator && (
+                 <div className="flex items-center gap-1 mt-[-2px]">
+                   <span className="text-xs text-green-400 font-bold">
+                     {bonusTimeIndicator}
+                   </span>
+                   <span className="text-xs text-white/60 ml-1">
+                     bonus time
+                   </span>
+                 </div>
+               )}
+            </div>
           </div>
 
           {/* Lock Status Indicator - shown when lock is armed */}
@@ -1302,21 +850,12 @@ export const GameBoard = () => {
               touchAction: 'none'
             }}
           >
-          {board.map((row, r) => row.map((letter, c) => {
-            const key = `${r}-${c}`;
-            const isBlocked = blockedSet.has(key);
-
-            return (
-              <Cell
-                key={key}
-                letter={letter}
-                isBlocked={isBlocked}
-                row={r}
-                col={c}
-                cellRef={cellRefCallbacks.get(key)!}
-              />
-            );
-          }))}
+          <BoardRenderer
+            board={board}
+            boardSize={boardSize}
+            blockedCells={blockedCellStrings}
+            onCellRef={handleCellRef}
+          />
           </div>
           {/* Trail overlay - different implementations for iOS vs Android */}
           {IS_IOS ? (
@@ -1350,113 +889,9 @@ export const GameBoard = () => {
         </div>
       </div>
 
-      {/* Power-ups - ensure always visible at bottom */}
-      {/* iOS: use ios-pulse (transform-based) instead of animate-pulse (opacity-based) */}
-      <div className="flex justify-center items-center space-x-4 py-3" style={{ minHeight: '80px' }}>
-        {['freeze', 'blowup', 'shuffle', 'lock'].map(p => {
-          const count = me?.powerups?.filter(x => x === p).length || 0;
-          // Lock shows as "armed" if player has activated it
-          const isLockActive = p === 'lock' && isLockArmed;
-          return (
-            <button
-              key={p}
-              disabled={count === 0 && !isLockActive}
-              onClick={() => {
-                send('use_powerup', { powerup: p });
-                if (p === 'shuffle') {
-                  audio.playPowerupShuffle();
-                } else if (p === 'lock') {
-                  audio.playPowerupLock();
-                }
-              }}
-              className={`
-                relative p-3 rounded-xl frosted-glass transition-all
-                ${isLockActive
-                  ? 'bg-green-500/30 border-2 border-green-400 shadow-[0_0_12px_rgba(34,197,94,0.4)]'
-                  : count > 0
-                    ? 'bg-primary/20 border-primary ios-pulse'
-                    : 'opacity-50'}
-              `}
-            >
-              {p === 'freeze' && <Snowflake className="w-5 h-5" />}
-              {p === 'blowup' && <Bomb className="w-5 h-5" />}
-              {p === 'shuffle' && <RotateCw className="w-5 h-5" />}
-              {p === 'lock' && <Lock className={`w-5 h-5 ${isLockActive ? 'text-green-400' : ''}`} />}
-              {count > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-primary w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold">
-                  {count}
-                </span>
-              )}
-              {isLockActive && (
-                <span className="absolute -top-1.5 -right-1.5 bg-green-500 w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold text-white">
-                  ✓
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      <PowerUpBar playerId={playerId} players={players} isLockArmed={isLockArmed} />
 
-      {/* Lock Protection Animation Overlay - shown when lock blocks a shuffle */}
-      <AnimatePresence>
-        {lockJustConsumed && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center"
-          >
-            {/* Green glow background */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: [0, 0.4, 0.2, 0.3, 0] }}
-              transition={{ duration: 2, times: [0, 0.1, 0.3, 0.5, 1] }}
-              className="absolute inset-0 bg-green-500"
-            />
-
-            {/* Shield icon animation */}
-            <motion.div
-              initial={{ scale: 0, rotate: -180 }}
-              animate={{ scale: [0, 1.5, 1.2], rotate: [0, 0, 0] }}
-              transition={{
-                duration: 0.6,
-                times: [0, 0.4, 1],
-                ease: "backOut"
-              }}
-              className="relative"
-            >
-              <motion.div
-                animate={{
-                  boxShadow: [
-                    '0 0 0px rgba(34, 197, 94, 0)',
-                    '0 0 60px rgba(34, 197, 94, 0.8)',
-                    '0 0 100px rgba(34, 197, 94, 0.6)',
-                    '0 0 40px rgba(34, 197, 94, 0.3)',
-                  ]
-                }}
-                transition={{ duration: 1.5, times: [0, 0.2, 0.5, 1] }}
-                className="rounded-full p-8 bg-green-500/30 backdrop-blur-sm border-4 border-green-400"
-              >
-                <Shield className="w-24 h-24 text-green-400" />
-              </motion.div>
-            </motion.div>
-
-            {/* "PROTECTED!" text */}
-            <motion.div
-              initial={{ y: 50, opacity: 0, scale: 0.5 }}
-              animate={{ y: 80, opacity: 1, scale: 1 }}
-              transition={{ delay: 0.3, duration: 0.4, ease: "backOut" }}
-              className="absolute text-center"
-              style={{ top: '50%' }}
-            >
-              <span className="text-3xl font-black text-green-400 tracking-wider drop-shadow-[0_0_20px_rgba(34,197,94,0.8)]">
-                PROTECTED!
-              </span>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <LockProtectionAnimation lockJustConsumed={lockJustConsumed} />
 
     </div>
   );

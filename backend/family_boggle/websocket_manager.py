@@ -1,19 +1,20 @@
 import json
-from typing import Dict, Set
-from fastapi import WebSocket
+
 import structlog
+from fastapi import WebSocket
 
 logger = structlog.get_logger()
 
+
 class WebSocketManager:
     """Manages WebSocket connections for multiple lobbies."""
-    
+
     def __init__(self) -> None:
         """Initializes the manager."""
         # lobby_id -> set of websockets
-        self.active_connections: Dict[str, Set[WebSocket]] = {}
+        self.active_connections: dict[str, set[WebSocket]] = {}
         # websocket -> lobby_id
-        self.connection_lobby: Dict[WebSocket, str] = {}
+        self.connection_lobby: dict[WebSocket, str] = {}
 
     async def connect(self, websocket: WebSocket, lobby_id: str) -> None:
         """Connects a new WebSocket to a lobby."""
@@ -39,7 +40,7 @@ class WebSocketManager:
         """Broadcasts a message to all players in a lobby."""
         if lobby_id not in self.active_connections:
             return
-            
+
         message_json = json.dumps(message)
         # Copy the set to avoid RuntimeError if connections change during iteration
         connections = list(self.active_connections.get(lobby_id, set()))
@@ -56,6 +57,5 @@ class WebSocketManager:
         except Exception as e:
             logger.error("send_personal_error", error=str(e))
 
+
 manager = WebSocketManager()
-
-

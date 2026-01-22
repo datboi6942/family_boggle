@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useGameStore } from '../stores/gameStore';
 import { useAudioContext } from '../contexts/AudioContext';
-import { MONSTERS, MonsterAvatar } from './MonsterAvatar';
+import { MONSTERS } from './monsterConfig';
+import { MonsterAvatar } from './MonsterAvatar';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Leaderboard } from './Leaderboard';
 import { Scanner } from '@yudiel/react-qr-scanner';

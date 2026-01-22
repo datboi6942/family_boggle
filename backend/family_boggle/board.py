@@ -1,5 +1,5 @@
 import random
-from typing import List, Tuple, Set, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from family_boggle.dictionary import DictionaryValidator
@@ -9,48 +9,112 @@ class BoggleBoard:
     """Boggle board generator and validator."""
 
     # Vowels for adjacency checking
-    VOWELS = {'A', 'E', 'I', 'O', 'U'}
+    VOWELS = {"A", "E", "I", "O", "U"}
 
     # Rare/special letters that MUST touch a vowel to be usable
-    RARE_LETTERS = {'J', 'X', 'Q', 'Z'}
+    RARE_LETTERS = {"J", "X", "Q", "Z"}
 
     # Official Boggle dice distributions for different board sizes
     # Standard 4x4 Boggle dice (16 dice)
     DICE_4X4 = [
-        "AAEEGN", "ABBJOO", "ACHOPS", "AFFKPS",
-        "AOOTTW", "CIMOTU", "DEILRX", "DELRVY",
-        "DISTTY", "EEGHNW", "EEINSU", "EHRTVW",
-        "EIOSST", "ELRTTY", "HIMNQU", "HLNNRZ",
+        "AAEEGN",
+        "ABBJOO",
+        "ACHOPS",
+        "AFFKPS",
+        "AOOTTW",
+        "CIMOTU",
+        "DEILRX",
+        "DELRVY",
+        "DISTTY",
+        "EEGHNW",
+        "EEINSU",
+        "EHRTVW",
+        "EIOSST",
+        "ELRTTY",
+        "HIMNQU",
+        "HLNNRZ",
     ]
 
     # Big Boggle 5x5 dice (25 dice)
     DICE_5X5 = [
-        "AAAFRS", "AAEEEE", "AAFIRS", "ADENNN", "AEEEEM",
-        "AEEGMU", "AEGMNN", "AFIRSY", "BJKQXZ", "CCNSTW",
-        "CEIILT", "CEILPT", "CEIPST", "DDLNOR", "DHHLOR",
-        "DHHNOT", "DHLNOR", "EIIITT", "EMOTTT", "ENSSSU",
-        "FIPRSY", "GORRVW", "HIPRRY", "NOOTUW", "OOOTTU",
+        "AAAFRS",
+        "AAEEEE",
+        "AAFIRS",
+        "ADENNN",
+        "AEEEEM",
+        "AEEGMU",
+        "AEGMNN",
+        "AFIRSY",
+        "BJKQXZ",
+        "CCNSTW",
+        "CEIILT",
+        "CEILPT",
+        "CEIPST",
+        "DDLNOR",
+        "DHHLOR",
+        "DHHNOT",
+        "DHLNOR",
+        "EIIITT",
+        "EMOTTT",
+        "ENSSSU",
+        "FIPRSY",
+        "GORRVW",
+        "HIPRRY",
+        "NOOTUW",
+        "OOOTTU",
     ]
 
     # Super Big Boggle 6x6 dice (36 dice) - balanced vowel/consonant mix
     DICE_6X6 = [
-        "AAAFRS", "AAEEEE", "AAEEOO", "AAFIRS", "ABDEIO", "ADENNN",
-        "AEEEEM", "AEEGMU", "AEGMNN", "AEILMN", "AEINOU", "AFIRSY",
-        "BBJKXZ", "CCENST", "CDDLNN", "CEIILT", "CEIPST", "CFGNUY",
-        "DDHNOT", "DHHLOR", "DHHNOW", "DHLNOR", "EHILRS", "EIILST",
-        "EILPST", "EIORST", "EMTTTO", "ENSSSU", "GORRVW", "HIRSTV",
-        "HOPRST", "IPRSYY", "JKQWXZ", "NOOTUW", "OOOTTU", "OOOTUU",
+        "AAAFRS",
+        "AAEEEE",
+        "AAEEOO",
+        "AAFIRS",
+        "ABDEIO",
+        "ADENNN",
+        "AEEEEM",
+        "AEEGMU",
+        "AEGMNN",
+        "AEILMN",
+        "AEINOU",
+        "AFIRSY",
+        "BBJKXZ",
+        "CCENST",
+        "CDDLNN",
+        "CEIILT",
+        "CEIPST",
+        "CFGNUY",
+        "DDHNOT",
+        "DHHLOR",
+        "DHHNOW",
+        "DHLNOR",
+        "EHILRS",
+        "EIILST",
+        "EILPST",
+        "EIORST",
+        "EMTTTO",
+        "ENSSSU",
+        "GORRVW",
+        "HIRSTV",
+        "HOPRST",
+        "IPRSYY",
+        "JKQWXZ",
+        "NOOTUW",
+        "OOOTTU",
+        "OOOTUU",
     ]
 
     # Minimum word counts for quality boards across all sizes
     # These thresholds ensure boards are consistently fun to play
     MIN_WORD_COUNTS = {
-        4: 100,   # 4x4: smaller board, fewer cells (16), aim for 100+ words
-        5: 250,   # 5x5: medium board (25 cells), should have plenty of words
-        6: 400,   # 6x6: large board (36 cells), expect many possible words
+        4: 100,  # 4x4: smaller board, fewer cells (16), aim for 100+ words
+        5: 250,  # 5x5: medium board (25 cells), should have plenty of words
+        6: 400,  # 6x6: large board (36 cells), expect many possible words
     }
 
-    def __init__(self, size: int = 6, validator: Optional["DictionaryValidator"] = None):
+    def __init__(
+        self, size: int = 6, validator: Optional["DictionaryValidator"] = None
+    ):
         """Initializes the board with a specific size.
 
         Args:
@@ -60,7 +124,7 @@ class BoggleBoard:
                        minimum word count thresholds.
         """
         self.size = size
-        self.grid: List[List[str]] = []
+        self.grid: list[list[str]] = []
         self._validator = validator
         self.generate()
 
@@ -84,11 +148,11 @@ class BoggleBoard:
                     continue
                 nr, nc = r + dr, c + dc
                 if 0 <= nr < self.size and 0 <= nc < self.size:
-                    if self.grid[nr][nc] == 'U':
+                    if self.grid[nr][nc] == "U":
                         return True
         return False
 
-    def _get_adjacent_cells(self, r: int, c: int) -> List[Tuple[int, int]]:
+    def _get_adjacent_cells(self, r: int, c: int) -> list[tuple[int, int]]:
         """Get all valid adjacent cell coordinates."""
         adjacent = []
         for dr in [-1, 0, 1]:
@@ -100,12 +164,12 @@ class BoggleBoard:
                     adjacent.append((nr, nc))
         return adjacent
 
-    def _find_qs_without_u(self) -> List[Tuple[int, int]]:
+    def _find_qs_without_u(self) -> list[tuple[int, int]]:
         """Find all Q positions that don't have an adjacent U."""
         qs_without_u = []
         for r in range(self.size):
             for c in range(self.size):
-                if self.grid[r][c] == 'Q' and not self._has_adjacent_u(r, c):
+                if self.grid[r][c] == "Q" and not self._has_adjacent_u(r, c):
                     qs_without_u.append((r, c))
         return qs_without_u
 
@@ -126,7 +190,7 @@ class BoggleBoard:
                 u_positions = []
                 for r in range(self.size):
                     for c in range(self.size):
-                        if self.grid[r][c] == 'U':
+                        if self.grid[r][c] == "U":
                             # Don't use U's that are already adjacent to this Q
                             if abs(r - q_r) > 1 or abs(c - q_c) > 1:
                                 u_positions.append((r, c))
@@ -137,7 +201,7 @@ class BoggleBoard:
                     adjacent = self._get_adjacent_cells(q_r, q_c)
                     for adj_r, adj_c in adjacent:
                         if self.grid[adj_r][adj_c] in self.VOWELS:
-                            self.grid[adj_r][adj_c] = 'U'
+                            self.grid[adj_r][adj_c] = "U"
                             break
                     else:
                         # No adjacent vowel, swap adjacent cell with any vowel and make it U
@@ -146,10 +210,16 @@ class BoggleBoard:
                             # Find any vowel on the board to swap
                             for r in range(self.size):
                                 for c in range(self.size):
-                                    if self.grid[r][c] in self.VOWELS and (r, c) != (adj_r, adj_c):
+                                    if self.grid[r][c] in self.VOWELS and (r, c) != (
+                                        adj_r,
+                                        adj_c,
+                                    ):
                                         # Swap and convert to U
-                                        self.grid[adj_r][adj_c], self.grid[r][c] = self.grid[r][c], self.grid[adj_r][adj_c]
-                                        self.grid[adj_r][adj_c] = 'U'
+                                        self.grid[adj_r][adj_c], self.grid[r][c] = (
+                                            self.grid[r][c],
+                                            self.grid[adj_r][adj_c],
+                                        )
+                                        self.grid[adj_r][adj_c] = "U"
                                         break
                                 else:
                                     continue
@@ -170,11 +240,13 @@ class BoggleBoard:
                         if (adj_r, adj_c) == (q_r, q_c):
                             continue
                         # Don't swap another Q
-                        if self.grid[adj_r][adj_c] == 'Q':
+                        if self.grid[adj_r][adj_c] == "Q":
                             continue
                         # Swap the U with the adjacent cell
-                        self.grid[u_r][u_c], self.grid[adj_r][adj_c] = \
-                            self.grid[adj_r][adj_c], self.grid[u_r][u_c]
+                        self.grid[u_r][u_c], self.grid[adj_r][adj_c] = (
+                            self.grid[adj_r][adj_c],
+                            self.grid[u_r][u_c],
+                        )
                         swapped = True
                         break
                     if swapped:
@@ -183,7 +255,7 @@ class BoggleBoard:
                 # Only fix one Q per iteration, then recheck
                 break
 
-    def _get_landlocked_rare_letters(self) -> List[Tuple[int, int, str]]:
+    def _get_landlocked_rare_letters(self) -> list[tuple[int, int, str]]:
         """Find all rare letters (J, X, Q, Z) that don't touch any vowels."""
         landlocked = []
         for r in range(self.size):
@@ -219,7 +291,9 @@ class BoggleBoard:
 
         # Count vowels
         vowel_count = sum(
-            1 for r in range(self.size) for c in range(self.size)
+            1
+            for r in range(self.size)
+            for c in range(self.size)
             if self.grid[r][c] in self.VOWELS
         )
 
@@ -234,7 +308,7 @@ class BoggleBoard:
             # 6x6: No landlocked consonants, need at least 9 vowels
             return landlocked == 0 and vowel_count >= 9
 
-    def _get_all_landlocked_consonants(self) -> List[Tuple[int, int, str]]:
+    def _get_all_landlocked_consonants(self) -> list[tuple[int, int, str]]:
         """Find all consonants that don't touch any vowels."""
         landlocked = []
         for r in range(self.size):
@@ -257,7 +331,9 @@ class BoggleBoard:
                 return  # All consonants now touch vowels!
 
             # Sort landlocked consonants - prioritize rare letters first
-            landlocked.sort(key=lambda x: (x[2] not in self.RARE_LETTERS, random.random()))
+            landlocked.sort(
+                key=lambda x: (x[2] not in self.RARE_LETTERS, random.random())
+            )
 
             # For each landlocked consonant, find the best vowel to swap with
             for land_r, land_c, land_letter in landlocked:
@@ -269,7 +345,11 @@ class BoggleBoard:
                             # Manhattan distance
                             dist = abs(r - land_r) + abs(c - land_c)
                             # Check if this vowel is adjacent (dist 1 means orthogonal, dist 2 could be diagonal or 2 steps)
-                            is_adjacent = (abs(r - land_r) <= 1 and abs(c - land_c) <= 1 and dist > 0)
+                            is_adjacent = (
+                                abs(r - land_r) <= 1
+                                and abs(c - land_c) <= 1
+                                and dist > 0
+                            )
                             vowels_with_dist.append((r, c, dist, is_adjacent))
 
                 if not vowels_with_dist:
@@ -294,27 +374,36 @@ class BoggleBoard:
                                     continue
                                 nr, nc = vow_r + dr, vow_c + dc
                                 if 0 <= nr < self.size and 0 <= nc < self.size:
-                                    if (nr, nc) != (land_r, land_c):  # Not the cell we're swapping from
+                                    if (nr, nc) != (
+                                        land_r,
+                                        land_c,
+                                    ):  # Not the cell we're swapping from
                                         if self.grid[nr][nc] in self.VOWELS:
                                             would_have_vowel = True
                                             break
                         if would_have_vowel:
                             # Good swap - the consonant will have a vowel neighbor
-                            self.grid[land_r][land_c], self.grid[vow_r][vow_c] = \
-                                self.grid[vow_r][vow_c], self.grid[land_r][land_c]
+                            self.grid[land_r][land_c], self.grid[vow_r][vow_c] = (
+                                self.grid[vow_r][vow_c],
+                                self.grid[land_r][land_c],
+                            )
                             break
                     else:
                         # Vowel is not adjacent - swap and the vowel will now be adjacent
                         # to the consonant's old neighbors
-                        self.grid[land_r][land_c], self.grid[vow_r][vow_c] = \
-                            self.grid[vow_r][vow_c], self.grid[land_r][land_c]
+                        self.grid[land_r][land_c], self.grid[vow_r][vow_c] = (
+                            self.grid[vow_r][vow_c],
+                            self.grid[land_r][land_c],
+                        )
                         break
                 else:
                     # No good swap found, just swap with closest vowel
                     if vowels_with_dist:
                         vow_r, vow_c, _, _ = vowels_with_dist[0]
-                        self.grid[land_r][land_c], self.grid[vow_r][vow_c] = \
-                            self.grid[vow_r][vow_c], self.grid[land_r][land_c]
+                        self.grid[land_r][land_c], self.grid[vow_r][vow_c] = (
+                            self.grid[vow_r][vow_c],
+                            self.grid[land_r][land_c],
+                        )
 
                 # After one swap, recheck all landlocked
                 break
@@ -343,11 +432,10 @@ class BoggleBoard:
             random.shuffle(dice)
             letters = [random.choice(d) for d in dice]
             self.grid = [
-                letters[i * self.size : (i + 1) * self.size]
-                for i in range(self.size)
+                letters[i * self.size : (i + 1) * self.size] for i in range(self.size)
             ]
 
-            has_q = any('Q' in row for row in self.grid)
+            has_q = any("Q" in row for row in self.grid)
 
             if self._is_board_quality_acceptable():
                 # Check Q-U adjacency
@@ -398,7 +486,7 @@ class BoggleBoard:
 
         # With validator, ensure minimum word count
         # Track best board in case we can't meet threshold
-        best_board: Optional[List[List[str]]] = None
+        best_board: list[list[str]] | None = None
         best_word_count = 0
 
         # O(n) complexity: max 10 full regeneration attempts
@@ -424,22 +512,22 @@ class BoggleBoard:
         if best_board:
             self.grid = best_board
 
-    def is_word_on_board(self, word: str, path: List[Tuple[int, int]]) -> bool:
+    def is_word_on_board(self, word: str, path: list[tuple[int, int]]) -> bool:
         """Validates if a word is actually present on the board following a path.
-        
+
         Args:
             word: The word to validate.
             path: List of (row, col) coordinates.
-            
+
         Returns:
             True if the path matches the word and is valid.
         """
         if len(word) != len(path):
             return False
-            
+
         word = word.upper()
-        used_cells: Set[Tuple[int, int]] = set()
-        
+        used_cells: set[tuple[int, int]] = set()
+
         for i, (r, c) in enumerate(path):
             if not (0 <= r < self.size and 0 <= c < self.size):
                 return False
@@ -448,45 +536,45 @@ class BoggleBoard:
             if self.grid[r][c] != word[i]:
                 # Special handling for 'QU' if needed, but here each tile is one letter
                 return False
-            
+
             # Check adjacency if not the first letter
             if i > 0:
-                prev_r, prev_c = path[i-1]
+                prev_r, prev_c = path[i - 1]
                 if abs(r - prev_r) > 1 or abs(c - prev_c) > 1:
                     return False
-                    
+
             used_cells.add((r, c))
-            
+
         return True
 
-    def find_all_words(self, word_set: Set[str]) -> List[str]:
+    def find_all_words(self, word_set: set[str]) -> list[str]:
         """Finds all valid words on the board using DFS.
-        
+
         Args:
             word_set: Set of valid dictionary words (uppercase).
-            
+
         Returns:
             List of all valid words that can be formed on the board,
             sorted by length (longest first).
         """
-        found_words: Set[str] = set()
-        
+        found_words: set[str] = set()
+
         # Build a prefix set for early termination
-        prefixes: Set[str] = set()
+        prefixes: set[str] = set()
         for word in word_set:
             for i in range(1, len(word) + 1):
                 prefixes.add(word[:i])
-        
-        def dfs(r: int, c: int, path: str, visited: Set[Tuple[int, int]]) -> None:
+
+        def dfs(r: int, c: int, path: str, visited: set[tuple[int, int]]) -> None:
             """DFS to explore all paths from a cell."""
             # Early termination if prefix not in dictionary
             if path not in prefixes:
                 return
-                
+
             # Check if current path is a valid word (min 3 letters)
             if len(path) >= 3 and path in word_set:
                 found_words.add(path)
-            
+
             # Explore neighbors
             for dr in [-1, 0, 1]:
                 for dc in [-1, 0, 1]:
@@ -497,13 +585,11 @@ class BoggleBoard:
                         if (nr, nc) not in visited:
                             new_visited = visited | {(nr, nc)}
                             dfs(nr, nc, path + self.grid[nr][nc], new_visited)
-        
+
         # Start DFS from each cell
         for r in range(self.size):
             for c in range(self.size):
                 dfs(r, c, self.grid[r][c], {(r, c)})
-        
+
         # Sort by length (longest first), then alphabetically
         return sorted(found_words, key=lambda w: (-len(w), w))
-
-
