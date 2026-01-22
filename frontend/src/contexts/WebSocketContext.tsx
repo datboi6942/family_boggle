@@ -18,13 +18,14 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   const maxRetries = 3;
   const connectRef = useRef<() => void>(() => {}); // Ref to hold latest connect function
   const {
-    lobbyId,
-    playerId,
-    username,
-    character,
-    mode,
-    status,
-    authToken,
+     lobbyId,
+     playerId,
+     username,
+     character,
+     mode,
+     status,
+     authToken,
+     password,
     updateFromLobby,
     updateFromGameState,
     setWordResult,
@@ -81,8 +82,9 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     // Connect through nginx proxy (same host and port as frontend)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host; // Includes port if non-standard
-    const tokenParam = authToken ? `&token=${authToken}` : '';
-    const url = `${protocol}//${host}/ws/${lobbyId}/${playerId}?username=${encodeURIComponent(username)}&character=${encodeURIComponent(character)}&mode=${mode || 'join'}${tokenParam}`;
+     const tokenParam = authToken ? `&token=${authToken}` : '';
+     const passwordParam = password ? `&password=${encodeURIComponent(password)}` : '';
+     const url = `${protocol}//${host}/ws/${lobbyId}/${playerId}?username=${encodeURIComponent(username)}&character=${encodeURIComponent(character)}&mode=${mode || 'join'}${tokenParam}${passwordParam}`;
 
     console.log('Connecting to WebSocket:', url);
     const socket = new WebSocket(url);
@@ -191,10 +193,14 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
           // Update bonus time for players still playing
           updateBonusTimer(message.data, playerId || undefined);
           break;
-        case 'play_again_update':
-          // Update which players want to play again
-          setPlayAgainUpdate(message.data);
-          break;
+         case 'play_again_update':
+           // Update which players want to play again
+           setPlayAgainUpdate(message.data);
+           break;
+         case 'chat_message':
+           // Add chat message to store
+           useGameStore.getState().addChatMessage(message.data);
+           break;
       }
     };
 
@@ -240,7 +246,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     };
 
     socketRef.current = socket;
-   }, [lobbyId, playerId, username, character, mode, status, authToken, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setWaitingPhase, setPlayerTimeUp, updateBonusTimer, setPlayAgainUpdate, resetSession]);
+    }, [lobbyId, playerId, username, character, mode, status, authToken, password, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setWaitingPhase, setPlayerTimeUp, updateBonusTimer, setPlayAgainUpdate, resetSession]);
 
   // Keep connectRef up to date with latest connect function
   useEffect(() => {

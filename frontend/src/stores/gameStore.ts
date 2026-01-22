@@ -51,6 +51,7 @@ interface PersistedState {
   hostId: string | null;
   authToken: string | null;
   user: User | null;
+  password: string | null;
 }
 
 interface WordAward {
@@ -110,6 +111,30 @@ interface PlayerResult {
   challenges_completed: number;
 }
 
+interface ChatMessage {
+  player_id: string;
+  username: string;
+  text: string;
+  timestamp: string;
+}
+
+interface Friend {
+  id: number;
+  username: string;
+  created_at: string;
+  friends_since: string;
+}
+
+interface FriendRequest {
+  id: number;
+  sender_id: number;
+  sender_username: string;
+  receiver_id: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface GameState extends PersistedState {
   // Transient state (not persisted)
   lastWordResult: { valid: boolean; points?: number; powerup?: string; reason?: string } | null;
@@ -128,6 +153,9 @@ interface GameState extends PersistedState {
   lockJustConsumed: boolean;  // True briefly when lock blocks a shuffle (for animation)
   playersStillPlaying: string[];  // Player IDs still playing during waiting phase
   playersWantingPlayAgain: string[];  // Player IDs who clicked "Play Again"
+   chatMessages: ChatMessage[];  // Chat messages in the current lobby
+   friends: Friend[];  // User's friends list
+   friendRequests: FriendRequest[];  // Pending friend requests
   setTimer: (timer: number) => void;
   setBonusTime: (time: number) => void;
   updatePlayerScore: (playerId: string, score: number, powerup?: string) => void;
@@ -144,11 +172,12 @@ interface GameState extends PersistedState {
   linkIpAccount: () => Promise<{ success: boolean; message: string }>;
 
   // Actions
-  setLobbyId: (id: string) => void;
-  setPlayerId: (id: string) => void;
-  setUsername: (name: string) => void;
-  setCharacter: (char: string) => void;
-  setMode: (mode: 'create' | 'join') => void;
+   setLobbyId: (id: string) => void;
+   setPlayerId: (id: string) => void;
+   setUsername: (name: string) => void;
+   setCharacter: (char: string) => void;
+   setMode: (mode: 'create' | 'join') => void;
+   setPassword: (password: string | null) => void;
   setStatus: (status: PersistedState['status']) => void;
   updateFromLobby: (data: any) => void;
   updateFromGameState: (data: any) => void;
@@ -159,7 +188,14 @@ interface GameState extends PersistedState {
   setPlayerTimeUp: (playerId: string, myPlayerId?: string) => void;
   updateBonusTimer: (data: any, myPlayerId?: string) => void;
   setPlayAgainUpdate: (data: any) => void;
-  resetSession: () => void;
+   addChatMessage: (message: ChatMessage) => void;
+   // Friend actions
+   loadFriends: () => Promise<{ success: boolean; friends?: Friend[]; message?: string }>;
+   loadFriendRequests: (status?: string) => Promise<{ success: boolean; requests?: FriendRequest[]; message?: string }>;
+   sendFriendRequest: (receiverUsername: string) => Promise<{ success: boolean; message: string }>;
+   respondToFriendRequest: (requestId: number, action: 'accept' | 'reject') => Promise<{ success: boolean; message: string }>;
+   removeFriend: (friendId: number) => Promise<{ success: boolean; message: string }>;
+   resetSession: () => void;
 }
 
 // Store timeout IDs for cleanup
@@ -186,8 +222,9 @@ export const useGameStore = create<GameState>()(
   isTimeUp: false,
   players: [],
   hostId: null,
-  authToken: null,
-  user: null,
+   authToken: null,
+   user: null,
+   password: null,
   lastWordResult: null,
   winner: null,
   results: null,
@@ -202,8 +239,11 @@ export const useGameStore = create<GameState>()(
   frozenTimerValue: null,
   isLockArmed: false,
   lockJustConsumed: false,
-  playersStillPlaying: [],
-  playersWantingPlayAgain: [],
+   playersStillPlaying: [],
+   playersWantingPlayAgain: [],
+   chatMessages: [],
+   friends: [],
+   friendRequests: [],
 
   setTimer: (timer) => set({ timer }),
   setBonusTime: (bonusTime) => set({ bonusTime }),
@@ -339,8 +379,9 @@ export const useGameStore = create<GameState>()(
   setPlayerId: (id) => set({ playerId: id }),
   setUsername: (name) => set({ username: name }),
   setCharacter: (char) => set({ character: char }),
-  setMode: (mode) => set({ mode }),
-  setStatus: (status) => set({ status }),
+   setMode: (mode) => set({ mode }),
+   setStatus: (status) => set({ status }),
+   setPassword: (password) => set({ password }),
   updateFromLobby: (data) => set({
     lobbyId: data.lobby_id || data.lobbyId || null,
     players: data.players || [],
@@ -475,7 +516,151 @@ export const useGameStore = create<GameState>()(
   setPlayAgainUpdate: (data: any) => {
     set({ playersWantingPlayAgain: data.players_ready || [] });
   },
-  resetSession: () => {
+   addChatMessage: (message: ChatMessage) => {
+     set((state) => ({ 
+       chatMessages: [...state.chatMessages, message].slice(-50) // Keep last 50 messages
+     }));
+   },
+   // Friend actions implementation
+   loadFriends: async () => {
+     const state = get();
+     if (!state.authToken) {
+       return { success: false, message: 'Not authenticated' };
+     }
+     try {
+       const response = await fetch(`${API_BASE}/friends`, {
+         headers: { Authorization: `Bearer ${state.authToken}` },
+       });
+       const data = await response.json();
+       if (response.ok) {
+         set({ friends: data.friends || [] });
+         return { success: true, friends: data.friends };
+       } else {
+         return { success: false, message: data.detail || 'Failed to load friends' };
+       }
+     } catch (error) {
+       console.error('Load friends error:', error);
+       return { success: false, message: 'Network error' };
+     }
+   },
+   loadFriendRequests: async (status = 'pending') => {
+     const state = get();
+     if (!state.authToken) {
+       return { success: false, message: 'Not authenticated' };
+     }
+     try {
+       const response = await fetch(`${API_BASE}/friends/requests?status=${status}`, {
+         headers: { Authorization: `Bearer ${state.authToken}` },
+       });
+       const data = await response.json();
+       if (response.ok) {
+         set({ friendRequests: data.requests || [] });
+         return { success: true, requests: data.requests };
+       } else {
+         return { success: false, message: data.detail || 'Failed to load friend requests' };
+       }
+     } catch (error) {
+       console.error('Load friend requests error:', error);
+       return { success: false, message: 'Network error' };
+     }
+   },
+   sendFriendRequest: async (receiverUsername: string) => {
+     const state = get();
+     if (!state.authToken) {
+       return { success: false, message: 'Not authenticated' };
+     }
+     try {
+       const response = await fetch(`${API_BASE}/friends/request`, {
+         method: 'POST',
+         headers: { 
+           'Content-Type': 'application/json',
+           Authorization: `Bearer ${state.authToken}`
+         },
+         body: JSON.stringify({ receiver_username: receiverUsername }),
+       });
+       const data = await response.json();
+       if (response.ok) {
+         return { success: true, message: data.message || 'Friend request sent' };
+       } else {
+         return { success: false, message: data.detail || 'Failed to send friend request' };
+       }
+     } catch (error) {
+       console.error('Send friend request error:', error);
+       return { success: false, message: 'Network error' };
+     }
+   },
+   respondToFriendRequest: async (requestId: number, action: 'accept' | 'reject') => {
+     const state = get();
+     if (!state.authToken) {
+       return { success: false, message: 'Not authenticated' };
+     }
+     try {
+       const response = await fetch(`${API_BASE}/friends/respond`, {
+         method: 'POST',
+         headers: { 
+           'Content-Type': 'application/json',
+           Authorization: `Bearer ${state.authToken}`
+         },
+         body: JSON.stringify({ request_id: requestId, action }),
+       });
+       const data = await response.json();
+        if (response.ok) {
+          // Refresh friend requests and friends list
+          const store = get();
+          if (store.authToken) {
+            // Reload data in parallel
+            const [pendingRes, friendsRes] = await Promise.all([
+              fetch(`${API_BASE}/friends/requests?status=pending`, {
+                headers: { Authorization: `Bearer ${store.authToken}` },
+              }),
+              fetch(`${API_BASE}/friends`, {
+                headers: { Authorization: `Bearer ${store.authToken}` },
+              })
+            ]);
+            if (pendingRes.ok) {
+              const pendingData = await pendingRes.json();
+              set({ friendRequests: pendingData.requests || [] });
+            }
+            if (friendsRes.ok) {
+              const friendsData = await friendsRes.json();
+              set({ friends: friendsData.friends || [] });
+            }
+          }
+          return { success: true, message: data.message || 'Friend request updated' };
+       } else {
+         return { success: false, message: data.detail || 'Failed to respond to friend request' };
+       }
+     } catch (error) {
+       console.error('Respond to friend request error:', error);
+       return { success: false, message: 'Network error' };
+     }
+   },
+   removeFriend: async (friendId: number) => {
+     const state = get();
+     if (!state.authToken) {
+       return { success: false, message: 'Not authenticated' };
+     }
+     try {
+       const response = await fetch(`${API_BASE}/friends/${friendId}`, {
+         method: 'DELETE',
+         headers: { Authorization: `Bearer ${state.authToken}` },
+       });
+       const data = await response.json();
+       if (response.ok) {
+         // Remove friend from local state
+         set((state) => ({
+           friends: state.friends.filter(f => f.id !== friendId)
+         }));
+         return { success: true, message: data.message || 'Friend removed' };
+       } else {
+         return { success: false, message: data.detail || 'Failed to remove friend' };
+       }
+     } catch (error) {
+       console.error('Remove friend error:', error);
+       return { success: false, message: 'Network error' };
+     }
+   },
+   resetSession: () => {
     // Clear any pending timeouts to prevent memory leaks
     if (wordResultTimeout) {
       clearTimeout(wordResultTimeout);
@@ -552,8 +737,9 @@ export const useGameStore = create<GameState>()(
         isTimeUp: state.isTimeUp,
         players: state.players,
         hostId: state.hostId,
-        authToken: state.authToken,
-        user: state.user,
+         authToken: state.authToken,
+         user: state.user,
+         password: state.password,
       }),
     }
   )

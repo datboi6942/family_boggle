@@ -6,6 +6,7 @@ import { useAudioContext } from '../contexts/AudioContext';
 import { MonsterAvatar } from './MonsterAvatar';
 import { ModeSelector } from './ModeSelector';
 import { TeamAssignment } from './TeamAssignment';
+import { Chat } from './Chat';
 import { motion } from 'framer-motion';
 import QRCodeSVG from 'react-qr-code';
 
@@ -115,6 +116,12 @@ export const Lobby = () => {
             {p.id === hostId && <span className="text-[10px] text-primary font-bold">HOST</span>}
           </motion.div>
         ))}
+      </div>
+
+      {/* Chat */}
+      <div className="frosted-glass p-4">
+        <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3">Chat</h3>
+        <Chat />
       </div>
 
       {isHost && (

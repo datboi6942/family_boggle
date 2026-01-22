@@ -12,13 +12,15 @@ import { RegisterModal } from './RegisterModal';
 import { UserProfile } from './UserProfile';
 
 export const JoinScreen = () => {
-  const { setUsername, setCharacter, setLobbyId, setPlayerId, setStatus, setMode, username, character, authToken } = useGameStore();
+   const { setUsername, setCharacter, setLobbyId, setPlayerId, setStatus, setMode, setPassword, username, character, authToken } = useGameStore();
   const audio = useAudioContext();
-  const [lobbyInput, setLobbyInput] = useState('');
-  const [showScanner, setShowScanner] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
+   const [lobbyInput, setLobbyInput] = useState('');
+   const [isPrivate, setIsPrivate] = useState(false);
+   const [passwordInput, setPasswordInput] = useState('');
+   const [showScanner, setShowScanner] = useState(false);
+   const [scanError, setScanError] = useState<string | null>(null);
+   const [showLoginModal, setShowLoginModal] = useState(false);
+   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const musicStartedRef = useRef(false);
 
   // Restore scroll state when entering join screen (game locks scroll)
@@ -128,9 +130,18 @@ export const JoinScreen = () => {
     } else {
       if (!lobbyInput) return;
       setLobbyId(lobbyInput.toUpperCase());
-    }
+     }
 
-    setStatus('lobby');
+     // Set password if provided
+     if (mode === 'create' && isPrivate && passwordInput) {
+       setPassword(passwordInput);
+     } else if (mode === 'join' && passwordInput) {
+       setPassword(passwordInput);
+     } else {
+       setPassword(null);
+     }
+
+     setStatus('lobby');
   };
 
   return (
@@ -193,13 +204,50 @@ export const JoinScreen = () => {
           ))}
         </div>
 
-        <div className="space-y-4">
-          <button
-            onClick={() => handleStart('create')}
-            className="w-full py-4 bg-primary rounded-xl font-black text-xl shadow-lg active:scale-95 transition-transform"
-          >
-            CREATE LOBBY
-          </button>
+         <div className="space-y-4">
+           {/* Private lobby toggle */}
+           <div className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl">
+             <div className="flex items-center space-x-3">
+               <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${isPrivate ? 'bg-primary border-primary' : 'border-white/30'}`}>
+                 {isPrivate && (
+                   <div className="w-2 h-2 bg-white rounded" />
+                 )}
+               </div>
+               <span className="text-sm font-bold text-white">Private Lobby</span>
+             </div>
+             <button
+               type="button"
+               onClick={() => {
+                 audio.playButtonClick();
+                 setIsPrivate(!isPrivate);
+               }}
+               className="text-xs font-bold text-primary"
+             >
+               {isPrivate ? 'ON' : 'OFF'}
+             </button>
+           </div>
+
+           {isPrivate && (
+             <div className="space-y-2">
+               <label className="text-xs font-bold text-white/50 uppercase tracking-widest">Password</label>
+               <input
+                 type="password"
+                 placeholder="Enter password (optional)"
+                 value={passwordInput}
+                 onChange={(e) => setPasswordInput(e.target.value)}
+                 className="w-full p-3 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-white placeholder-white/30"
+                 maxLength={20}
+               />
+               <p className="text-xs text-white/40">Other players will need this password to join.</p>
+             </div>
+           )}
+
+           <button
+             onClick={() => handleStart('create')}
+             className="w-full py-4 bg-primary rounded-xl font-black text-xl shadow-lg active:scale-95 transition-transform"
+           >
+             CREATE LOBBY
+           </button>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -237,21 +285,32 @@ export const JoinScreen = () => {
             </div>
           </div>
 
-          <div className="flex items-stretch gap-2">
-            <input
-              type="text"
-              placeholder="LOBBY CODE"
-              value={lobbyInput}
-              onChange={(e) => setLobbyInput(e.target.value)}
-              className="flex-1 min-w-0 p-4 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-center font-bold"
-            />
-            <button
-              onClick={() => handleStart('join')}
-              className="px-6 py-4 bg-white/10 rounded-xl font-bold active:scale-95 transition-transform shrink-0"
-            >
-              JOIN
-            </button>
-          </div>
+           <div className="space-y-2">
+             <div className="flex items-stretch gap-2">
+               <input
+                 type="text"
+                 placeholder="LOBBY CODE"
+                 value={lobbyInput}
+                 onChange={(e) => setLobbyInput(e.target.value)}
+                 className="flex-1 min-w-0 p-4 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-center font-bold"
+               />
+               <button
+                 onClick={() => handleStart('join')}
+                 className="px-6 py-4 bg-white/10 rounded-xl font-bold active:scale-95 transition-transform shrink-0"
+               >
+                 JOIN
+               </button>
+             </div>
+             <div className="text-xs text-white/50">Private lobby? Enter password:</div>
+             <input
+               type="password"
+               placeholder="Password (optional)"
+               value={passwordInput}
+               onChange={(e) => setPasswordInput(e.target.value)}
+               className="w-full p-3 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-white placeholder-white/30"
+               maxLength={20}
+             />
+           </div>
         </div>
       </div>
 
