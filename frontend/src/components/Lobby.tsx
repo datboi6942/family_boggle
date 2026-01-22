@@ -4,17 +4,20 @@ import { useShallow } from 'zustand/react/shallow';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { useAudioContext } from '../contexts/AudioContext';
 import { MonsterAvatar } from './MonsterAvatar';
+import { ModeSelector } from './ModeSelector';
+import { TeamAssignment } from './TeamAssignment';
 import { motion } from 'framer-motion';
 import QRCodeSVG from 'react-qr-code';
 
 export const Lobby = () => {
-  const { lobbyId, playerId, players, hostId, boardSize, resetSession } = useGameStore(
+  const { lobbyId, playerId, players, hostId, boardSize, gameMode, resetSession } = useGameStore(
     useShallow(state => ({
       lobbyId: state.lobbyId,
       playerId: state.playerId,
       players: state.players,
       hostId: state.hostId,
       boardSize: state.boardSize,
+      gameMode: state.gameMode,
       resetSession: state.resetSession,
     }))
   );
@@ -93,6 +96,9 @@ export const Lobby = () => {
         <p className="text-[10px] text-white/30 mt-3">POINT CAMERA AT CODE</p>
       </div>
 
+      <ModeSelector />
+      {gameMode === 'team' && <TeamAssignment />}
+
       <div className="flex-1 grid grid-cols-2 gap-4 overflow-y-auto py-4">
         {players.map((p) => (
           <motion.div
@@ -130,6 +136,8 @@ export const Lobby = () => {
           </div>
         </div>
       )}
+
+
 
       <button
         onClick={() => {
