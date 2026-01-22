@@ -268,9 +268,7 @@ async def websocket_endpoint(
 
             elif msg_type == "want_play_again":
                 # Mark this player as wanting to play again
-                lobby_state: GameStateModel | None = game_engine.lobbies.get(
-                    lobby_id
-                )
+                lobby_state: GameStateModel | None = game_engine.lobbies.get(lobby_id)
                 if lobby_state and lobby_state.status == "summary":
                     player = next(
                         (p for p in lobby_state.players if p.id == player_id), None

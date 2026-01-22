@@ -97,6 +97,7 @@ export const GameSummary = () => {
   }, []);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     // If there are no word awards to animate, skip to longest-word or celebration
     if (wordAwards && wordAwards.length === 0 && phase === 'animating') {
       if (longestWordFound) {

@@ -1,4 +1,3 @@
-
 # Tiered scoring based on letter difficulty in sentences
 LETTER_SCORES: dict[str, int] = {
     "A": 1,
