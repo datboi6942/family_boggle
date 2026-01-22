@@ -6,6 +6,7 @@ import { useAudioContext } from '../contexts/AudioContext';
 import { MonsterAvatar } from './MonsterAvatar';
 import { ModeSelector } from './ModeSelector';
 import { TeamAssignment } from './TeamAssignment';
+import { Chat } from './Chat';
 import { motion } from 'framer-motion';
 import QRCodeSVG from 'react-qr-code';
 
@@ -33,6 +34,8 @@ export const Lobby = () => {
   useEffect(() => {
     audioRef.current = audio;
   }, [audio]);
+
+
 
   // Restore scroll state when entering lobby (e.g., after game ends)
   useEffect(() => {
@@ -111,10 +114,16 @@ export const Lobby = () => {
               <span className="absolute top-2 right-2 bg-success text-[10px] px-2 py-0.5 rounded-full font-bold">READY</span>
             )}
             <MonsterAvatar name={p.character} size={60} />
-            <p className="mt-2 font-bold truncate w-full text-center">{p.username}</p>
+             <p className="mt-2 font-bold truncate w-full text-center">{p.username}</p>
             {p.id === hostId && <span className="text-[10px] text-primary font-bold">HOST</span>}
           </motion.div>
         ))}
+      </div>
+
+      {/* Chat */}
+      <div className="frosted-glass p-4">
+        <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3">Chat</h3>
+        <Chat />
       </div>
 
       {isHost && (

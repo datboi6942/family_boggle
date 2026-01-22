@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../stores/gameStore';
 import { useAudioContext } from '../contexts/AudioContext';
-import { User, LogOut, BarChart3, Award, Link } from 'lucide-react';
+import { User, LogOut, BarChart3, Award, Link, Users } from 'lucide-react';
+import { FriendListPanel } from './FriendListPanel';
 
 export const UserProfile = () => {
   const { user, authToken, logout, getStats, linkIpAccount } = useGameStore();
@@ -171,6 +172,18 @@ export const UserProfile = () => {
               <div className="text-center py-4 text-white/50 text-sm">
                 Achievements will appear here as you earn them
               </div>
+            </div>
+
+            {/* Friends section */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-white/70">
+                <Users size={16} />
+                <span className="font-medium">Friends</span>
+              </div>
+              <div className="text-sm text-white/50 mb-2">
+                Connect with friends to play together in private lobbies
+              </div>
+              <FriendListPanel />
             </div>
           </motion.div>
         )}

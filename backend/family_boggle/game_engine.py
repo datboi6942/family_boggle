@@ -1,4 +1,5 @@
 import random
+import hashlib
 import uuid
 from typing import Any
 
@@ -26,12 +27,21 @@ class GameEngine:
         self.validator = DictionaryValidator()
         self.board_gen: BoggleBoard | None = None
 
+    @staticmethod
+    def _hash_lobby_password(password: str, lobby_id: str) -> str:
+        """Hash a lobby password using SHA256 with lobby_id as salt."""
+        # Use a simple hash for short-lived lobby passwords
+        # This prevents plain passwords from being logged/stored
+        salted = f"{password}:{lobby_id}".encode('utf-8')
+        return hashlib.sha256(salted).hexdigest()
+
     def create_lobby(
         self,
         host_id: str,
         host_username: str,
         host_character: str,
         lobby_id: str | None = None,
+        password: str | None = None,
     ) -> str:
         """Creates a new game lobby."""
         if not lobby_id:
@@ -40,8 +50,12 @@ class GameEngine:
         host = PlayerModel(
             id=host_id, username=host_username, character=host_character, is_ready=False
         )
+        # Hash password if provided
+        hashed_password = None
+        if password is not None:
+            hashed_password = self._hash_lobby_password(password, lobby_id)
         self.lobbies[lobby_id] = GameStateModel(
-            lobby_id=lobby_id, status="lobby", host_id=host_id, players=[host]
+            lobby_id=lobby_id, status="lobby", host_id=host_id, players=[host], password=hashed_password
         )
         logger.info("lobby_created", lobby_id=lobby_id, host_id=host_id)
         return lobby_id
@@ -103,13 +117,21 @@ class GameEngine:
         return True
 
     def join_lobby(
-        self, lobby_id: str, player_id: str, username: str, character: str
+        self, lobby_id: str, player_id: str, username: str, character: str, password: str | None = None
     ) -> bool:
         """Adds a player to an existing lobby."""
         if lobby_id not in self.lobbies:
             return False
 
         lobby = self.lobbies[lobby_id]
+        # Check password if lobby is private
+        if lobby.password is not None:
+            if password is None:
+                return False
+            # Compare hashed passwords
+            hashed_input = self._hash_lobby_password(password, lobby_id)
+            if hashed_input != lobby.password:
+                return False
         if len(lobby.players) >= 10:
             return False
 

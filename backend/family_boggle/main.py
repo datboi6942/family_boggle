@@ -8,13 +8,15 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from family_boggle.config import settings
 from family_boggle.game_engine import game_engine
 from family_boggle.high_scores import get_leaderboard, get_player_stats, ip_tracker
-from family_boggle.models import GameStateModel, WordSubmission
+from family_boggle.models import GameStateModel, WordSubmission, FriendRequestCreate, FriendRequestUpdate
 from family_boggle.websocket_manager import manager
 from family_boggle.auth import user_manager, verify_token, create_access_token
 
 # Rate limiting for login attempts
+import re
 import time
 from collections import defaultdict
+from datetime import datetime, timezone
 
 login_attempts = defaultdict(list)
 MAX_ATTEMPTS_PER_MINUTE = 5
@@ -261,6 +263,76 @@ async def link_ip_to_account(request: Request, current_user: dict = Depends(get_
     return {"success": True, "message": f"IP {ip} linked to account"}
 
 
+# Friend management endpoints
+@app.post("/api/friends/request")
+async def send_friend_request(
+    request_data: FriendRequestCreate, 
+    current_user: dict = Depends(get_current_user)
+):
+    """Sends a friend request to another user."""
+    success, message = user_manager.send_friend_request(
+        current_user["id"], 
+        request_data.receiver_username
+    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
+        )
+    return {"success": True, "message": message}
+
+
+@app.get("/api/friends/requests")
+async def get_friend_requests(
+    status: str = "pending",
+    current_user: dict = Depends(get_current_user)
+):
+    """Gets friend requests for the current user."""
+    requests = user_manager.get_friend_requests(current_user["id"], status)
+    return {"requests": requests}
+
+
+@app.post("/api/friends/respond")
+async def respond_to_friend_request(
+    request_data: FriendRequestUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Responds to a friend request (accept/reject)."""
+    success, message = user_manager.respond_to_friend_request(
+        request_data.request_id,
+        current_user["id"],
+        request_data.action
+    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
+        )
+    return {"success": True, "message": message}
+
+
+@app.get("/api/friends")
+async def get_friends(current_user: dict = Depends(get_current_user)):
+    """Gets the current user's friends list."""
+    friends = user_manager.get_friends(current_user["id"])
+    return {"friends": friends}
+
+
+@app.delete("/api/friends/{friend_id}")
+async def remove_friend(
+    friend_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Removes a friend."""
+    success, message = user_manager.remove_friend(current_user["id"], friend_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
+        )
+    return {"success": True, "message": message}
+
+
 def get_client_ip(websocket: WebSocket) -> str:
     """Extract client IP from WebSocket connection."""
     # Check for forwarded headers (for proxied connections)
@@ -283,6 +355,7 @@ async def websocket_endpoint(
     character: str = Query(...),
     mode: str = Query(default="join"),
     token: str = Query(None),
+    password: str = Query(None),
 ):
     await manager.connect(websocket, lobby_id)
 
@@ -326,10 +399,10 @@ async def websocket_endpoint(
 
     if mode == "create" and not lobby_exists:
         # Create new lobby
-        game_engine.create_lobby(player_id, username, character, lobby_id=lobby_id)
+        game_engine.create_lobby(player_id, username, character, lobby_id=lobby_id, password=password)
     elif lobby_exists:
         # Join existing lobby
-        success = game_engine.join_lobby(lobby_id, player_id, username, character)
+        success = game_engine.join_lobby(lobby_id, player_id, username, character, password)
         if not success:
             await websocket.close(code=1008, reason="Lobby full or error joining")
             return
@@ -568,6 +641,42 @@ async def websocket_endpoint(
                                 "data": game_engine.lobbies[lobby_id].model_dump(),
                             },
                         )
+
+            elif msg_type == "chat_message":
+                # Broadcast chat message to the lobby
+                text = msg_data.get("text", "").strip()
+                # Validate message length and content
+                if not text or len(text) > 200:
+                    continue
+                # Sanitize content: remove HTML tags, check for XSS patterns
+                # Remove HTML tags
+                text = re.sub(r'<[^>]*>', '', text)
+                # Remove script tags and javascript: URLs
+                if re.search(r'javascript:', text, re.IGNORECASE) or re.search(r'<script', text, re.IGNORECASE):
+                    continue
+                # Remove control characters (except newline and tab)
+                text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
+                # Limit excessive special characters (more than 5 consecutive)
+                if re.search(r'[!@#$%^&*()_+=\[\]{}|;:",.<>?/\\~`-]{6,}', text):
+                    continue
+                # Limit excessive whitespace (more than 5 consecutive spaces, tabs, or newlines)
+                if re.search(r'[\s]{6,}', text):
+                    continue
+                # Final check after sanitization
+                if not text.strip():
+                    continue
+                await manager.broadcast(
+                    lobby_id,
+                    {
+                        "type": "chat_message",
+                        "data": {
+                            "player_id": player_id,
+                            "username": username,
+                            "text": text,
+                            "timestamp": datetime.now(timezone.utc).isoformat()
+                        }
+                    }
+                )
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)

@@ -32,6 +32,7 @@ class GameStateModel(BaseModel):
     game_mode: str = "classic"  # classic, team, timed_attack, word_race
     mode_settings: dict = {}  # Mode-specific configuration
     target_words: list[str] = []  # Target words for word race mode
+    password: Optional[str] = None  # Optional password for private lobbies
 
 
 class WordSubmission(BaseModel):
@@ -46,3 +47,35 @@ class WSMessage(BaseModel):
 
     type: str
     data: dict
+
+
+class FriendRequestModel(BaseModel):
+    """Data model for a friend request."""
+    
+    id: int
+    sender_id: int
+    receiver_id: int
+    status: str  # pending, accepted, rejected
+    created_at: str
+    updated_at: str
+
+
+class FriendModel(BaseModel):
+    """Data model for a friend relationship."""
+    
+    user1_id: int
+    user2_id: int
+    created_at: str
+
+
+class FriendRequestCreate(BaseModel):
+    """Data model for creating a friend request."""
+    
+    receiver_username: str
+
+
+class FriendRequestUpdate(BaseModel):
+    """Data model for updating a friend request."""
+    
+    request_id: int
+    action: str  # accept, reject

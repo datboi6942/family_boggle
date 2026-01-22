@@ -74,6 +74,34 @@ def init_database():
         )
     """)
 
+    # Friend requests table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS friend_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id INTEGER NOT NULL,
+            receiver_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',  -- pending, accepted, rejected
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (sender_id) REFERENCES users (id) ON DELETE CASCADE,
+            FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE,
+            UNIQUE(sender_id, receiver_id)
+        )
+    """)
+
+    # Friends table (accepted friendships)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS friends (
+            user1_id INTEGER NOT NULL,
+            user2_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user1_id, user2_id),
+            FOREIGN KEY (user1_id) REFERENCES users (id) ON DELETE CASCADE,
+            FOREIGN KEY (user2_id) REFERENCES users (id) ON DELETE CASCADE,
+            CHECK (user1_id < user2_id)  -- Ensure unique pairing
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -368,6 +396,224 @@ class UserManager:
             )
             row = cursor.fetchone()
             return row["user_id"] if row else None
+        finally:
+            conn.close()
+
+    # Friend management methods
+    @staticmethod
+    def send_friend_request(sender_id: int, receiver_username: str) -> tuple[bool, str]:
+        """Sends a friend request to another user by username.
+        
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Get receiver user ID
+            cursor.execute("SELECT id FROM users WHERE username = ?", (receiver_username,))
+            receiver_row = cursor.fetchone()
+            if not receiver_row:
+                return False, "User not found"
+            receiver_id = receiver_row["id"]
+
+            # Check if sender and receiver are the same
+            if sender_id == receiver_id:
+                return False, "Cannot send friend request to yourself"
+
+            # Check if friend request already exists in either direction
+            cursor.execute(
+                "SELECT id FROM friend_requests WHERE ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)) AND status = 'pending'",
+                (sender_id, receiver_id, receiver_id, sender_id)
+            )
+            if cursor.fetchone():
+                return False, "Friend request already sent"
+
+            # Check if they are already friends
+            cursor.execute(
+                "SELECT * FROM friends WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)",
+                (sender_id, receiver_id, receiver_id, sender_id)
+            )
+            if cursor.fetchone():
+                return False, "Already friends"
+
+            # Create friend request
+            cursor.execute(
+                "INSERT INTO friend_requests (sender_id, receiver_id, status) VALUES (?, ?, 'pending')",
+                (sender_id, receiver_id)
+            )
+            conn.commit()
+            return True, "Friend request sent"
+        except sqlite3.IntegrityError as e:
+            conn.rollback()
+            return False, f"Database error: {str(e)}"
+        except sqlite3.Error as e:
+            conn.rollback()
+            return False, f"Database error: {str(e)}"
+        finally:
+            conn.close()
+
+    @staticmethod
+    def get_friend_requests(user_id: int, status: str = "pending") -> list[dict]:
+        """Gets friend requests for a user (received pending requests by default).
+        
+        Args:
+            user_id: The user ID
+            status: Request status to filter by (pending, accepted, rejected)
+        
+        Returns:
+            List of friend request dictionaries
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT fr.*, 
+                       sender.username as sender_username,
+                       receiver.username as receiver_username
+                FROM friend_requests fr
+                JOIN users sender ON fr.sender_id = sender.id
+                JOIN users receiver ON fr.receiver_id = receiver.id
+                WHERE (fr.receiver_id = ? OR fr.sender_id = ?) AND fr.status = ?
+                ORDER BY fr.created_at DESC
+            """, (user_id, user_id, status))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    @staticmethod
+    def respond_to_friend_request(request_id: int, user_id: int, action: str) -> tuple[bool, str]:
+        """Responds to a friend request (accept or reject).
+        
+        Args:
+            request_id: The friend request ID
+            user_id: The user ID (must be the receiver)
+            action: 'accept' or 'reject'
+        
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        if action not in ["accept", "reject"]:
+            return False, "Invalid action. Must be 'accept' or 'reject'"
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Verify request exists and user is the receiver
+            cursor.execute(
+                "SELECT sender_id, receiver_id FROM friend_requests WHERE id = ? AND status = 'pending'",
+                (request_id,)
+            )
+            request_row = cursor.fetchone()
+            if not request_row:
+                return False, "Friend request not found or already processed"
+            
+            if request_row["receiver_id"] != user_id:
+                return False, "Not authorized to respond to this request"
+
+            sender_id = request_row["sender_id"]
+            receiver_id = request_row["receiver_id"]
+
+            if action == "accept":
+                # Update request status
+                cursor.execute(
+                    "UPDATE friend_requests SET status = 'accepted', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (request_id,)
+                )
+                # Add to friends table (ensure user1_id < user2_id)
+                user1_id = min(sender_id, receiver_id)
+                user2_id = max(sender_id, receiver_id)
+                cursor.execute(
+                    "INSERT OR IGNORE INTO friends (user1_id, user2_id) VALUES (?, ?)",
+                    (user1_id, user2_id)
+                )
+                message = "Friend request accepted"
+            else:  # reject
+                cursor.execute(
+                    "DELETE FROM friend_requests WHERE id = ?",
+                    (request_id,)
+                )
+                message = "Friend request rejected"
+
+            conn.commit()
+            return True, message
+        except sqlite3.Error as e:
+            conn.rollback()
+            return False, f"Database error: {str(e)}"
+        finally:
+            conn.close()
+
+    @staticmethod
+    def get_friends(user_id: int) -> list[dict]:
+        """Gets a user's friends list.
+        
+        Returns:
+            List of friend dictionaries with user details
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT u.id, u.username, u.created_at, f.created_at as friends_since
+                FROM friends f
+                JOIN users u ON (
+                    (f.user1_id = ? AND u.id = f.user2_id) OR
+                    (f.user2_id = ? AND u.id = f.user1_id)
+                )
+                ORDER BY u.username
+            """, (user_id, user_id))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    @staticmethod
+    def remove_friend(user_id: int, friend_id: int) -> tuple[bool, str]:
+        """Removes a friend relationship.
+        
+        Args:
+            user_id: The user ID
+            friend_id: The friend's user ID to remove
+        
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Verify friendship exists
+            cursor.execute("""
+                SELECT * FROM friends 
+                WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)
+            """, (user_id, friend_id, friend_id, user_id))
+            if not cursor.fetchone():
+                return False, "Not friends with this user"
+
+            # Delete from friends table (order doesn't matter due to check constraint)
+            user1_id = min(user_id, friend_id)
+            user2_id = max(user_id, friend_id)
+            cursor.execute(
+                "DELETE FROM friends WHERE user1_id = ? AND user2_id = ?",
+                (user1_id, user2_id)
+            )
+
+            # Also delete any friend requests between them
+            cursor.execute(
+                "DELETE FROM friend_requests WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)",
+                (user_id, friend_id, friend_id, user_id)
+            )
+
+            conn.commit()
+            return True, "Friend removed"
+        except sqlite3.Error as e:
+            conn.rollback()
+            return False, f"Database error: {str(e)}"
         finally:
             conn.close()
 
