@@ -27,3 +27,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Generate a random secret key for development if not set
+if not settings.SECRET_KEY:
+    import secrets
+    if settings.DEBUG:
+        settings.SECRET_KEY = secrets.token_hex(32)
+        print("WARNING: Using auto-generated SECRET_KEY for development. Set BOGGLE_SECRET_KEY environment variable for production.")
+    else:
+        raise ValueError("BOGGLE_SECRET_KEY environment variable must be set in production mode")
