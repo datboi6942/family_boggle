@@ -643,6 +643,10 @@ async def websocket_endpoint(
 
             elif msg_type == "chat_message":
                 # Broadcast chat message to the lobby
+                text = msg_data.get("text", "").strip()
+                # Validate message length and content
+                if not text or len(text) > 200:
+                    continue
                 await manager.broadcast(
                     lobby_id,
                     {
@@ -650,7 +654,7 @@ async def websocket_endpoint(
                         "data": {
                             "player_id": player_id,
                             "username": username,
-                            "text": msg_data.get("text", ""),
+                            "text": text,
                             "timestamp": datetime.now(timezone.utc).isoformat()
                         }
                     }

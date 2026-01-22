@@ -85,7 +85,7 @@ def init_database():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (sender_id) REFERENCES users (id) ON DELETE CASCADE,
             FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE,
-            UNIQUE(sender_id, receiver_id, status)
+            UNIQUE(sender_id, receiver_id)
         )
     """)
 
@@ -470,12 +470,15 @@ class UserManager:
 
         try:
             cursor.execute("""
-                SELECT fr.*, u.username as sender_username 
+                SELECT fr.*, 
+                       sender.username as sender_username,
+                       receiver.username as receiver_username
                 FROM friend_requests fr
-                JOIN users u ON fr.sender_id = u.id
-                WHERE fr.receiver_id = ? AND fr.status = ?
+                JOIN users sender ON fr.sender_id = sender.id
+                JOIN users receiver ON fr.receiver_id = receiver.id
+                WHERE (fr.receiver_id = ? OR fr.sender_id = ?) AND fr.status = ?
                 ORDER BY fr.created_at DESC
-            """, (user_id, status))
+            """, (user_id, user_id, status))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         finally:
@@ -531,7 +534,7 @@ class UserManager:
                 message = "Friend request accepted"
             else:  # reject
                 cursor.execute(
-                    "UPDATE friend_requests SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    "DELETE FROM friend_requests WHERE id = ?",
                     (request_id,)
                 )
                 message = "Friend request rejected"
