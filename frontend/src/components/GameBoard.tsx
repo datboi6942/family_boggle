@@ -595,13 +595,34 @@ export const GameBoard = () => {
     }
   }, [lastWordResult]);
 
+   // Track previous isFrozen state to detect transitions
+  const prevIsFrozenRef = useRef(isFrozen);
+  const lastFreezeSoundTimeRef = useRef(0);
+
    // Frozen/powerup sounds
   useEffect(() => {
-    console.log('isFrozen changed', { isFrozen, timer, bonusTime });
-    if (isFrozen) {
-      console.log('Playing freeze sound');
-      audioRef.current.playPowerupFreeze();
+    console.log('FREEZE EFFECT: isFrozen changed', { 
+      prev: prevIsFrozenRef.current, 
+      current: isFrozen,
+      timer, 
+      bonusTime 
+    });
+    
+    // Detect transition from false to true (freeze activated)
+    if (!prevIsFrozenRef.current && isFrozen) {
+      const now = Date.now();
+      // Extra safety: only play if at least 500ms since last freeze sound
+      if (now - lastFreezeSoundTimeRef.current > 500) {
+        console.log('Freeze activated - playing sound');
+        audioRef.current.playPowerupFreeze();
+        lastFreezeSoundTimeRef.current = now;
+      } else {
+        console.log('Freeze sound throttled (too soon after previous)');
+      }
     }
+    
+    // Update previous value
+    prevIsFrozenRef.current = isFrozen;
    // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [isFrozen]);
 
