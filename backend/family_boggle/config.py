@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # Authentication settings
     SECRET_KEY: str = ""  # Must be set via BOGGLE_SECRET_KEY environment variable
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 20  # Reduced from 30 for better security in game context
     DATABASE_URL: str = "sqlite:///./family_boggle.db"
     
     # CORS settings

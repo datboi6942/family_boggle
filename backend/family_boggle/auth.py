@@ -13,7 +13,17 @@ from jose import JWTError, jwt
 from family_boggle.config import settings
 
 # Database setup
-DB_PATH = Path(__file__).parent.parent / "family_boggle.db"
+# Parse DATABASE_URL (e.g., "sqlite:///./family_boggle.db")
+if settings.DATABASE_URL.startswith("sqlite:///"):
+    # Remove "sqlite:///" prefix and handle relative paths
+    db_relative_path = settings.DATABASE_URL.replace("sqlite:///", "")
+    DB_PATH = Path(db_relative_path)
+    # If path is relative, resolve against project root
+    if not DB_PATH.is_absolute():
+        DB_PATH = Path(__file__).parent.parent / DB_PATH
+else:
+    # Fallback for other database URLs or development
+    DB_PATH = Path(__file__).parent.parent / "family_boggle.db"
 
 
 def get_db_connection():
@@ -312,7 +322,12 @@ class UserManager:
     
     @staticmethod  
     def link_ip_to_user(ip_address: str, user_id: int) -> bool:
-        """Links an IP address to a user for anonymous play migration."""
+        """Links an IP address to a user for anonymous play migration.
+        
+        Note: Uses INSERT OR REPLACE with composite primary key (ip_address, user_id).
+        This allows multiple users per IP (family sharing devices) and updates
+        timestamps for existing mappings.
+        """
         conn = get_db_connection()
         cursor = conn.cursor()
         

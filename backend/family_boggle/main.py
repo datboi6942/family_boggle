@@ -158,9 +158,8 @@ async def register_user(request: Request):
     # Create access token
     access_token = create_access_token(data={"sub": str(user_data["id"])})
     
-    # Remove successful registration attempt from rate limiting
-    if register_key in login_attempts and login_attempts[register_key]:
-        login_attempts[register_key].pop()
+    # Rate limit applies to all registration attempts
+    # Note: Successful attempts still count toward rate limit to prevent bypass
     
     return {
         "access_token": access_token,
@@ -214,9 +213,8 @@ async def login_user(request: Request):
     # Create access token
     access_token = create_access_token(data={"sub": str(user_data["id"])})
     
-    # Remove successful attempt from rate limiting
-    if client_ip in login_attempts and login_attempts[client_ip]:
-        login_attempts[client_ip].pop()
+    # Rate limit applies to all login attempts
+    # Note: Successful attempts still count toward rate limit to prevent brute forcing
     
     return {
         "access_token": access_token,
