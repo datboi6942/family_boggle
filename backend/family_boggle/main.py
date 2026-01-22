@@ -148,6 +148,27 @@ async def websocket_endpoint(
                         lobby_id, {"type": "lobby_update", "data": lobby.model_dump()}
                     )
 
+            elif msg_type == "set_game_mode":
+                lobby = game_engine.lobbies[lobby_id]
+                if lobby.host_id == player_id:
+                    game_mode = msg_data.get("game_mode", "classic")
+                    mode_settings = msg_data.get("mode_settings", {})
+                    success = game_engine.set_game_mode(lobby_id, game_mode, mode_settings)
+                    if success:
+                        await manager.broadcast(
+                            lobby_id, {"type": "lobby_update", "data": lobby.model_dump()}
+                        )
+
+            elif msg_type == "assign_teams":
+                lobby = game_engine.lobbies[lobby_id]
+                if lobby.host_id == player_id and lobby.game_mode == "team":
+                    team_assignments = msg_data.get("team_assignments", {})
+                    success = game_engine.assign_teams(lobby_id, team_assignments)
+                    if success:
+                        await manager.broadcast(
+                            lobby_id, {"type": "lobby_update", "data": lobby.model_dump()}
+                        )
+
             elif msg_type == "submit_word":
                 submission = WordSubmission(**msg_data)
                 result = await game_engine.submit_word(lobby_id, player_id, submission)

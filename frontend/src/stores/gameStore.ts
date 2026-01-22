@@ -8,6 +8,8 @@ interface Player {
   is_ready: boolean;
   score: number;
   powerups: string[];
+  team_id?: string;
+  found_words: string[];
 }
 
 // State that gets persisted to sessionStorage
@@ -20,6 +22,9 @@ interface PersistedState {
   status: 'join' | 'lobby' | 'countdown' | 'playing' | 'waiting' | 'summary';
   board: string[][];
   boardSize: number;
+  gameMode: string;
+  modeSettings: Record<string, unknown>;
+  targetWords: string[];
   timer: number;
   bonusTime: number;  // Per-player bonus time from freeze powerup
   isTimeUp: boolean;  // Whether current player's time has run out
@@ -144,6 +149,9 @@ export const useGameStore = create<GameState>()(
   status: 'join',
   board: [],
   boardSize: 6,
+  gameMode: 'classic',
+  modeSettings: {},
+  targetWords: [],
   timer: 0,
   bonusTime: 0,
   isTimeUp: false,
@@ -200,6 +208,9 @@ export const useGameStore = create<GameState>()(
     players: data.players || [],
     hostId: data.host_id || data.hostId || null,
     boardSize: data.board_size || data.boardSize || 6,
+    gameMode: data.game_mode || data.gameMode || 'classic',
+    modeSettings: data.mode_settings || data.modeSettings || {},
+    targetWords: data.target_words || data.targetWords || [],
     status: (data.status === 'lobby' ? 'lobby' : data.status) || 'lobby',
     // Clear game-specific state when returning to lobby
     board: data.board || [],
@@ -220,6 +231,10 @@ export const useGameStore = create<GameState>()(
     board: data.board,
     timer: data.timer,
     players: data.players,
+    boardSize: data.board_size || data.boardSize || 6,
+    gameMode: data.game_mode || data.gameMode || 'classic',
+    modeSettings: data.mode_settings || data.modeSettings || {},
+    targetWords: data.target_words || data.targetWords || [],
     challenges: data.challenges || [],
   }),
   setWordResult: (result) => {

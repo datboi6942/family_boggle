@@ -1,0 +1,46 @@
+import { useGameStore } from '../stores/gameStore';
+import { useShallow } from 'zustand/react/shallow';
+
+export const TargetWordsDisplay = () => {
+  const { targetWords, players, playerId } = useGameStore(
+    useShallow(state => ({
+      targetWords: state.targetWords,
+      players: state.players,
+      playerId: state.playerId,
+    }))
+  );
+
+  if (targetWords.length === 0) {
+    return null;
+  }
+
+  const currentPlayer = players.find(p => p.id === playerId);
+  const foundWords = currentPlayer?.found_words || [];
+
+  return (
+    <div className="frosted-glass p-4 mb-4">
+      <h3 className="text-center font-bold text-primary mb-2">TARGET WORDS</h3>
+      <div className="grid grid-cols-2 gap-2">
+        {targetWords.map(word => {
+          const isFound = foundWords.includes(word.toUpperCase());
+          return (
+            <div
+              key={word}
+              className={`p-3 rounded-xl text-center transition-all ${isFound ? 'bg-success/20 border-2 border-success' : 'bg-white/5 border border-white/10'}`}
+            >
+              <p className={`font-bold ${isFound ? 'text-success' : 'text-white'}`}>
+                {word.toUpperCase()}
+              </p>
+              <p className="text-xs text-white/50">
+                {isFound ? 'FOUND!' : `${word.length} letters`}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-white/30 mt-3 text-center">
+        Find target words for bonus points!
+      </p>
+    </div>
+  );
+};

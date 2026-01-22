@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 
 
 class PlayerModel(BaseModel):
@@ -14,6 +15,7 @@ class PlayerModel(BaseModel):
     bonus_time: int = 0  # Extra time from freeze powerup
     is_time_up: bool = False  # Whether this player's time has run out
     wants_play_again: bool = False  # Whether player clicked "Play Again" on summary
+    team_id: Optional[str] = None  # Team assignment for team play mode
 
 
 class GameStateModel(BaseModel):
@@ -27,6 +29,9 @@ class GameStateModel(BaseModel):
     players: list[PlayerModel] = []
     host_id: str
     challenges: list[dict] = []
+    game_mode: str = "classic"  # classic, team, timed_attack, word_race
+    mode_settings: dict = {}  # Mode-specific configuration
+    target_words: list[str] = []  # Target words for word race mode
 
 
 class WordSubmission(BaseModel):
