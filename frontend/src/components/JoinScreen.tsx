@@ -7,13 +7,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Leaderboard } from './Leaderboard';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { QrCode, X } from 'lucide-react';
+import { LoginModal } from './LoginModal';
+import { RegisterModal } from './RegisterModal';
+import { UserProfile } from './UserProfile';
 
 export const JoinScreen = () => {
-  const { setUsername, setCharacter, setLobbyId, setPlayerId, setStatus, setMode, username, character } = useGameStore();
+  const { setUsername, setCharacter, setLobbyId, setPlayerId, setStatus, setMode, username, character, authToken } = useGameStore();
   const audio = useAudioContext();
   const [lobbyInput, setLobbyInput] = useState('');
   const [showScanner, setShowScanner] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
   const musicStartedRef = useRef(false);
 
   // Restore scroll state when entering join screen (game locks scroll)
@@ -134,6 +139,27 @@ export const JoinScreen = () => {
       onClick={startMusicOnInteraction}
       onTouchStart={startMusicOnInteraction}
     >
+      {/* Auth UI */}
+      <div className="absolute top-4 right-4 z-10">
+        <UserProfile />
+        {!authToken && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="px-4 py-2 bg-white/5 border border-white/20 rounded-xl hover:bg-white/10 transition-colors text-sm"
+            >
+              Login
+            </button>
+            <button
+              onClick={() => setShowRegisterModal(true)}
+              className="px-4 py-2 bg-primary rounded-xl hover:bg-primary/80 transition-colors text-sm"
+            >
+              Register
+            </button>
+          </div>
+        )}
+      </div>
+
       <motion.h1
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -304,6 +330,25 @@ export const JoinScreen = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+    {/* Authentication Modals */}
+    <LoginModal
+      isOpen={showLoginModal}
+      onClose={() => setShowLoginModal(false)}
+      onSwitchToRegister={() => {
+        setShowLoginModal(false);
+        setShowRegisterModal(true);
+      }}
+    />
+    <RegisterModal
+      isOpen={showRegisterModal}
+      onClose={() => setShowRegisterModal(false)}
+      onSwitchToLogin={() => {
+        setShowRegisterModal(false);
+        setShowLoginModal(true);
+      }}
+    />
+
     </div>
   );
 };

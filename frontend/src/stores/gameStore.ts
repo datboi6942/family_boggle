@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const API_BASE = '/api';
+
 interface Player {
   id: string;
   username: string;
@@ -10,6 +12,23 @@ interface Player {
   powerups: string[];
   team_id?: string;
   found_words: string[];
+}
+
+interface User {
+  id: number;
+  username: string;
+  email?: string;
+  created_at?: string;
+  last_login?: string;
+  stats?: {
+    total_games_played: number;
+    total_score: number;
+    best_score: number;
+    total_wins: number;
+    total_challenges_completed: number;
+    win_rate: number;
+    avg_score: number;
+  };
 }
 
 // State that gets persisted to sessionStorage
@@ -30,6 +49,8 @@ interface PersistedState {
   isTimeUp: boolean;  // Whether current player's time has run out
   players: Player[];
   hostId: string | null;
+  authToken: string | null;
+  user: User | null;
 }
 
 interface WordAward {
@@ -114,6 +135,14 @@ interface GameState extends PersistedState {
   setBoard: (board: string[][]) => void;
   addBonusTime: (seconds: number) => void;
 
+  // Authentication Actions
+  login: (username: string, password: string) => Promise<{ success: boolean; message: string }>;
+  register: (username: string, password: string, email?: string) => Promise<{ success: boolean; message: string }>;
+  logout: () => void;
+  getProfile: () => Promise<{ success: boolean; user?: User; message?: string }>;
+  getStats: () => Promise<{ success: boolean; stats?: User['stats']; message?: string }>;
+  linkIpAccount: () => Promise<{ success: boolean; message: string }>;
+
   // Actions
   setLobbyId: (id: string) => void;
   setPlayerId: (id: string) => void;
@@ -140,7 +169,7 @@ let blockedTimeout: ReturnType<typeof setTimeout> | null = null;
 
 export const useGameStore = create<GameState>()(
   persist<GameState, [], [], PersistedState>(
-    (set) => ({
+    (set, get) => ({
   lobbyId: null,
   playerId: null,
   username: '',
@@ -157,6 +186,8 @@ export const useGameStore = create<GameState>()(
   isTimeUp: false,
   players: [],
   hostId: null,
+  authToken: null,
+  user: null,
   lastWordResult: null,
   winner: null,
   results: null,
@@ -196,6 +227,113 @@ export const useGameStore = create<GameState>()(
   setBoard: (board) => set({ board }),
 
   addBonusTime: (seconds) => set((state) => ({ timer: state.timer + seconds })),
+
+  // Authentication Actions
+  login: async (username, password) => {
+    try {
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        set({ authToken: data.access_token, user: data.user });
+        return { success: true, message: data.message || 'Login successful' };
+      } else {
+        return { success: false, message: data.detail || 'Login failed' };
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      return { success: false, message: 'Network error' };
+    }
+  },
+  register: async (username, password, email) => {
+    try {
+      const response = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, email }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        set({ authToken: data.access_token, user: data.user });
+        return { success: true, message: data.message || 'Registration successful' };
+      } else {
+        return { success: false, message: data.detail || 'Registration failed' };
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      return { success: false, message: 'Network error' };
+    }
+  },
+  logout: () => set({ authToken: null, user: null }),
+  getProfile: async () => {
+    const state = get();
+    if (!state.authToken) {
+      return { success: false, message: 'Not authenticated' };
+    }
+    try {
+      const response = await fetch(`${API_BASE}/auth/profile`, {
+        headers: { Authorization: `Bearer ${state.authToken}` },
+      });
+      const data = await response.json();
+      if (response.ok) {
+        set({ user: data });
+        return { success: true, user: data };
+      } else {
+        return { success: false, message: data.detail || 'Failed to fetch profile' };
+      }
+    } catch (error) {
+      console.error('Get profile error:', error);
+      return { success: false, message: 'Network error' };
+    }
+  },
+  getStats: async () => {
+    const state = get();
+    if (!state.authToken) {
+      return { success: false, message: 'Not authenticated' };
+    }
+    try {
+      const response = await fetch(`${API_BASE}/auth/stats`, {
+        headers: { Authorization: `Bearer ${state.authToken}` },
+      });
+      const data = await response.json();
+      if (response.ok) {
+        // Update user stats in store
+        if (state.user) {
+          set({ user: { ...state.user, stats: data } });
+        }
+        return { success: true, stats: data };
+      } else {
+        return { success: false, message: data.detail || 'Failed to fetch stats' };
+      }
+    } catch (error) {
+      console.error('Get stats error:', error);
+      return { success: false, message: 'Network error' };
+    }
+  },
+  linkIpAccount: async () => {
+    const state = get();
+    if (!state.authToken) {
+      return { success: false, message: 'Not authenticated' };
+    }
+    try {
+      const response = await fetch(`${API_BASE}/auth/link-ip`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${state.authToken}` },
+      });
+      const data = await response.json();
+      if (response.ok) {
+        return { success: true, message: data.message || 'Account linked successfully' };
+      } else {
+        return { success: false, message: data.detail || 'Failed to link account' };
+      }
+    } catch (error) {
+      console.error('Link IP account error:', error);
+      return { success: false, message: 'Network error' };
+    }
+  },
 
   setLobbyId: (id) => set({ lobbyId: id }),
   setPlayerId: (id) => set({ playerId: id }),
@@ -406,11 +544,16 @@ export const useGameStore = create<GameState>()(
         status: state.status,
         board: state.board,
         boardSize: state.boardSize,
+        gameMode: state.gameMode,
+        modeSettings: state.modeSettings,
+        targetWords: state.targetWords,
         timer: state.timer,
         bonusTime: state.bonusTime,
         isTimeUp: state.isTimeUp,
         players: state.players,
         hostId: state.hostId,
+        authToken: state.authToken,
+        user: state.user,
       }),
     }
   )
