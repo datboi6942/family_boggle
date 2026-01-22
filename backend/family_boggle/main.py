@@ -12,6 +12,13 @@ from family_boggle.models import GameStateModel, WordSubmission
 from family_boggle.websocket_manager import manager
 from family_boggle.auth import user_manager, verify_token, create_access_token
 
+# Rate limiting for login attempts
+import time
+from collections import defaultdict
+
+login_attempts = defaultdict(list)
+MAX_ATTEMPTS_PER_MINUTE = 5
+
 # Setup structured logging
 structlog.configure(
     processors=[
@@ -25,7 +32,7 @@ app = FastAPI(title=settings.APP_NAME)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS else [],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -92,6 +99,28 @@ async def player_stats(request: Request):
 @app.post("/api/auth/register")
 async def register_user(request: Request):
     """Registers a new user account."""
+    # Rate limiting for registration
+    client_ip = request.client.host if request.client else "unknown"
+    register_key = f"register:{client_ip}"
+    now = time.time()
+    
+    # Clean old attempts (older than 1 minute)
+    if register_key in login_attempts:
+        login_attempts[register_key] = [
+            attempt_time for attempt_time in login_attempts[register_key]
+            if now - attempt_time < 60
+        ]
+    
+    # Check if exceeded limit (3 registrations per minute)
+    if len(login_attempts.get(register_key, [])) >= 3:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many registration attempts. Please try again later."
+        )
+    
+    # Record this attempt
+    login_attempts[register_key].append(now)
+    
     data = await request.json()
     username = data.get("username")
     password = data.get("password")
@@ -103,6 +132,13 @@ async def register_user(request: Request):
             detail="Username and password are required"
         )
     
+    # Password validation
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters"
+        )
+    
     success, message = user_manager.register_user(username, password, email)
     if not success:
         raise HTTPException(
@@ -110,12 +146,54 @@ async def register_user(request: Request):
             detail=message
         )
     
-    return {"success": True, "message": message}
+    # Auto-login after successful registration
+    user_data, auth_message = user_manager.authenticate_user(username, password)
+    if user_data is None:
+        # This shouldn't happen but handle gracefully
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration succeeded but auto-login failed"
+        )
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": str(user_data["id"])})
+    
+    # Remove successful registration attempt from rate limiting
+    if register_key in login_attempts and login_attempts[register_key]:
+        login_attempts[register_key].pop()
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user_data,
+        "message": message
+    }
 
 
 @app.post("/api/auth/login")
 async def login_user(request: Request):
     """Authenticates a user and returns JWT token."""
+    # Rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    
+    # Clean old attempts (older than 1 minute)
+    if client_ip in login_attempts:
+        login_attempts[client_ip] = [
+            attempt_time for attempt_time in login_attempts[client_ip]
+            if now - attempt_time < 60
+        ]
+    
+    # Check if exceeded limit
+    if len(login_attempts.get(client_ip, [])) >= MAX_ATTEMPTS_PER_MINUTE:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please try again later."
+        )
+    
+    # Record this attempt
+    login_attempts[client_ip].append(now)
+    
     data = await request.json()
     username = data.get("username")
     password = data.get("password")
@@ -135,6 +213,10 @@ async def login_user(request: Request):
     
     # Create access token
     access_token = create_access_token(data={"sub": str(user_data["id"])})
+    
+    # Remove successful attempt from rate limiting
+    if client_ip in login_attempts and login_attempts[client_ip]:
+        login_attempts[client_ip].pop()
     
     return {
         "access_token": access_token,

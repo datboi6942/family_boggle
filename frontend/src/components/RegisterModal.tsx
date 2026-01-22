@@ -34,8 +34,8 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }: RegisterModa
       return;
     }
     
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
       return;
     }
 
@@ -136,7 +136,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }: RegisterModa
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full p-3 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary"
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
                     disabled={isLoading}
                     autoComplete="new-password"
                   />

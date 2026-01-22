@@ -14,10 +14,13 @@ class Settings(BaseSettings):
     GAME_DURATION_SECONDS: int = 180  # 3 minutes
 
     # Authentication settings
-    SECRET_KEY: str = "your-secret-key-here-change-in-production"
+    SECRET_KEY: str = ""  # Must be set via BOGGLE_SECRET_KEY environment variable
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     DATABASE_URL: str = "sqlite:///./family_boggle.db"
+    
+    # CORS settings
+    ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:2727"  # Frontend dev/prod ports
 
     class Config:
         env_prefix = "BOGGLE_"
