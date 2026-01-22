@@ -602,7 +602,8 @@ export const GameBoard = () => {
       console.log('Playing freeze sound');
       audioRef.current.playPowerupFreeze();
     }
-   }, [isFrozen, timer, bonusTime]);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [isFrozen]);
 
   useEffect(() => {
     if (blockedCells.length > 0) {
