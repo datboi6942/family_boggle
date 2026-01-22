@@ -1,14 +1,16 @@
 import asyncio
 
 import structlog
-from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from family_boggle.config import settings
 from family_boggle.game_engine import game_engine
 from family_boggle.high_scores import get_leaderboard, get_player_stats, ip_tracker
 from family_boggle.models import GameStateModel, WordSubmission
 from family_boggle.websocket_manager import manager
+from family_boggle.auth import user_manager, verify_token, create_access_token
 
 # Setup structured logging
 structlog.configure(
@@ -27,7 +29,36 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
+ )
+
+# Authentication
+security = HTTPBearer()
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Validates JWT token and returns user data."""
+    token = credentials.credentials
+    payload = verify_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = user_manager.get_user_by_id(int(user_id))
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
 
 
 @app.get("/health")
@@ -57,6 +88,99 @@ async def player_stats(request: Request):
     return {"stats": stats, "is_new_player": False}
 
 
+# Authentication endpoints
+@app.post("/api/auth/register")
+async def register_user(request: Request):
+    """Registers a new user account."""
+    data = await request.json()
+    username = data.get("username")
+    password = data.get("password")
+    email = data.get("email")
+    
+    if not username or not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username and password are required"
+        )
+    
+    success, message = user_manager.register_user(username, password, email)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
+        )
+    
+    return {"success": True, "message": message}
+
+
+@app.post("/api/auth/login")
+async def login_user(request: Request):
+    """Authenticates a user and returns JWT token."""
+    data = await request.json()
+    username = data.get("username")
+    password = data.get("password")
+    
+    if not username or not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username and password are required"
+        )
+    
+    user_data, message = user_manager.authenticate_user(username, password)
+    if user_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=message
+        )
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": str(user_data["id"])})
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user_data
+    }
+
+
+@app.get("/api/auth/profile")
+async def get_user_profile(current_user: dict = Depends(get_current_user)):
+    """Returns the current user's profile."""
+    return {"user": current_user}
+
+
+@app.get("/api/auth/stats")
+async def get_user_stats(current_user: dict = Depends(get_current_user)):
+    """Returns the current user's game statistics."""
+    stats = user_manager.get_user_stats(current_user["id"])
+    if stats is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User statistics not found"
+        )
+    return {"stats": stats}
+
+
+@app.post("/api/auth/link-ip")
+async def link_ip_to_account(request: Request, current_user: dict = Depends(get_current_user)):
+    """Links current IP address to user account for anonymous play migration."""
+    # Get client IP
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+    else:
+        ip = request.client.host if request.client else "unknown"
+    
+    success = user_manager.link_ip_to_user(ip, current_user["id"])
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to link IP address"
+        )
+    
+    return {"success": True, "message": f"IP {ip} linked to account"}
+
+
 def get_client_ip(websocket: WebSocket) -> str:
     """Extract client IP from WebSocket connection."""
     # Check for forwarded headers (for proxied connections)
@@ -78,15 +202,36 @@ async def websocket_endpoint(
     username: str = Query(...),
     character: str = Query(...),
     mode: str = Query(default="join"),
+    token: str = Query(None),
 ):
     await manager.connect(websocket, lobby_id)
 
     # Get client IP for high score tracking
     client_ip = get_client_ip(websocket)
-    logger.info("client_connected", player_id=player_id, ip=client_ip)
+    
+    # Validate token if provided
+    user_id = None
+    if token:
+        payload = verify_token(token)
+        if payload:
+            user_id_str = payload.get("sub")
+            if user_id_str:
+                try:
+                    user_id = int(user_id_str)
+                    # Verify user exists
+                    user = user_manager.get_user_by_id(user_id)
+                    if not user:
+                        user_id = None
+                        logger.warning("token_user_not_found", player_id=player_id, user_id=user_id_str)
+                except (ValueError, TypeError):
+                    logger.warning("invalid_user_id_in_token", player_id=player_id, user_id=user_id_str)
+        else:
+            logger.warning("invalid_token_provided", player_id=player_id)
+    
+    logger.info("client_connected", player_id=player_id, ip=client_ip, has_user=user_id is not None)
 
-    # Register player IP for high score tracking
-    ip_tracker.register_player(player_id, client_ip)
+    # Register player IP and optional user for high score tracking
+    ip_tracker.register_player(player_id, client_ip, user_id)
 
     # Handle create vs join modes
     lobby_exists = lobby_id in game_engine.lobbies
@@ -499,6 +644,18 @@ async def run_game_loop(lobby_id: str):
                         words_count=len(result.get("words", [])),
                         is_winner=(player_id == winner_id),
                         challenges_completed=result.get("challenges_completed", 0),
+                    )
+                
+                # Also update user stats if player is logged in
+                user_id = ip_tracker.get_player_user(player_id)
+                if user_id:
+                    user_manager.update_user_stats(
+                        user_id,
+                        {
+                            "score": result.get("score", 0),
+                            "is_winner": (player_id == winner_id),
+                            "challenges_completed": result.get("challenges_completed", 0),
+                        }
                     )
 
         await manager.broadcast(lobby_id, {"type": "game_end", "data": summary})
