@@ -1,9 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useGameStore } from '../stores/gameStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useAudioContext } from '../contexts/AudioContext';
 import { Users, UserPlus, UserMinus, X } from 'lucide-react';
+
+interface FriendRequest {
+  id: number;
+  sender_id: number;
+  receiver_id: number;
+  sender_username: string;
+  receiver_username: string;
+  status: 'pending' | 'accepted' | 'rejected';
+}
 
 export const FriendListPanel = ({ onClose }: { onClose?: () => void }) => {
   const { friends, friendRequests, loadFriends, loadFriendRequests, sendFriendRequest, removeFriend, authToken, user } = useGameStore(
@@ -25,27 +34,20 @@ export const FriendListPanel = ({ onClose }: { onClose?: () => void }) => {
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
 
-  // Simple HTML escaping for defense in depth (React already escapes)
-  const escapeHtml = (text: string): string => {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  };
-
-  useEffect(() => {
-    if (authToken) {
-      refreshFriends();
-    }
-  }, [authToken]);
-
-  const refreshFriends = async () => {
+  const refreshFriends = useCallback(async () => {
     setIsLoading(true);
     await Promise.all([
       loadFriends(),
       loadFriendRequests('pending')
     ]);
     setIsLoading(false);
-  };
+  }, [loadFriends, loadFriendRequests, setIsLoading]);
+
+  useEffect(() => {
+    if (authToken) {
+      refreshFriends();
+    }
+  }, [authToken, refreshFriends]);
 
   const handleSendRequest = async () => {
     if (!newFriendUsername.trim()) return;
@@ -218,7 +220,7 @@ export const FriendListPanel = ({ onClose }: { onClose?: () => void }) => {
                     <Users size={18} className="text-primary/70" />
                   </div>
                   <div>
-                     <div className="font-bold text-white">{escapeHtml(friend.username)}</div>
+                     <div className="font-bold text-white">{friend.username}</div>
                     <div className="text-xs text-white/50">
                       Friends since {new Date(friend.friends_since).toLocaleDateString()}
                     </div>
@@ -241,7 +243,7 @@ export const FriendListPanel = ({ onClose }: { onClose?: () => void }) => {
 };
 
 interface FriendRequestItemProps {
-  request: any;
+  request: FriendRequest;
   type: 'incoming' | 'outgoing';
   onAction: () => void;
 }
@@ -251,12 +253,7 @@ const FriendRequestItem = ({ request, type, onAction }: FriendRequestItemProps) 
   const audio = useAudioContext();
   const [isResponding, setIsResponding] = useState(false);
 
-  // Simple HTML escaping for defense in depth (React already escapes)
-  const escapeHtml = (text: string): string => {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  };
+
 
   const handleRespond = async (action: 'accept' | 'reject') => {
     audio.playButtonClick();
@@ -270,7 +267,7 @@ const FriendRequestItem = ({ request, type, onAction }: FriendRequestItemProps) 
     <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl">
       <div>
         <div className="font-bold text-white">
-{type === 'incoming' ? escapeHtml(request.sender_username) : escapeHtml(request.receiver_username)}
+{type === 'incoming' ? request.sender_username : request.receiver_username}
         </div>
         <div className="text-xs text-white/50">
           {type === 'incoming' ? 'Sent you a friend request' : 'Request sent'}

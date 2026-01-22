@@ -18,13 +18,6 @@ export const Chat = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Simple HTML escaping for defense in depth (React already escapes)
-  const escapeHtml = (text: string): string => {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  };
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -82,7 +75,7 @@ export const Chat = () => {
                     : 'bg-white/10 border border-white/10 text-white'
                     }`}
                 >
-{escapeHtml(msg.text)}
+{msg.text}
                 </div>
               </motion.div>
             );
