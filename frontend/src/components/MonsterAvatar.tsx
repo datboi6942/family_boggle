@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useId, useMemo } from 'react';
-import { MonsterConfig, MONSTERS } from './monsterConfig';
+import type { MonsterConfig } from './monsterConfig';
+import { MONSTERS } from './monsterConfig';
 
 
 const getBodyPath = (shape: MonsterConfig['shape']): string => {
