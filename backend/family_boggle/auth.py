@@ -422,10 +422,10 @@ class UserManager:
             if sender_id == receiver_id:
                 return False, "Cannot send friend request to yourself"
 
-            # Check if friend request already exists (pending)
+            # Check if friend request already exists in either direction
             cursor.execute(
-                "SELECT id FROM friend_requests WHERE sender_id = ? AND receiver_id = ? AND status = 'pending'",
-                (sender_id, receiver_id)
+                "SELECT id FROM friend_requests WHERE ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)) AND status = 'pending'",
+                (sender_id, receiver_id, receiver_id, sender_id)
             )
             if cursor.fetchone():
                 return False, "Friend request already sent"

@@ -13,6 +13,7 @@ from family_boggle.websocket_manager import manager
 from family_boggle.auth import user_manager, verify_token, create_access_token
 
 # Rate limiting for login attempts
+import re
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -646,6 +647,20 @@ async def websocket_endpoint(
                 text = msg_data.get("text", "").strip()
                 # Validate message length and content
                 if not text or len(text) > 200:
+                    continue
+                # Sanitize content: remove HTML tags, check for XSS patterns
+                # Remove HTML tags
+                text = re.sub(r'<[^>]*>', '', text)
+                # Remove script tags and javascript: URLs
+                if re.search(r'javascript:', text, re.IGNORECASE) or re.search(r'<script', text, re.IGNORECASE):
+                    continue
+                # Remove control characters (except newline and tab)
+                text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
+                # Limit excessive special characters (more than 5 consecutive)
+                if re.search(r'[!@#$%^&*()_+=\[\]{}|;:",.<>?/\\~`-]{6,}', text):
+                    continue
+                # Final check after sanitization
+                if not text.strip():
                     continue
                 await manager.broadcast(
                     lobby_id,

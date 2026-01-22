@@ -25,6 +25,13 @@ export const FriendListPanel = ({ onClose }: { onClose?: () => void }) => {
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
 
+  // Simple HTML escaping for defense in depth (React already escapes)
+  const escapeHtml = (text: string): string => {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  };
+
   useEffect(() => {
     if (authToken) {
       refreshFriends();
@@ -211,7 +218,7 @@ export const FriendListPanel = ({ onClose }: { onClose?: () => void }) => {
                     <Users size={18} className="text-primary/70" />
                   </div>
                   <div>
-                    <div className="font-bold text-white">{friend.username}</div>
+                     <div className="font-bold text-white">{escapeHtml(friend.username)}</div>
                     <div className="text-xs text-white/50">
                       Friends since {new Date(friend.friends_since).toLocaleDateString()}
                     </div>
@@ -244,6 +251,13 @@ const FriendRequestItem = ({ request, type, onAction }: FriendRequestItemProps) 
   const audio = useAudioContext();
   const [isResponding, setIsResponding] = useState(false);
 
+  // Simple HTML escaping for defense in depth (React already escapes)
+  const escapeHtml = (text: string): string => {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  };
+
   const handleRespond = async (action: 'accept' | 'reject') => {
     audio.playButtonClick();
     setIsResponding(true);
@@ -256,7 +270,7 @@ const FriendRequestItem = ({ request, type, onAction }: FriendRequestItemProps) 
     <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl">
       <div>
         <div className="font-bold text-white">
-          {type === 'incoming' ? request.sender_username : request.receiver_username}
+{type === 'incoming' ? escapeHtml(request.sender_username) : escapeHtml(request.receiver_username)}
         </div>
         <div className="text-xs text-white/50">
           {type === 'incoming' ? 'Sent you a friend request' : 'Request sent'}
