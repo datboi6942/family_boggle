@@ -56,9 +56,32 @@ const MUSIC = {
 let audioContext: AudioContext | null = null;
 const bufferCache: Map<string, AudioBuffer> = new Map();
 const loadingPromises: Map<string, Promise<AudioBuffer | null>> = new Map();
+const MAX_CACHE_SIZE = 50; // Limit cache to prevent memory leaks
 
 // Track if audio context has been resumed (required on mobile)
 let audioContextResumed = false;
+
+// LRU cache management
+function getCachedBuffer(src: string): AudioBuffer | undefined {
+  const buffer = bufferCache.get(src);
+  if (buffer) {
+    // Move to end (most recently used) by re-inserting
+    bufferCache.delete(src);
+    bufferCache.set(src, buffer);
+  }
+  return buffer;
+}
+
+function setCachedBuffer(src: string, buffer: AudioBuffer): void {
+  bufferCache.set(src, buffer);
+  // Evict oldest entries if cache exceeds limit
+  while (bufferCache.size > MAX_CACHE_SIZE) {
+    const firstKey = bufferCache.keys().next().value;
+    if (firstKey) {
+      bufferCache.delete(firstKey);
+    }
+  }
+}
 
 // Get or create AudioContext
 function getAudioContext(): AudioContext {
@@ -90,9 +113,10 @@ async function resumeAudioContext(): Promise<void> {
 
 // Load an audio file into an AudioBuffer
 async function loadAudioBuffer(src: string): Promise<AudioBuffer | null> {
-  // Return cached buffer if available
-  if (bufferCache.has(src)) {
-    return bufferCache.get(src)!;
+  // Return cached buffer if available (with LRU update)
+  const cachedBuffer = getCachedBuffer(src);
+  if (cachedBuffer) {
+    return cachedBuffer;
   }
 
   // Return existing promise if already loading
@@ -111,7 +135,7 @@ async function loadAudioBuffer(src: string): Promise<AudioBuffer | null> {
       const arrayBuffer = await response.arrayBuffer();
       const ctx = getAudioContext();
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      bufferCache.set(src, audioBuffer);
+       setCachedBuffer(src, audioBuffer);
       return audioBuffer;
     } catch (e) {
       console.warn(`Failed to load audio: ${src}`, e);
@@ -158,7 +182,7 @@ function playBuffer(buffer: AudioBuffer, volume: number = 1.0): AudioBufferSourc
 function playSfxSync(src: string, volume: number, isMuted: boolean): void {
   if (isMuted) return;
 
-  const buffer = bufferCache.get(src);
+  const buffer = getCachedBuffer(src);
   if (buffer) {
     // Buffer is cached - play immediately with no async overhead
     playBuffer(buffer, volume);
@@ -486,6 +510,18 @@ export function useAudio(): AudioManager {
 
   const resumeMusic = useCallback(() => {
     currentMusicRef.current?.play().catch(() => {});
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (crossfadeIntervalRef.current) {
+        clearInterval(crossfadeIntervalRef.current);
+        crossfadeIntervalRef.current = null;
+      }
+      // Note: we don't stop music here as it might be shared across components
+      // The audio context is global and doesn't need to be closed
+    };
   }, []);
 
   return {

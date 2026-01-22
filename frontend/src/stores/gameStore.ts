@@ -238,26 +238,32 @@ export const useGameStore = create<GameState>()(
     allPossibleWords: data.all_possible_words || null,
     totalPossibleWords: data.total_possible_words || 0
   }),
-  setPowerup: (data: any, myPlayerId?: string) => {
+   setPowerup: (data: any, myPlayerId?: string) => {
+    console.log('setPowerup called', { data, myPlayerId });
     if (data.type === 'freeze') {
       // Only the player who used freeze gets the freeze effect
-      // Don't apply freeze if game is already over (waiting/summary status or isTimeUp)
-      if (data.player_id === myPlayerId) {
+       // Don't apply freeze if game is already over (waiting/summary status or isTimeUp)
+        const freezePlayerId = data.player_id || data.by;
+        console.log('Freeze powerup received', { player_id: data.player_id, by: data.by, freezePlayerId, myPlayerId });
+        if (freezePlayerId === myPlayerId) {
         if (freezeTimeout) clearTimeout(freezeTimeout);
-        set((state) => {
-          // Ignore freeze if player's time is already up or game is ending
-          if (state.isTimeUp || state.status === 'waiting' || state.status === 'summary') {
-            return state; // No changes
-          }
-          // Add bonus time from freeze (extends game time after main timer ends)
-          const bonusSeconds = data.bonus_seconds || 10;
-          return {
-            isFrozen: true,
-            frozenTimerValue: state.timer,  // Capture current timer to display while frozen
-            bonusTime: state.bonusTime + bonusSeconds,  // Accumulate bonus time from freeze
-          };
-        });
-        // After 10 seconds, unfreeze and clear the frozen timer value
+         set((state) => {
+           // Ignore freeze if player's time is already up or game is ending
+           if (state.isTimeUp || state.status === 'waiting' || state.status === 'summary') {
+             console.log('Freeze ignored - game already ending', state);
+             return state; // No changes
+           }
+            // Add bonus time from freeze (extends game time after main timer ends)
+            const bonusSeconds = data.bonus_seconds || 10;
+            const newBonusTime = data.bonus_time !== undefined ? data.bonus_time : state.bonusTime + bonusSeconds;
+            console.log('Applying freeze', { bonusSeconds, newBonusTime, currentTimer: state.timer, currentBonusTime: state.bonusTime });
+            return {
+              isFrozen: true,
+              frozenTimerValue: state.timer,  // Capture current timer to display while frozen
+              bonusTime: newBonusTime,  // Use backend-provided bonus time or accumulate
+            };
+         });
+         // After 10 seconds, unfreeze and clear the frozen timer value
         freezeTimeout = setTimeout(() => set({ isFrozen: false, frozenTimerValue: null }), 10000);
       }
     } else if (data.type === 'blowup') {
@@ -316,34 +322,50 @@ export const useGameStore = create<GameState>()(
   setPlayAgainUpdate: (data: any) => {
     set({ playersWantingPlayAgain: data.players_ready || [] });
   },
-  resetSession: () => set({
-    lobbyId: null,
-    playerId: null,
-    mode: null,
-    status: 'join',
-    board: [],
-    timer: 0,
-    bonusTime: 0,
-    isTimeUp: false,
-    players: [],
-    hostId: null,
-    lastWordResult: null,
-    winner: null,
-    results: null,
-    wordAwards: null,
-    longestWordFound: null,
-    longestPossibleWord: null,
-    allPossibleWords: null,
-    totalPossibleWords: 0,
-    challenges: [],
-    blockedCells: [],
-    isFrozen: false,
-    frozenTimerValue: null,
-    isLockArmed: false,
-    lockJustConsumed: false,
-    playersStillPlaying: [],
-    playersWantingPlayAgain: [],
-  }),
+  resetSession: () => {
+    // Clear any pending timeouts to prevent memory leaks
+    if (wordResultTimeout) {
+      clearTimeout(wordResultTimeout);
+      wordResultTimeout = null;
+    }
+    if (freezeTimeout) {
+      clearTimeout(freezeTimeout);
+      freezeTimeout = null;
+    }
+    if (blockedTimeout) {
+      clearTimeout(blockedTimeout);
+      blockedTimeout = null;
+    }
+    
+    return set({
+      lobbyId: null,
+      playerId: null,
+      mode: null,
+      status: 'join',
+      board: [],
+      timer: 0,
+      bonusTime: 0,
+      isTimeUp: false,
+      players: [],
+      hostId: null,
+      lastWordResult: null,
+      winner: null,
+      results: null,
+      wordAwards: null,
+      longestWordFound: null,
+      longestPossibleWord: null,
+      allPossibleWords: null,
+      totalPossibleWords: 0,
+      challenges: [],
+      blockedCells: [],
+      isFrozen: false,
+      frozenTimerValue: null,
+      isLockArmed: false,
+      lockJustConsumed: false,
+      playersStillPlaying: [],
+      playersWantingPlayAgain: [],
+    });
+  },
 }),
     {
       name: 'boggle-session',

@@ -1,69 +1,68 @@
-import asyncio
 import random
 import uuid
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any
+
 import structlog
 
 from family_boggle.board import BoggleBoard
+from family_boggle.challenges import challenge_manager
 from family_boggle.dictionary import DictionaryValidator
-from family_boggle.scoring import calculate_word_score
 from family_boggle.models import GameStateModel, PlayerModel, WordSubmission
+from family_boggle.powerups import powerup_manager
+from family_boggle.scoring import calculate_word_score
 
 logger = structlog.get_logger()
 
-from family_boggle.powerups import powerup_manager
-from family_boggle.challenges import challenge_manager
-
 # Rare letters that grant powerups when used in a word
-RARE_LETTERS = {'J', 'X', 'Q', 'Z'}
+RARE_LETTERS = {"J", "X", "Q", "Z"}
+
 
 class GameEngine:
     """Core logic for managing Boggle game sessions."""
-    
+
     def __init__(self) -> None:
         """Initializes the engine."""
-        self.lobbies: Dict[str, GameStateModel] = {}
+        self.lobbies: dict[str, GameStateModel] = {}
         self.validator = DictionaryValidator()
-        self.board_gen: Optional[BoggleBoard] = None
+        self.board_gen: BoggleBoard | None = None
 
-    def create_lobby(self, host_id: str, host_username: str, host_character: str, lobby_id: Optional[str] = None) -> str:
+    def create_lobby(
+        self,
+        host_id: str,
+        host_username: str,
+        host_character: str,
+        lobby_id: str | None = None,
+    ) -> str:
         """Creates a new game lobby."""
         if not lobby_id:
             lobby_id = str(uuid.uuid4())[:8].upper()
-        
+
         host = PlayerModel(
-            id=host_id,
-            username=host_username,
-            character=host_character,
-            is_ready=False
+            id=host_id, username=host_username, character=host_character, is_ready=False
         )
         self.lobbies[lobby_id] = GameStateModel(
-            lobby_id=lobby_id,
-            status="lobby",
-            host_id=host_id,
-            players=[host]
+            lobby_id=lobby_id, status="lobby", host_id=host_id, players=[host]
         )
         logger.info("lobby_created", lobby_id=lobby_id, host_id=host_id)
         return lobby_id
 
-    def join_lobby(self, lobby_id: str, player_id: str, username: str, character: str) -> bool:
+    def join_lobby(
+        self, lobby_id: str, player_id: str, username: str, character: str
+    ) -> bool:
         """Adds a player to an existing lobby."""
         if lobby_id not in self.lobbies:
             return False
-            
+
         lobby = self.lobbies[lobby_id]
         if len(lobby.players) >= 10:
             return False
-            
+
         # Check if player already in lobby
         if any(p.id == player_id for p in lobby.players):
             return True
-            
+
         new_player = PlayerModel(
-            id=player_id,
-            username=username,
-            character=character,
-            is_ready=False
+            id=player_id, username=username, character=character, is_ready=False
         )
         lobby.players.append(new_player)
         logger.info("player_joined", lobby_id=lobby_id, player_id=player_id)
@@ -73,7 +72,7 @@ class GameEngine:
         """Toggles a player's ready status."""
         if lobby_id not in self.lobbies:
             return False
-            
+
         lobby = self.lobbies[lobby_id]
         for p in lobby.players:
             if p.id == player_id:
@@ -85,7 +84,7 @@ class GameEngine:
         """Starts the game if all players are ready."""
         if lobby_id not in self.lobbies:
             return False
-            
+
         lobby = self.lobbies[lobby_id]
         if not all(p.is_ready for p in lobby.players):
             return False
@@ -97,15 +96,17 @@ class GameEngine:
         lobby.board = self.board_gen.grid
         lobby.status = "countdown"
         lobby.timer = 3  # 3-2-1 countdown
-        
+
         # Set up challenges for this game
         challenges = challenge_manager.setup_game_challenges(lobby_id)
         lobby.challenges = challenges
-        
+
         logger.info("game_countdown_started", lobby_id=lobby_id)
         return True
 
-    def _is_word_on_board(self, word: str, path: List[Tuple[int, int]], board: List[List[str]]) -> bool:
+    def _is_word_on_board(
+        self, word: str, path: list[tuple[int, int]], board: list[list[str]]
+    ) -> bool:
         """Validates if a word is present on a given board following a path.
 
         Args:
@@ -120,7 +121,7 @@ class GameEngine:
             return False
 
         size = len(board)
-        used_cells: Set[Tuple[int, int]] = set()
+        used_cells: set[tuple[int, int]] = set()
 
         for i, (r, c) in enumerate(path):
             if not (0 <= r < size and 0 <= c < size):
@@ -132,7 +133,7 @@ class GameEngine:
 
             # Check adjacency if not the first letter
             if i > 0:
-                prev_r, prev_c = path[i-1]
+                prev_r, prev_c = path[i - 1]
                 if abs(r - prev_r) > 1 or abs(c - prev_c) > 1:
                     return False
 
@@ -140,9 +141,10 @@ class GameEngine:
 
         return True
 
-    def submit_word(self, lobby_id: str, player_id: str, submission: WordSubmission) -> dict:
+    async def submit_word(
+        self, lobby_id: str, player_id: str, submission: WordSubmission
+    ) -> dict[str, Any]:
         """Handles a word submission from a player."""
-        from family_boggle.powerups import powerup_manager
 
         if lobby_id not in self.lobbies:
             return {"valid": False, "reason": "Lobby not found"}
@@ -160,16 +162,18 @@ class GameEngine:
             return {"valid": False, "reason": "Word already found"}
 
         # Get the player's current board (may be different from lobby board if protected by lock)
-        player_board = powerup_manager.get_player_board(lobby_id, player_id, lobby.board)
+        player_board = await powerup_manager.get_player_board(
+            lobby_id, player_id, lobby.board
+        )
 
         # Validate on the player's board
         if not self._is_word_on_board(word, submission.path, player_board):
             return {"valid": False, "reason": "Word not on board"}
-            
+
         # Validate in dictionary
         if not self.validator.is_valid_word(word):
             return {"valid": False, "reason": "Not a valid word"}
-            
+
         # Calculate points (initial, will adjust for uniqueness in summary)
         points = calculate_word_score(word)
         player.score += points
@@ -183,32 +187,40 @@ class GameEngine:
         if len(word) >= 5 or (len(word) >= 3 and has_rare_letter):
             earned_powerup = random.choice(["freeze", "blowup", "shuffle", "lock"])
             player.powerups.append(earned_powerup)
-            logger.info("powerup_earned", player_id=player_id, word=word, powerup=earned_powerup, has_rare=has_rare_letter)
+            logger.info(
+                "powerup_earned",
+                player_id=player_id,
+                word=word,
+                powerup=earned_powerup,
+                has_rare=has_rare_letter,
+            )
 
         return {
             "valid": True,
             "points": points,
             "powerup": earned_powerup,
-            "total_score": player.score
+            "total_score": player.score,
         }
 
-    def finalize_scores(self, lobby_id: str) -> dict:
+    def finalize_scores(self, lobby_id: str) -> dict[str, Any]:
         """Calculates final scores with uniqueness bonuses and word award details."""
         if lobby_id not in self.lobbies:
             return {}
-            
+
         lobby = self.lobbies[lobby_id]
-        
+
         # Get all possible words from the board
-        all_possible_words: List[str] = []
+        all_possible_words: list[str] = []
         longest_possible_word = ""
         if self.board_gen:
             all_possible_words = self.board_gen.find_all_words(self.validator._word_set)
             if all_possible_words:
-                longest_possible_word = all_possible_words[0]  # Already sorted longest first
-        
+                longest_possible_word = all_possible_words[
+                    0
+                ]  # Already sorted longest first
+
         # Count occurrences of each word across all players and track who found them
-        word_data: Dict[str, Dict] = {}
+        word_data: dict[str, dict[str, Any]] = {}
         for p in lobby.players:
             for word in p.found_words:
                 if word not in word_data:
@@ -216,13 +228,15 @@ class GameEngine:
                         "word": word,
                         "finders": [],
                         "is_unique": False,
-                        "points": 0
+                        "points": 0,
                     }
-                word_data[word]["finders"].append({
-                    "player_id": p.id,
-                    "username": p.username,
-                    "character": p.character
-                })
+                word_data[word]["finders"].append(
+                    {
+                        "player_id": p.id,
+                        "username": p.username,
+                        "character": p.character,
+                    }
+                )
 
         # Process each word to determine uniqueness and points
         word_awards = []
@@ -234,22 +248,25 @@ class GameEngine:
 
         # Sort words by length (shortest first) to build excitement
         word_awards.sort(key=lambda x: len(x["word"]))
-        
+
         # Find the longest word any player found
-        longest_word_found = None
+        longest_word_found: dict[str, Any] | None = None
         for p in lobby.players:
             for word in p.found_words:
-                if longest_word_found is None or len(word) > longest_word_found["length"]:
+                if (
+                    longest_word_found is None
+                    or len(word) > longest_word_found["length"]
+                ):
                     longest_word_found = {
                         "word": word,
                         "length": len(word),
                         "player_id": p.id,
                         "username": p.username,
-                        "character": p.character
+                        "character": p.character,
                     }
-                
+
         # Recalculate final results for leaderboard with challenge data
-        final_results = []
+        final_results: list[dict[str, Any]] = []
         for p in lobby.players:
             # Calculate word score
             word_score = 0
@@ -264,7 +281,9 @@ class GameEngine:
             best_challenge = challenge_manager.get_best_challenge_for_player(
                 lobby_id, p.found_words, word_score
             )
-            challenges_completed = sum(1 for c in all_challenges if c.get("completed", False))
+            challenges_completed = sum(
+                1 for c in all_challenges if c.get("completed", False)
+            )
 
             # Calculate challenge score
             challenge_score = challenge_manager.get_total_challenge_points(
@@ -275,19 +294,21 @@ class GameEngine:
             total_score = word_score + challenge_score
             p.score = total_score  # Update player's score
 
-            final_results.append({
-                "player_id": p.id,
-                "username": p.username,
-                "character": p.character,
-                "word_score": word_score,
-                "challenge_score": challenge_score,
-                "total_score": total_score,
-                "score": total_score,  # Keep for backwards compatibility
-                "words": p.found_words,
-                "all_challenges": all_challenges,
-                "best_challenge": best_challenge,
-                "challenges_completed": challenges_completed
-            })
+            final_results.append(
+                {
+                    "player_id": p.id,
+                    "username": p.username,
+                    "character": p.character,
+                    "word_score": word_score,
+                    "challenge_score": challenge_score,
+                    "total_score": total_score,
+                    "score": total_score,  # Keep for backwards compatibility
+                    "words": p.found_words,
+                    "all_challenges": all_challenges,
+                    "best_challenge": best_challenge,
+                    "challenges_completed": challenges_completed,
+                }
+            )
 
         # Clean up challenge data for this game
         challenge_manager.cleanup_game(lobby_id)
@@ -295,34 +316,36 @@ class GameEngine:
         # Sort by total score
         final_results.sort(key=lambda x: x["total_score"], reverse=True)
         return {
-            "results": final_results, 
+            "results": final_results,
             "winner": final_results[0] if final_results else None,
             "word_awards": word_awards,
             "longest_word_found": longest_word_found,
             "longest_possible_word": longest_possible_word,
             "all_possible_words": all_possible_words,
-            "total_possible_words": len(all_possible_words)
+            "total_possible_words": len(all_possible_words),
         }
 
     def leave_lobby(self, lobby_id: str, player_id: str) -> bool:
         """Removes a player from a lobby."""
         if lobby_id not in self.lobbies:
             return False
-            
+
         lobby = self.lobbies[lobby_id]
         lobby.players = [p for p in lobby.players if p.id != player_id]
-        
+
         # If lobby is empty, delete it
         if not lobby.players:
             del self.lobbies[lobby_id]
             logger.info("lobby_deleted", lobby_id=lobby_id)
             return True
-            
+
         # If host left, assign new host
         if lobby.host_id == player_id:
             lobby.host_id = lobby.players[0].id
-            logger.info("new_host_assigned", lobby_id=lobby_id, new_host_id=lobby.host_id)
-            
+            logger.info(
+                "new_host_assigned", lobby_id=lobby_id, new_host_id=lobby.host_id
+            )
+
         logger.info("player_left", lobby_id=lobby_id, player_id=player_id)
         return True
 
@@ -357,6 +380,5 @@ class GameEngine:
         logger.info("lobby_reset", lobby_id=lobby_id)
         return True
 
+
 game_engine = GameEngine()
-
-

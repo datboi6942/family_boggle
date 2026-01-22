@@ -6,11 +6,10 @@ all-time high scores and game statistics.
 """
 
 import json
-import os
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
-from dataclasses import dataclass, asdict
+
 import structlog
 
 logger = structlog.get_logger()
@@ -23,6 +22,7 @@ HIGH_SCORES_FILE = DATA_DIR / "high_scores.json"
 @dataclass
 class PlayerHighScore:
     """Represents a player's high score record."""
+
     ip_address: str
     username: str  # Last used username
     best_score: int
@@ -39,30 +39,27 @@ def ensure_data_dir():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def load_high_scores() -> Dict[str, PlayerHighScore]:
+def load_high_scores() -> dict[str, PlayerHighScore]:
     """Loads high scores from file."""
     ensure_data_dir()
     if not HIGH_SCORES_FILE.exists():
         return {}
 
     try:
-        with open(HIGH_SCORES_FILE, 'r') as f:
+        with open(HIGH_SCORES_FILE) as f:
             data = json.load(f)
-            return {
-                ip: PlayerHighScore(**record)
-                for ip, record in data.items()
-            }
+            return {ip: PlayerHighScore(**record) for ip, record in data.items()}
     except Exception as e:
         logger.error("failed_to_load_high_scores", error=str(e))
         return {}
 
 
-def save_high_scores(scores: Dict[str, PlayerHighScore]):
+def save_high_scores(scores: dict[str, PlayerHighScore]):
     """Saves high scores to file."""
     ensure_data_dir()
     try:
         data = {ip: asdict(record) for ip, record in scores.items()}
-        with open(HIGH_SCORES_FILE, 'w') as f:
+        with open(HIGH_SCORES_FILE, "w") as f:
             json.dump(data, f, indent=2)
         logger.info("high_scores_saved", count=len(scores))
     except Exception as e:
@@ -75,7 +72,7 @@ def update_player_score(
     score: int,
     words_count: int,
     is_winner: bool,
-    challenges_completed: int = 0
+    challenges_completed: int = 0,
 ) -> PlayerHighScore:
     """Updates a player's high score record after a game.
 
@@ -118,7 +115,7 @@ def update_player_score(
             total_wins=1 if is_winner else 0,
             last_played=now,
             best_game_date=now,
-            challenges_completed=challenges_completed
+            challenges_completed=challenges_completed,
         )
         scores[ip_address] = record
 
@@ -128,29 +125,27 @@ def update_player_score(
         ip=ip_address,
         username=username,
         score=score,
-        best_score=record.best_score
+        best_score=record.best_score,
     )
     return record
 
 
-def get_player_record(ip_address: str) -> Optional[PlayerHighScore]:
+def get_player_record(ip_address: str) -> PlayerHighScore | None:
     """Gets a player's high score record by IP."""
     scores = load_high_scores()
     return scores.get(ip_address)
 
 
-def get_leaderboard(limit: int = 10) -> List[Dict]:
+def get_leaderboard(limit: int = 10) -> list[dict]:
     """Gets the top players by best score.
 
     Returns:
         List of player records sorted by best_score descending
     """
     scores = load_high_scores()
-    sorted_scores = sorted(
-        scores.values(),
-        key=lambda x: x.best_score,
-        reverse=True
-    )[:limit]
+    sorted_scores = sorted(scores.values(), key=lambda x: x.best_score, reverse=True)[
+        :limit
+    ]
 
     return [
         {
@@ -166,7 +161,7 @@ def get_leaderboard(limit: int = 10) -> List[Dict]:
     ]
 
 
-def get_player_stats(ip_address: str) -> Optional[Dict]:
+def get_player_stats(ip_address: str) -> dict | None:
     """Gets a player's stats for display.
 
     Returns player stats without exposing IP address.
@@ -182,8 +177,11 @@ def get_player_stats(ip_address: str) -> Optional[Dict]:
         "total_games_played": record.total_games_played,
         "total_wins": record.total_wins,
         "challenges_completed": record.challenges_completed,
-        "win_rate": round(record.total_wins / record.total_games_played * 100, 1)
-            if record.total_games_played > 0 else 0
+        "win_rate": (
+            round(record.total_wins / record.total_games_played * 100, 1)
+            if record.total_games_played > 0
+            else 0
+        ),
     }
 
 
@@ -192,14 +190,14 @@ class PlayerIPTracker:
 
     def __init__(self):
         # player_id -> ip_address
-        self.player_ips: Dict[str, str] = {}
+        self.player_ips: dict[str, str] = {}
 
     def register_player(self, player_id: str, ip_address: str):
         """Registers a player's IP address."""
         self.player_ips[player_id] = ip_address
         logger.info("player_ip_registered", player_id=player_id, ip=ip_address)
 
-    def get_player_ip(self, player_id: str) -> Optional[str]:
+    def get_player_ip(self, player_id: str) -> str | None:
         """Gets a player's IP address."""
         return self.player_ips.get(player_id)
 

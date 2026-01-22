@@ -1,5 +1,7 @@
+import asyncio
 import random
-from typing import Dict, List, Set, Tuple
+from typing import Any
+
 
 class PowerUpManager:
     """Manages the logic and state for game power-ups."""
@@ -7,75 +9,95 @@ class PowerUpManager:
     def __init__(self) -> None:
         """Initializes the power-up manager."""
         # lobby_id -> { player_id -> freeze_end_time }
-        self.active_freezes: Dict[str, Dict[str, float]] = {}
+        self.active_freezes: dict[str, dict[str, float]] = {}
         # lobby_id -> blocked_cells: Set[(row, col)]
-        self.blocked_cells: Dict[str, Set[Tuple[int, int]]] = {}
+        self.blocked_cells: dict[str, set[tuple[int, int]]] = {}
         # lobby_id -> block_end_time
-        self.block_end_time: Dict[str, float] = {}
+        self.block_end_time: dict[str, float] = {}
         # lobby_id -> { player_id -> saved_board } - players with lock armed
-        self.armed_locks: Dict[str, Dict[str, List[List[str]]]] = {}
+        self.armed_locks: dict[str, dict[str, list[list[str]]]] = {}
         # lobby_id -> { player_id -> board } - per-player board views (for lock protection)
-        self.player_boards: Dict[str, Dict[str, List[List[str]]]] = {}
+        self.player_boards: dict[str, dict[str, list[list[str]]]] = {}
+        # lobby_id -> asyncio.Lock for thread-safe access
+        self._locks: dict[str, asyncio.Lock] = {}
 
-    def apply_powerup(self, lobby_id: str, player_id: str, powerup: str, players: List[any]) -> dict:
+    async def _get_lock(self, lobby_id: str) -> asyncio.Lock:
+        """Get or create lock for a lobby."""
+        if lobby_id not in self._locks:
+            self._locks[lobby_id] = asyncio.Lock()
+        return self._locks[lobby_id]
+
+    async def apply_powerup(
+        self, lobby_id: str, player_id: str, powerup: str, players: list[Any]
+    ) -> dict[str, Any]:
         """Applies a power-up effect.
-        
+
         Args:
             lobby_id: The lobby ID.
             player_id: The player using the power-up.
             powerup: The type of power-up ('freeze', 'blowup', 'shuffle').
             players: List of players in the lobby.
-            
+
         Returns:
             A dictionary describing the effect to broadcast.
         """
         import time
+
         now = time.time()
-        
-        effect = {"type": powerup, "by": player_id}
-        
-        if powerup == "freeze":
-            # Pause timer for this player (implemented in game loop by checking this)
-            if lobby_id not in self.active_freezes:
-                self.active_freezes[lobby_id] = {}
-            self.active_freezes[lobby_id][player_id] = now + 10.0
-            
-        elif powerup == "blowup":
-            # Block 4 random letters for OTHERS
-            size = 6 # Default, should ideally pass current board size
-            cells = set()
-            while len(cells) < 4:
-                r, c = random.randint(0, size-1), random.randint(0, size-1)
-                cells.add((r, c))
-            
-            self.blocked_cells[lobby_id] = cells
-            self.block_end_time[lobby_id] = now + 8.0
-            effect["blocked_cells"] = list(cells)
-            
-        elif powerup == "shuffle":
-            # Logic handled in game_engine to regenerate board
-            effect["action"] = "reshuffle"
-            
+
+        effect: dict[str, Any] = {"type": powerup, "by": player_id}
+
+        lock = await self._get_lock(lobby_id)
+        async with lock:
+            if powerup == "freeze":
+                # Pause timer for this player (implemented in game loop by checking this)
+                if lobby_id not in self.active_freezes:
+                    self.active_freezes[lobby_id] = {}
+                self.active_freezes[lobby_id][player_id] = now + 10.0
+
+            elif powerup == "blowup":
+                # Block 4 random letters for OTHERS
+                size = 6  # Default, should ideally pass current board size
+                cells: set[tuple[int, int]] = set()
+                while len(cells) < 4:
+                    r, c = random.randint(0, size - 1), random.randint(0, size - 1)
+                    cells.add((r, c))
+
+                self.blocked_cells[lobby_id] = cells
+                self.block_end_time[lobby_id] = now + 8.0
+                effect["blocked_cells"] = list(cells)
+
+            elif powerup == "shuffle":
+                # Logic handled in game_engine to regenerate board
+                effect["action"] = "reshuffle"
+
         return effect
 
     def is_frozen(self, lobby_id: str, player_id: str) -> bool:
         """Checks if a player is currently frozen."""
         import time
+
         now = time.time()
-        if lobby_id in self.active_freezes and player_id in self.active_freezes[lobby_id]:
+        if (
+            lobby_id in self.active_freezes
+            and player_id in self.active_freezes[lobby_id]
+        ):
             if now < self.active_freezes[lobby_id][player_id]:
                 return True
         return False
 
-    def get_blocked_cells(self, lobby_id: str) -> Set[Tuple[int, int]]:
+    def get_blocked_cells(self, lobby_id: str) -> set[tuple[int, int]]:
         """Returns the currently blocked cells if any."""
         import time
+
         now = time.time()
         if lobby_id in self.block_end_time and now < self.block_end_time[lobby_id]:
             return self.blocked_cells.get(lobby_id, set())
         return set()
 
-    def arm_lock(self, lobby_id: str, player_id: str, current_board: List[List[str]]) -> bool:
+    async def arm_lock(
+        self, lobby_id: str, player_id: str, current_board: list[list[str]]
+    ) -> bool:
         """Arms a lock powerup for a player, saving their current board state.
 
         Args:
@@ -86,22 +108,25 @@ class PowerUpManager:
         Returns:
             True if lock was armed successfully.
         """
-        if lobby_id not in self.armed_locks:
-            self.armed_locks[lobby_id] = {}
-        # Deep copy the board to preserve it
-        self.armed_locks[lobby_id][player_id] = [row[:] for row in current_board]
-        return True
+        lock = await self._get_lock(lobby_id)
+        async with lock:
+            if lobby_id not in self.armed_locks:
+                self.armed_locks[lobby_id] = {}
+            # Deep copy the board to preserve it
+            self.armed_locks[lobby_id][player_id] = [row[:] for row in current_board]
+            return True
 
     def has_armed_lock(self, lobby_id: str, player_id: str) -> bool:
         """Checks if a player has an armed lock."""
-        return (lobby_id in self.armed_locks and
-                player_id in self.armed_locks[lobby_id])
+        return lobby_id in self.armed_locks and player_id in self.armed_locks[lobby_id]
 
-    def get_locked_players(self, lobby_id: str) -> Dict[str, List[List[str]]]:
+    def get_locked_players(self, lobby_id: str) -> dict[str, list[list[str]]]:
         """Returns dict of player_id -> saved_board for all locked players."""
         return self.armed_locks.get(lobby_id, {})
 
-    def consume_locks_for_shuffle(self, lobby_id: str, new_board: List[List[str]]) -> Dict[str, List[List[str]]]:
+    async def consume_locks_for_shuffle(
+        self, lobby_id: str, new_board: list[list[str]]
+    ) -> dict[str, list[list[str]]]:
         """Consumes all armed locks when a shuffle happens.
 
         Protected players keep their saved board for validation.
@@ -114,31 +139,40 @@ class PowerUpManager:
         Returns:
             Dict mapping protected player IDs to their saved boards.
         """
-        # Get protected players (those with armed locks)
-        protected_players = self.armed_locks.get(lobby_id, {}).copy()
+        lock = await self._get_lock(lobby_id)
+        async with lock:
+            # Get protected players (those with armed locks)
+            protected_players = self.armed_locks.get(lobby_id, {}).copy()
 
-        # Clear ALL player boards first - everyone syncs to new board by default
-        self.player_boards[lobby_id] = {}
+            # Clear ALL player boards first - everyone syncs to new board by default
+            self.player_boards[lobby_id] = {}
 
-        # Only protected players keep their saved boards
-        for player_id, saved_board in protected_players.items():
-            self.player_boards[lobby_id][player_id] = saved_board
+            # Only protected players keep their saved boards
+            for player_id, saved_board in protected_players.items():
+                self.player_boards[lobby_id][player_id] = saved_board
 
-        # Clear the armed locks
-        if lobby_id in self.armed_locks:
-            self.armed_locks[lobby_id] = {}
+            # Clear the armed locks
+            if lobby_id in self.armed_locks:
+                self.armed_locks[lobby_id] = {}
 
-        return protected_players
+            return protected_players
 
-    def get_player_board(self, lobby_id: str, player_id: str, default_board: List[List[str]]) -> List[List[str]]:
+    async def get_player_board(
+        self, lobby_id: str, player_id: str, default_board: list[list[str]]
+    ) -> list[list[str]]:
         """Gets a player's current board view.
 
         If the player has a protected board (from lock), returns that.
         Otherwise returns the default lobby board.
         """
-        if lobby_id in self.player_boards and player_id in self.player_boards[lobby_id]:
-            return self.player_boards[lobby_id][player_id]
-        return default_board
+        lock = await self._get_lock(lobby_id)
+        async with lock:
+            if (
+                lobby_id in self.player_boards
+                and player_id in self.player_boards[lobby_id]
+            ):
+                return self.player_boards[lobby_id][player_id]
+            return default_board
 
     def sync_player_to_lobby_board(self, lobby_id: str, player_id: str) -> None:
         """Syncs a player back to the lobby's main board (clears their protected board)."""
@@ -153,6 +187,5 @@ class PowerUpManager:
         self.armed_locks.pop(lobby_id, None)
         self.player_boards.pop(lobby_id, None)
 
+
 powerup_manager = PowerUpManager()
-
-

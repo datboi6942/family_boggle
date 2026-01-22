@@ -76,7 +76,9 @@ export const GameSummary = () => {
 
   // Keep a ref to audio for cleanup
   const audioRef = useRef(audio);
-  audioRef.current = audio;
+  useEffect(() => {
+    audioRef.current = audio;
+  }, [audio]);
 
   // Start summary music when summary phase begins
   useEffect(() => {

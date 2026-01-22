@@ -27,7 +27,9 @@ export const Lobby = () => {
 
   // Keep a ref to audio so effects can access latest version
   const audioRef = useRef(audio);
-  audioRef.current = audio;
+  useEffect(() => {
+    audioRef.current = audio;
+  }, [audio]);
 
   // Restore scroll state when entering lobby (e.g., after game ends)
   useEffect(() => {
