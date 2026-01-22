@@ -659,6 +659,9 @@ async def websocket_endpoint(
                 # Limit excessive special characters (more than 5 consecutive)
                 if re.search(r'[!@#$%^&*()_+=\[\]{}|;:",.<>?/\\~`-]{6,}', text):
                     continue
+                # Limit excessive whitespace (more than 5 consecutive spaces, tabs, or newlines)
+                if re.search(r'[\s]{6,}', text):
+                    continue
                 # Final check after sanitization
                 if not text.strip():
                     continue

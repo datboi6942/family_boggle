@@ -7,6 +7,8 @@ services:
       - "2626:8000"
     environment:
       - BOGGLE_DEBUG=False
+      - BOGGLE_SECRET_KEY=5a6e3559576c552cc90a38066d06a78751c770c79ede65a381ddda3f49c90ea4
+      - BOGGLE_DATABASE_URL=sqlite:////data/family_boggle.db
     volumes:
       - boggle_data:/data
     restart: always

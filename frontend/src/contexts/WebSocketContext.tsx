@@ -38,14 +38,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     resetSession
   } = useGameStore();
 
-  // Hash function for lobby passwords
-  const hashLobbyPassword = useCallback(async (password: string, lobbyId: string): Promise<string> => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(`${password}:${lobbyId}`);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }, []);
+
 
   const connect = useCallback(async () => {
     // CRITICAL: Validate ALL required fields before attempting connection
@@ -92,17 +85,11 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host; // Includes port if non-standard
      const tokenParam = authToken ? `&token=${authToken}` : '';
-     // Hash password if provided (prevents plain password in logs)
+      // Include password if provided (WebSocket is encrypted)
      let passwordParam = '';
-     if (password && lobbyId) {
-       try {
-         const hashedPassword = await hashLobbyPassword(password, lobbyId);
-         passwordParam = `&password=${encodeURIComponent(hashedPassword)}`;
-       } catch (error) {
-         console.error('Failed to hash lobby password:', error);
-         // Continue without password (will fail if lobby requires password)
-       }
-     }
+      if (password && lobbyId) {
+        passwordParam = `&password=${encodeURIComponent(password)}`;
+      }
      const url = `${protocol}//${host}/ws/${lobbyId}/${playerId}?username=${encodeURIComponent(username)}&character=${encodeURIComponent(character)}&mode=${mode || 'join'}${tokenParam}${passwordParam}`;
 
     console.log('Connecting to WebSocket:', url);
@@ -265,7 +252,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     };
 
     socketRef.current = socket;
-    }, [lobbyId, playerId, username, character, mode, status, authToken, password, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setWaitingPhase, setPlayerTimeUp, updateBonusTimer, setPlayAgainUpdate, resetSession, hashLobbyPassword]);
+    }, [lobbyId, playerId, username, character, mode, status, authToken, password, updateFromLobby, updateFromGameState, setWordResult, setGameEnd, setPowerup, setWaitingPhase, setPlayerTimeUp, updateBonusTimer, setPlayAgainUpdate, resetSession]);
 
   // Keep connectRef up to date with latest connect function
   useEffect(() => {

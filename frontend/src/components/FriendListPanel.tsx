@@ -4,15 +4,9 @@ import { useGameStore } from '../stores/gameStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useAudioContext } from '../contexts/AudioContext';
 import { Users, UserPlus, UserMinus, X } from 'lucide-react';
+import type { FriendRequest } from '../stores/gameStore';
 
-interface FriendRequest {
-  id: number;
-  sender_id: number;
-  receiver_id: number;
-  sender_username: string;
-  receiver_username: string;
-  status: 'pending' | 'accepted' | 'rejected';
-}
+
 
 export const FriendListPanel = ({ onClose }: { onClose?: () => void }) => {
   const { friends, friendRequests, loadFriends, loadFriendRequests, sendFriendRequest, removeFriend, authToken, user } = useGameStore(

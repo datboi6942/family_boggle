@@ -125,11 +125,12 @@ interface Friend {
   friends_since: string;
 }
 
-interface FriendRequest {
+export interface FriendRequest {
   id: number;
   sender_id: number;
   sender_username: string;
   receiver_id: number;
+  receiver_username: string;
   status: string;
   created_at: string;
   updated_at: string;
