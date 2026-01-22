@@ -56,7 +56,11 @@ export const TeamAssignment = () => {
     const assignments: Record<string, string> = {};
     players.forEach(p => {
       if (p.id === playerId) {
-        assignments[p.id] = teamId;
+        // Only include in assignments if teamId is not empty
+        if (teamId) {
+          assignments[p.id] = teamId;
+        }
+        // If teamId is empty, player is excluded from assignments (clears team)
       } else if (p.team_id) {
         assignments[p.id] = p.team_id;
       }
