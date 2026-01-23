@@ -403,7 +403,7 @@ class UserManager:
     @staticmethod
     def send_friend_request(sender_id: int, receiver_username: str) -> tuple[bool, str]:
         """Sends a friend request to another user by username.
-        
+
         Returns:
             Tuple of (success: bool, message: str)
         """
@@ -412,7 +412,9 @@ class UserManager:
 
         try:
             # Get receiver user ID
-            cursor.execute("SELECT id FROM users WHERE username = ?", (receiver_username,))
+            cursor.execute(
+                "SELECT id FROM users WHERE username = ?", (receiver_username,)
+            )
             receiver_row = cursor.fetchone()
             if not receiver_row:
                 return False, "User not found"
@@ -425,7 +427,7 @@ class UserManager:
             # Check if friend request already exists in either direction
             cursor.execute(
                 "SELECT id FROM friend_requests WHERE ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)) AND status = 'pending'",
-                (sender_id, receiver_id, receiver_id, sender_id)
+                (sender_id, receiver_id, receiver_id, sender_id),
             )
             if cursor.fetchone():
                 return False, "Friend request already sent"
@@ -433,7 +435,7 @@ class UserManager:
             # Check if they are already friends
             cursor.execute(
                 "SELECT * FROM friends WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)",
-                (sender_id, receiver_id, receiver_id, sender_id)
+                (sender_id, receiver_id, receiver_id, sender_id),
             )
             if cursor.fetchone():
                 return False, "Already friends"
@@ -441,7 +443,7 @@ class UserManager:
             # Create friend request
             cursor.execute(
                 "INSERT INTO friend_requests (sender_id, receiver_id, status) VALUES (?, ?, 'pending')",
-                (sender_id, receiver_id)
+                (sender_id, receiver_id),
             )
             conn.commit()
             return True, "Friend request sent"
@@ -457,11 +459,11 @@ class UserManager:
     @staticmethod
     def get_friend_requests(user_id: int, status: str = "pending") -> list[dict]:
         """Gets friend requests for a user (received pending requests by default).
-        
+
         Args:
             user_id: The user ID
             status: Request status to filter by (pending, accepted, rejected)
-        
+
         Returns:
             List of friend request dictionaries
         """
@@ -469,7 +471,8 @@ class UserManager:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT fr.*, 
                        sender.username as sender_username,
                        receiver.username as receiver_username
@@ -478,21 +481,25 @@ class UserManager:
                 JOIN users receiver ON fr.receiver_id = receiver.id
                 WHERE (fr.receiver_id = ? OR fr.sender_id = ?) AND fr.status = ?
                 ORDER BY fr.created_at DESC
-            """, (user_id, user_id, status))
+            """,
+                (user_id, user_id, status),
+            )
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         finally:
             conn.close()
 
     @staticmethod
-    def respond_to_friend_request(request_id: int, user_id: int, action: str) -> tuple[bool, str]:
+    def respond_to_friend_request(
+        request_id: int, user_id: int, action: str
+    ) -> tuple[bool, str]:
         """Responds to a friend request (accept or reject).
-        
+
         Args:
             request_id: The friend request ID
             user_id: The user ID (must be the receiver)
             action: 'accept' or 'reject'
-        
+
         Returns:
             Tuple of (success: bool, message: str)
         """
@@ -506,12 +513,12 @@ class UserManager:
             # Verify request exists and user is the receiver
             cursor.execute(
                 "SELECT sender_id, receiver_id FROM friend_requests WHERE id = ? AND status = 'pending'",
-                (request_id,)
+                (request_id,),
             )
             request_row = cursor.fetchone()
             if not request_row:
                 return False, "Friend request not found or already processed"
-            
+
             if request_row["receiver_id"] != user_id:
                 return False, "Not authorized to respond to this request"
 
@@ -522,20 +529,19 @@ class UserManager:
                 # Update request status
                 cursor.execute(
                     "UPDATE friend_requests SET status = 'accepted', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (request_id,)
+                    (request_id,),
                 )
                 # Add to friends table (ensure user1_id < user2_id)
                 user1_id = min(sender_id, receiver_id)
                 user2_id = max(sender_id, receiver_id)
                 cursor.execute(
                     "INSERT OR IGNORE INTO friends (user1_id, user2_id) VALUES (?, ?)",
-                    (user1_id, user2_id)
+                    (user1_id, user2_id),
                 )
                 message = "Friend request accepted"
             else:  # reject
                 cursor.execute(
-                    "DELETE FROM friend_requests WHERE id = ?",
-                    (request_id,)
+                    "DELETE FROM friend_requests WHERE id = ?", (request_id,)
                 )
                 message = "Friend request rejected"
 
@@ -550,7 +556,7 @@ class UserManager:
     @staticmethod
     def get_friends(user_id: int) -> list[dict]:
         """Gets a user's friends list.
-        
+
         Returns:
             List of friend dictionaries with user details
         """
@@ -558,7 +564,8 @@ class UserManager:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT u.id, u.username, u.created_at, f.created_at as friends_since
                 FROM friends f
                 JOIN users u ON (
@@ -566,7 +573,9 @@ class UserManager:
                     (f.user2_id = ? AND u.id = f.user1_id)
                 )
                 ORDER BY u.username
-            """, (user_id, user_id))
+            """,
+                (user_id, user_id),
+            )
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         finally:
@@ -575,11 +584,11 @@ class UserManager:
     @staticmethod
     def remove_friend(user_id: int, friend_id: int) -> tuple[bool, str]:
         """Removes a friend relationship.
-        
+
         Args:
             user_id: The user ID
             friend_id: The friend's user ID to remove
-        
+
         Returns:
             Tuple of (success: bool, message: str)
         """
@@ -588,10 +597,13 @@ class UserManager:
 
         try:
             # Verify friendship exists
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT * FROM friends 
                 WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)
-            """, (user_id, friend_id, friend_id, user_id))
+            """,
+                (user_id, friend_id, friend_id, user_id),
+            )
             if not cursor.fetchone():
                 return False, "Not friends with this user"
 
@@ -600,13 +612,13 @@ class UserManager:
             user2_id = max(user_id, friend_id)
             cursor.execute(
                 "DELETE FROM friends WHERE user1_id = ? AND user2_id = ?",
-                (user1_id, user2_id)
+                (user1_id, user2_id),
             )
 
             # Also delete any friend requests between them
             cursor.execute(
                 "DELETE FROM friend_requests WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)",
-                (user_id, friend_id, friend_id, user_id)
+                (user_id, friend_id, friend_id, user_id),
             )
 
             conn.commit()

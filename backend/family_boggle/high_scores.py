@@ -184,6 +184,3 @@ def get_player_stats(ip_address: str) -> dict | None:
             else 0
         ),
     }
-
-
-

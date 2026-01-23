@@ -52,7 +52,7 @@ class WSMessage(BaseModel):
 
 class FriendRequestModel(BaseModel):
     """Data model for a friend request."""
-    
+
     id: int
     sender_id: int
     receiver_id: int
@@ -63,7 +63,7 @@ class FriendRequestModel(BaseModel):
 
 class FriendModel(BaseModel):
     """Data model for a friend relationship."""
-    
+
     user1_id: int
     user2_id: int
     created_at: str
@@ -71,12 +71,12 @@ class FriendModel(BaseModel):
 
 class FriendRequestCreate(BaseModel):
     """Data model for creating a friend request."""
-    
+
     receiver_username: str
 
 
 class FriendRequestUpdate(BaseModel):
     """Data model for updating a friend request."""
-    
+
     request_id: int
     action: str  # accept, reject
