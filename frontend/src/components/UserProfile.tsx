@@ -23,11 +23,12 @@ export const UserProfile = () => {
   }, [getStats]);
 
   // Load stats when user is logged in and profile expanded
-  useEffect(() => {
-    if (isExpanded && authToken && user && !stats) {
-      loadStats();
-    }
-  }, [isExpanded, authToken, user, stats, loadStats]);
+   useEffect(() => {
+     if (isExpanded && authToken && user && !stats) {
+       // eslint-disable-next-line react-hooks/set-state-in-effect
+       loadStats();
+     }
+   }, [isExpanded, authToken, user, stats, loadStats]);
 
   const handleLogout = () => {
     audio.playButtonClick();

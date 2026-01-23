@@ -16,6 +16,7 @@ class PlayerModel(BaseModel):
     is_time_up: bool = False  # Whether this player's time has run out
     wants_play_again: bool = False  # Whether player clicked "Play Again" on summary
     team_id: Optional[str] = None  # Team assignment for team play mode
+    user_id: Optional[int] = None  # Authenticated user ID if logged in
 
 
 class GameStateModel(BaseModel):
@@ -51,7 +52,7 @@ class WSMessage(BaseModel):
 
 class FriendRequestModel(BaseModel):
     """Data model for a friend request."""
-    
+
     id: int
     sender_id: int
     receiver_id: int
@@ -62,7 +63,7 @@ class FriendRequestModel(BaseModel):
 
 class FriendModel(BaseModel):
     """Data model for a friend relationship."""
-    
+
     user1_id: int
     user2_id: int
     created_at: str
@@ -70,12 +71,12 @@ class FriendModel(BaseModel):
 
 class FriendRequestCreate(BaseModel):
     """Data model for creating a friend request."""
-    
+
     receiver_username: str
 
 
 class FriendRequestUpdate(BaseModel):
     """Data model for updating a friend request."""
-    
+
     request_id: int
     action: str  # accept, reject

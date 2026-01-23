@@ -1,14 +1,29 @@
 import asyncio
+import random
 
 import structlog
-from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
+from fastapi import (
+    FastAPI,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+    Depends,
+    HTTPException,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from family_boggle.config import settings
 from family_boggle.game_engine import game_engine
-from family_boggle.high_scores import get_leaderboard, get_player_stats, ip_tracker
-from family_boggle.models import GameStateModel, WordSubmission, FriendRequestCreate, FriendRequestUpdate
+from family_boggle.high_scores import get_leaderboard, get_player_stats
+from family_boggle.models import (
+    GameStateModel,
+    WordSubmission,
+    FriendRequestCreate,
+    FriendRequestUpdate,
+)
 from family_boggle.websocket_manager import manager
 from family_boggle.auth import user_manager, verify_token, create_access_token
 
@@ -34,16 +49,27 @@ app = FastAPI(title=settings.APP_NAME)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()] if settings.ALLOWED_ORIGINS else [],
+    allow_origins=(
+        [
+            origin.strip()
+            for origin in settings.ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        ]
+        if settings.ALLOWED_ORIGINS
+        else []
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
- )
+)
 
 # Authentication
 security = HTTPBearer()
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
     """Validates JWT token and returns user data."""
     token = credentials.credentials
     payload = verify_token(token)
@@ -105,69 +131,67 @@ async def register_user(request: Request):
     client_ip = request.client.host if request.client else "unknown"
     register_key = f"register:{client_ip}"
     now = time.time()
-    
+
     # Clean old attempts (older than 1 minute)
     if register_key in login_attempts:
         login_attempts[register_key] = [
-            attempt_time for attempt_time in login_attempts[register_key]
+            attempt_time
+            for attempt_time in login_attempts[register_key]
             if now - attempt_time < 60
         ]
-    
+
     # Check if exceeded limit (3 registrations per minute)
     if len(login_attempts.get(register_key, [])) >= 3:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many registration attempts. Please try again later."
+            detail="Too many registration attempts. Please try again later.",
         )
-    
+
     # Record this attempt
     login_attempts[register_key].append(now)
-    
+
     data = await request.json()
     username = data.get("username")
     password = data.get("password")
     email = data.get("email")
-    
+
     if not username or not password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username and password are required"
+            detail="Username and password are required",
         )
-    
+
     # Password validation
     if len(password) < 8:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 8 characters"
+            detail="Password must be at least 8 characters",
         )
-    
+
     success, message = user_manager.register_user(username, password, email)
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=message
-        )
-    
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+
     # Auto-login after successful registration
     user_data, auth_message = user_manager.authenticate_user(username, password)
     if user_data is None:
         # This shouldn't happen but handle gracefully
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration succeeded but auto-login failed"
+            detail="Registration succeeded but auto-login failed",
         )
-    
+
     # Create access token
     access_token = create_access_token(data={"sub": str(user_data["id"])})
-    
+
     # Rate limit applies to all registration attempts
     # Note: Successful attempts still count toward rate limit to prevent bypass
-    
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "user": user_data,
-        "message": message
+        "message": message,
     }
 
 
@@ -177,52 +201,46 @@ async def login_user(request: Request):
     # Rate limiting
     client_ip = request.client.host if request.client else "unknown"
     now = time.time()
-    
+
     # Clean old attempts (older than 1 minute)
     if client_ip in login_attempts:
         login_attempts[client_ip] = [
-            attempt_time for attempt_time in login_attempts[client_ip]
+            attempt_time
+            for attempt_time in login_attempts[client_ip]
             if now - attempt_time < 60
         ]
-    
+
     # Check if exceeded limit
     if len(login_attempts.get(client_ip, [])) >= MAX_ATTEMPTS_PER_MINUTE:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many login attempts. Please try again later."
+            detail="Too many login attempts. Please try again later.",
         )
-    
+
     # Record this attempt
     login_attempts[client_ip].append(now)
-    
+
     data = await request.json()
     username = data.get("username")
     password = data.get("password")
-    
+
     if not username or not password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username and password are required"
+            detail="Username and password are required",
         )
-    
+
     user_data, message = user_manager.authenticate_user(username, password)
     if user_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=message
-        )
-    
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
+
     # Create access token
     access_token = create_access_token(data={"sub": str(user_data["id"])})
-    
+
     # Rate limit applies to all login attempts
     # Note: Successful attempts still count toward rate limit to prevent brute forcing
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": user_data
-    }
+
+    return {"access_token": access_token, "token_type": "bearer", "user": user_data}
 
 
 @app.get("/api/auth/profile")
@@ -237,14 +255,15 @@ async def get_user_stats(current_user: dict = Depends(get_current_user)):
     stats = user_manager.get_user_stats(current_user["id"])
     if stats is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User statistics not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="User statistics not found"
         )
     return {"stats": stats}
 
 
 @app.post("/api/auth/link-ip")
-async def link_ip_to_account(request: Request, current_user: dict = Depends(get_current_user)):
+async def link_ip_to_account(
+    request: Request, current_user: dict = Depends(get_current_user)
+):
     """Links current IP address to user account for anonymous play migration."""
     # Get client IP
     forwarded = request.headers.get("x-forwarded-for")
@@ -252,40 +271,34 @@ async def link_ip_to_account(request: Request, current_user: dict = Depends(get_
         ip = forwarded.split(",")[0].strip()
     else:
         ip = request.client.host if request.client else "unknown"
-    
+
     success = user_manager.link_ip_to_user(ip, current_user["id"])
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to link IP address"
+            detail="Failed to link IP address",
         )
-    
+
     return {"success": True, "message": f"IP {ip} linked to account"}
 
 
 # Friend management endpoints
 @app.post("/api/friends/request")
 async def send_friend_request(
-    request_data: FriendRequestCreate, 
-    current_user: dict = Depends(get_current_user)
+    request_data: FriendRequestCreate, current_user: dict = Depends(get_current_user)
 ):
     """Sends a friend request to another user."""
     success, message = user_manager.send_friend_request(
-        current_user["id"], 
-        request_data.receiver_username
+        current_user["id"], request_data.receiver_username
     )
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=message
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
     return {"success": True, "message": message}
 
 
 @app.get("/api/friends/requests")
 async def get_friend_requests(
-    status: str = "pending",
-    current_user: dict = Depends(get_current_user)
+    status: str = "pending", current_user: dict = Depends(get_current_user)
 ):
     """Gets friend requests for the current user."""
     requests = user_manager.get_friend_requests(current_user["id"], status)
@@ -294,20 +307,14 @@ async def get_friend_requests(
 
 @app.post("/api/friends/respond")
 async def respond_to_friend_request(
-    request_data: FriendRequestUpdate,
-    current_user: dict = Depends(get_current_user)
+    request_data: FriendRequestUpdate, current_user: dict = Depends(get_current_user)
 ):
     """Responds to a friend request (accept/reject)."""
     success, message = user_manager.respond_to_friend_request(
-        request_data.request_id,
-        current_user["id"],
-        request_data.action
+        request_data.request_id, current_user["id"], request_data.action
     )
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=message
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
     return {"success": True, "message": message}
 
 
@@ -319,31 +326,12 @@ async def get_friends(current_user: dict = Depends(get_current_user)):
 
 
 @app.delete("/api/friends/{friend_id}")
-async def remove_friend(
-    friend_id: int,
-    current_user: dict = Depends(get_current_user)
-):
+async def remove_friend(friend_id: int, current_user: dict = Depends(get_current_user)):
     """Removes a friend."""
     success, message = user_manager.remove_friend(current_user["id"], friend_id)
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=message
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
     return {"success": True, "message": message}
-
-
-def get_client_ip(websocket: WebSocket) -> str:
-    """Extract client IP from WebSocket connection."""
-    # Check for forwarded headers (for proxied connections)
-    forwarded = websocket.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-
-    # Fall back to direct client connection
-    if websocket.client:
-        return websocket.client.host
-    return "unknown"
 
 
 @app.websocket("/ws/{lobby_id}/{player_id}")
@@ -359,9 +347,6 @@ async def websocket_endpoint(
 ):
     await manager.connect(websocket, lobby_id)
 
-    # Get client IP for high score tracking
-    client_ip = get_client_ip(websocket)
-    
     # Validate token if provided
     user_id = None
     if token:
@@ -375,16 +360,21 @@ async def websocket_endpoint(
                     user = user_manager.get_user_by_id(user_id)
                     if not user:
                         user_id = None
-                        logger.warning("token_user_not_found", player_id=player_id, user_id=user_id_str)
+                        logger.warning(
+                            "token_user_not_found",
+                            player_id=player_id,
+                            user_id=user_id_str,
+                        )
                 except (ValueError, TypeError):
-                    logger.warning("invalid_user_id_in_token", player_id=player_id, user_id=user_id_str)
+                    logger.warning(
+                        "invalid_user_id_in_token",
+                        player_id=player_id,
+                        user_id=user_id_str,
+                    )
         else:
             logger.warning("invalid_token_provided", player_id=player_id)
-    
-    logger.info("client_connected", player_id=player_id, ip=client_ip, has_user=user_id is not None)
 
-    # Register player IP and optional user for high score tracking
-    ip_tracker.register_player(player_id, client_ip, user_id)
+    logger.info("client_connected", player_id=player_id, has_user=user_id is not None)
 
     # Handle create vs join modes
     lobby_exists = lobby_id in game_engine.lobbies
@@ -399,10 +389,19 @@ async def websocket_endpoint(
 
     if mode == "create" and not lobby_exists:
         # Create new lobby
-        game_engine.create_lobby(player_id, username, character, lobby_id=lobby_id, password=password)
+        game_engine.create_lobby(
+            player_id,
+            username,
+            character,
+            lobby_id=lobby_id,
+            password=password,
+            host_user_id=user_id,
+        )
     elif lobby_exists:
         # Join existing lobby
-        success = game_engine.join_lobby(lobby_id, player_id, username, character, password)
+        success = game_engine.join_lobby(
+            lobby_id, player_id, username, character, password, user_id=user_id
+        )
         if not success:
             await websocket.close(code=1008, reason="Lobby full or error joining")
             return
@@ -447,14 +446,34 @@ async def websocket_endpoint(
                     )
 
             elif msg_type == "set_game_mode":
+                logger.info(
+                    "set_game_mode_received",
+                    lobby_id=lobby_id,
+                    player_id=player_id,
+                    game_mode=msg_data.get("game_mode"),
+                )
                 lobby = game_engine.lobbies[lobby_id]
                 if lobby.host_id == player_id:
                     game_mode = msg_data.get("game_mode", "classic")
                     mode_settings = msg_data.get("mode_settings", {})
-                    success = game_engine.set_game_mode(lobby_id, game_mode, mode_settings)
+                    success = game_engine.set_game_mode(
+                        lobby_id, game_mode, mode_settings
+                    )
+                    logger.info(
+                        "set_game_mode_result",
+                        lobby_id=lobby_id,
+                        success=success,
+                        game_mode=game_mode,
+                    )
                     if success:
+                        lobby_data = lobby.model_dump()
+                        logger.info(
+                            "broadcasting_lobby_update",
+                            lobby_id=lobby_id,
+                            game_mode=lobby_data.get("game_mode"),
+                        )
                         await manager.broadcast(
-                            lobby_id, {"type": "lobby_update", "data": lobby.model_dump()}
+                            lobby_id, {"type": "lobby_update", "data": lobby_data}
                         )
 
             elif msg_type == "assign_teams":
@@ -464,7 +483,8 @@ async def websocket_endpoint(
                     success = game_engine.assign_teams(lobby_id, team_assignments)
                     if success:
                         await manager.broadcast(
-                            lobby_id, {"type": "lobby_update", "data": lobby.model_dump()}
+                            lobby_id,
+                            {"type": "lobby_update", "data": lobby.model_dump()},
                         )
 
             elif msg_type == "submit_word":
@@ -483,6 +503,7 @@ async def websocket_endpoint(
                                 "player_id": player_id,
                                 "score": result["total_score"],
                                 "powerup": result.get("powerup"),
+                                "word": submission.word.upper(),
                             },
                         },
                     )
@@ -650,17 +671,19 @@ async def websocket_endpoint(
                     continue
                 # Sanitize content: remove HTML tags, check for XSS patterns
                 # Remove HTML tags
-                text = re.sub(r'<[^>]*>', '', text)
+                text = re.sub(r"<[^>]*>", "", text)
                 # Remove script tags and javascript: URLs
-                if re.search(r'javascript:', text, re.IGNORECASE) or re.search(r'<script', text, re.IGNORECASE):
+                if re.search(r"javascript:", text, re.IGNORECASE) or re.search(
+                    r"<script", text, re.IGNORECASE
+                ):
                     continue
                 # Remove control characters (except newline and tab)
-                text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
+                text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", text)
                 # Limit excessive special characters (more than 5 consecutive)
                 if re.search(r'[!@#$%^&*()_+=\[\]{}|;:",.<>?/\\~`-]{6,}', text):
                     continue
                 # Limit excessive whitespace (more than 5 consecutive spaces, tabs, or newlines)
-                if re.search(r'[\s]{6,}', text):
+                if re.search(r"[\s]{6,}", text):
                     continue
                 # Final check after sanitization
                 if not text.strip():
@@ -673,14 +696,13 @@ async def websocket_endpoint(
                             "player_id": player_id,
                             "username": username,
                             "text": text,
-                            "timestamp": datetime.now(timezone.utc).isoformat()
-                        }
-                    }
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    },
                 )
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        ip_tracker.remove_player(player_id)
         # Remove player from lobby
         if game_engine.leave_lobby(lobby_id, player_id):
             # If lobby still exists, broadcast update
@@ -712,32 +734,131 @@ async def run_game_loop(lobby_id: str):
     # 2. Playing Phase
     game_engine.start_game(lobby_id)  # Generates board
     lobby.status = "playing"
-    # 4x4 boards get 2 minutes (less words available), larger boards get 3 minutes
-    lobby.timer = 120 if lobby.board_size == 4 else settings.GAME_DURATION_SECONDS
 
     # Reset per-player time states
     for player in lobby.players:
         player.bonus_time = 0
         player.is_time_up = False
 
-    # Send initial full state for playing phase
-    await manager.broadcast(
-        lobby_id, {"type": "game_state", "data": lobby.model_dump()}
-    )
+    # Handle timed attack mode differently
+    if lobby.game_mode == "timed_attack":
+        # Initialize round settings
+        round_duration = lobby.mode_settings.get("round_duration", 60)
+        powerup_drop_interval = lobby.mode_settings.get("powerup_drop_interval", 15)
+        max_rounds = lobby.mode_settings.get("max_rounds", 3)
+        current_round = lobby.mode_settings.get("current_round", 1)
+        lobby.timer = round_duration
+        # Track drops within round
+        next_drop = powerup_drop_interval  # seconds until next drop from start of round
 
-    # Main timer phase
-    while lobby.timer > 0:
-        await asyncio.sleep(1)
-        lobby.timer -= 1
-
-        # Broadcast timer update only (90% reduction in payload)
+        # Send initial full state for playing phase
         await manager.broadcast(
-            lobby_id, {"type": "timer_update", "data": {"timer": lobby.timer}}
+            lobby_id, {"type": "game_state", "data": lobby.model_dump()}
         )
 
-        # Check if game was forcibly ended or everyone left
-        if lobby_id not in game_engine.lobbies:
-            break
+        # Round loop
+        while current_round <= max_rounds:
+            while lobby.timer > 0:
+                await asyncio.sleep(1)
+                lobby.timer -= 1
+
+                # Check for power-up drop
+                elapsed_in_round = round_duration - lobby.timer
+                if elapsed_in_round >= next_drop:
+                    # Award random power-up to each player
+                    for player in lobby.players:
+                        powerup = random.choice(["freeze", "blowup", "shuffle", "lock"])
+                        player.powerups.append(powerup)
+                        # Notify frontend of powerup award
+                        await manager.broadcast(
+                            lobby_id,
+                            {
+                                "type": "powerup_consumed",
+                                "data": {
+                                    "player_id": player.id,
+                                    "powerups": list(player.powerups),
+                                },
+                            },
+                        )
+                        await manager.broadcast(
+                            lobby_id,
+                            {
+                                "type": "powerup_event",
+                                "data": {
+                                    "type": "powerup_drop",
+                                    "player_id": player.id,
+                                    "powerup": powerup,
+                                    "round": current_round,
+                                },
+                            },
+                        )
+                    next_drop += powerup_drop_interval
+
+                # Broadcast timer update
+                await manager.broadcast(
+                    lobby_id, {"type": "timer_update", "data": {"timer": lobby.timer}}
+                )
+
+                # Check if game was forcibly ended or everyone left
+                if lobby_id not in game_engine.lobbies:
+                    return
+
+            # Round ended
+            if current_round < max_rounds:
+                # Generate new board for next round
+                if game_engine.board_gen:
+                    game_engine.board_gen.generate()
+                    lobby.board = game_engine.board_gen.grid
+                    # Broadcast board update
+                    await manager.broadcast(
+                        lobby_id,
+                        {
+                            "type": "board_update",
+                            "data": {
+                                "board": lobby.board,
+                                "round": current_round + 1,
+                            },
+                        },
+                    )
+                # Reset round timer and drop counter
+                lobby.timer = round_duration
+                next_drop = powerup_drop_interval
+                current_round += 1
+                lobby.mode_settings["current_round"] = current_round
+                # Broadcast new round start
+                await manager.broadcast(
+                    lobby_id, {"type": "game_state", "data": lobby.model_dump()}
+                )
+            else:
+                # Last round completed
+                break
+
+        # All rounds completed, set timer to 0 to exit outer loop
+        lobby.timer = 0
+
+    else:
+        # Classic mode timing
+        # 4x4 boards get 2 minutes (less words available), larger boards get 3 minutes
+        lobby.timer = 120 if lobby.board_size == 4 else settings.GAME_DURATION_SECONDS
+
+        # Send initial full state for playing phase
+        await manager.broadcast(
+            lobby_id, {"type": "game_state", "data": lobby.model_dump()}
+        )
+
+        # Main timer phase
+        while lobby.timer > 0:
+            await asyncio.sleep(1)
+            lobby.timer -= 1
+
+            # Broadcast timer update only (90% reduction in payload)
+            await manager.broadcast(
+                lobby_id, {"type": "timer_update", "data": {"timer": lobby.timer}}
+            )
+
+            # Check if game was forcibly ended or everyone left
+            if lobby_id not in game_engine.lobbies:
+                break
 
     # Check if lobby still exists
     if lobby_id not in game_engine.lobbies:
@@ -812,9 +933,6 @@ async def run_game_loop(lobby_id: str):
         lobby.status = "summary"
         summary = game_engine.finalize_scores(lobby_id)
 
-        # Update high scores for all players
-        from family_boggle.high_scores import update_player_score
-
         winner_id = (
             summary.get("winner", {}).get("player_id")
             if summary.get("winner")
@@ -823,29 +941,22 @@ async def run_game_loop(lobby_id: str):
 
         for result in summary.get("results", []):
             player_id = result.get("player_id")
-            if player_id:
-                player_ip = ip_tracker.get_player_ip(player_id)
-                if player_ip:
-                    update_player_score(
-                        ip_address=player_ip,
-                        username=result.get("username", "Unknown"),
-                        score=result.get("score", 0),
-                        words_count=len(result.get("words", [])),
-                        is_winner=(player_id == winner_id),
-                        challenges_completed=result.get("challenges_completed", 0),
-                    )
-                
-                # Also update user stats if player is logged in
-                user_id = ip_tracker.get_player_user(player_id)
-                if user_id:
+            if player_id and lobby:
+                # Find player in lobby to get user_id
+                player = next((p for p in lobby.players if p.id == player_id), None)
+                if player and player.user_id:
+                    # Update user stats for authenticated players
                     user_manager.update_user_stats(
-                        user_id,
+                        player.user_id,
                         {
                             "score": result.get("score", 0),
                             "is_winner": (player_id == winner_id),
-                            "challenges_completed": result.get("challenges_completed", 0),
-                        }
+                            "challenges_completed": result.get(
+                                "challenges_completed", 0
+                            ),
+                        },
                     )
+                # Note: Anonymous players (without user_id) don't get stats tracked
 
         await manager.broadcast(lobby_id, {"type": "game_end", "data": summary})
 

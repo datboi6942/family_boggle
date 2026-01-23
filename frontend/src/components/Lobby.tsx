@@ -68,7 +68,7 @@ export const Lobby = () => {
   };
 
   return (
-    <div className="flex flex-col h-full p-4 space-y-4 bg-navy-gradient min-h-screen">
+     <div className="flex flex-col h-full p-4 space-y-3 bg-navy-gradient min-h-screen pb-6">
       <div className="grid grid-cols-2 gap-4 flex-shrink-0">
         <div
           onClick={copyToClipboard}
@@ -85,18 +85,18 @@ export const Lobby = () => {
         </div>
       </div>
 
-      <div className="frosted-glass p-6 flex flex-col items-center justify-center">
-        <h2 className="text-xs font-bold text-primary uppercase tracking-widest mb-3">Scan to Join</h2>
-        <div className="bg-white p-4 rounded-xl">
+       <div className="frosted-glass p-4 flex flex-col items-center justify-center">
+        <h2 className="text-xs font-bold text-primary uppercase tracking-widest mb-2">Scan to Join</h2>
+        <div className="bg-white p-3 rounded-xl">
           {lobbyId ? (
-            <QRCodeSVG value={lobbyId} size={140} />
+            <QRCodeSVG value={lobbyId} size={120} />
           ) : (
-            <div className="w-[140px] h-[140px] flex items-center justify-center text-gray-400">
+            <div className="w-[120px] h-[120px] flex items-center justify-center text-gray-400">
               ...
             </div>
           )}
         </div>
-        <p className="text-[10px] text-white/30 mt-3">POINT CAMERA AT CODE</p>
+        <p className="text-[10px] text-white/30 mt-2">POINT CAMERA AT CODE</p>
       </div>
 
       <ModeSelector />
@@ -120,16 +120,16 @@ export const Lobby = () => {
         ))}
       </div>
 
-      {/* Chat */}
-      <div className="frosted-glass p-4">
-        <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3">Chat</h3>
+       {/* Chat */}
+      <div className="frosted-glass p-3 max-h-80">
+        <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-2">Chat</h3>
         <Chat />
       </div>
 
-      {isHost && (
-        <div className="space-y-4">
+       {isHost && (
+        <div className="space-y-3 mt-2">
           <h3 className="text-center font-bold text-white/50">BOARD SIZE</h3>
-          <div className="flex justify-center space-x-4">
+          <div className="flex justify-center space-x-3">
             {[4, 5, 6].map(size => (
               <button
                 key={size}
@@ -148,13 +148,13 @@ export const Lobby = () => {
 
 
 
-      <button
+       <button
         onClick={() => {
           audio.playButtonClick();
           audio.stopMusic();
           resetSession();
         }}
-        className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-white/50 active:scale-95 transition-all mb-2"
+        className="w-full py-3 bg-white/5 border border-white/10 rounded-2xl font-bold text-white/50 active:scale-95 transition-all mb-2"
       >
         LEAVE LOBBY
       </button>
@@ -164,7 +164,7 @@ export const Lobby = () => {
           audio.playButtonClick();
           send('toggle_ready');
         }}
-        className={`w-full py-6 rounded-2xl font-black text-2xl shadow-xl active:scale-95 transition-all ${me?.is_ready ? 'bg-success/20 border-2 border-success text-success' : 'bg-primary'}`}
+        className={`w-full py-4 rounded-2xl font-black text-xl shadow-xl active:scale-95 transition-all ${me?.is_ready ? 'bg-success/20 border-2 border-success text-success' : 'bg-primary'}`}
       >
         {me?.is_ready ? 'UNREADY' : 'READY TO PLAY'}
       </button>

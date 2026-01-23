@@ -32,7 +32,7 @@ class GameEngine:
         """Hash a lobby password using SHA256 with lobby_id as salt."""
         # Use a simple hash for short-lived lobby passwords
         # This prevents plain passwords from being logged/stored
-        salted = f"{password}:{lobby_id}".encode('utf-8')
+        salted = f"{password}:{lobby_id}".encode("utf-8")
         return hashlib.sha256(salted).hexdigest()
 
     def create_lobby(
@@ -42,82 +42,134 @@ class GameEngine:
         host_character: str,
         lobby_id: str | None = None,
         password: str | None = None,
+        host_user_id: int | None = None,
     ) -> str:
         """Creates a new game lobby."""
         if not lobby_id:
             lobby_id = str(uuid.uuid4())[:8].upper()
 
         host = PlayerModel(
-            id=host_id, username=host_username, character=host_character, is_ready=False
+            id=host_id,
+            username=host_username,
+            character=host_character,
+            is_ready=False,
+            user_id=host_user_id,
         )
         # Hash password if provided
         hashed_password = None
         if password is not None:
             hashed_password = self._hash_lobby_password(password, lobby_id)
         self.lobbies[lobby_id] = GameStateModel(
-            lobby_id=lobby_id, status="lobby", host_id=host_id, players=[host], password=hashed_password
+            lobby_id=lobby_id,
+            status="lobby",
+            host_id=host_id,
+            players=[host],
+            password=hashed_password,
         )
         logger.info("lobby_created", lobby_id=lobby_id, host_id=host_id)
         return lobby_id
 
-    def set_game_mode(self, lobby_id: str, game_mode: str, mode_settings: dict | None = None) -> bool:
+    def set_game_mode(
+        self, lobby_id: str, game_mode: str, mode_settings: dict | None = None
+    ) -> bool:
         """Sets the game mode for a lobby (host only)."""
         if lobby_id not in self.lobbies:
             return False
-        
+
         lobby = self.lobbies[lobby_id]
         # Only host can change game mode
         # This check is done in the WebSocket handler, not here
-        
+
         if game_mode not in ["classic", "team", "timed_attack", "word_race"]:
             return False
-        
+
         lobby.game_mode = game_mode
         lobby.mode_settings = mode_settings or {}
-        
+
+        # Set default mode settings for specific game modes
+        if game_mode == "timed_attack":
+            lobby.mode_settings.setdefault("round_duration", 60)
+            lobby.mode_settings.setdefault("powerup_drop_interval", 15)
+            lobby.mode_settings.setdefault("current_round", 1)
+            lobby.mode_settings.setdefault("max_rounds", 3)
+        elif game_mode == "word_race":
+            lobby.mode_settings.setdefault("target_word_count", 5)
+            lobby.mode_settings.setdefault("word_length_min", 4)
+            lobby.mode_settings.setdefault("word_length_max", 8)
+
+        # Clear target words if not in word_race mode
+        if game_mode != "word_race":
+            lobby.target_words = []
+
         # If switching from team mode, clear team assignments
         if game_mode != "team":
             for player in lobby.players:
                 player.team_id = None
-        
+
         logger.info("game_mode_set", lobby_id=lobby_id, game_mode=game_mode)
         return True
 
     def assign_teams(self, lobby_id: str, team_assignments: dict[str, str]) -> bool:
         """Assigns players to teams for team play mode.
-        
+
         Args:
             lobby_id: The lobby ID.
             team_assignments: Mapping of player_id to team_id (e.g., "team_a", "team_b").
-        
+
         Returns:
             True if successful, False otherwise.
         """
         if lobby_id not in self.lobbies:
             return False
-        
+
         lobby = self.lobbies[lobby_id]
         if lobby.game_mode != "team":
             return False
-        
+
         # Validate all player IDs exist in lobby
         for player_id, team_id in team_assignments.items():
             if not any(p.id == player_id for p in lobby.players):
                 return False
-        
+
+        # Validate team IDs (only team_a and team_b allowed)
+        valid_teams = {"team_a", "team_b"}
+        if any(team_id not in valid_teams for team_id in team_assignments.values()):
+            return False
+
+        # Calculate final team assignments after changes
+        final_assignments = {}
+        for player in lobby.players:
+            if player.id in team_assignments:
+                final_assignments[player.id] = team_assignments[player.id]
+            else:
+                final_assignments[player.id] = player.team_id  # Could be None
+
+        # Count team assignments (ignore None)
+        team_counts = {}
+        for team_id in final_assignments.values():
+            if team_id is not None:
+                team_counts[team_id] = team_counts.get(team_id, 0) + 1
+
+        # Validate team sizes (max 5 per team)
+        if any(count > 5 for count in team_counts.values()):
+            return False
+
         # Apply assignments
         for player in lobby.players:
             if player.id in team_assignments:
                 player.team_id = team_assignments[player.id]
-            else:
-                # If player not in assignments, keep existing team or set to None
-                pass
-        
+
         logger.info("teams_assigned", lobby_id=lobby_id, assignments=team_assignments)
         return True
 
     def join_lobby(
-        self, lobby_id: str, player_id: str, username: str, character: str, password: str | None = None
+        self,
+        lobby_id: str,
+        player_id: str,
+        username: str,
+        character: str,
+        password: str | None = None,
+        user_id: int | None = None,
     ) -> bool:
         """Adds a player to an existing lobby."""
         if lobby_id not in self.lobbies:
@@ -140,7 +192,11 @@ class GameEngine:
             return True
 
         new_player = PlayerModel(
-            id=player_id, username=username, character=character, is_ready=False
+            id=player_id,
+            username=username,
+            character=character,
+            is_ready=False,
+            user_id=user_id,
         )
         lobby.players.append(new_player)
         logger.info("player_joined", lobby_id=lobby_id, player_id=player_id)
@@ -179,10 +235,30 @@ class GameEngine:
             # Auto-assign if not already assigned
             unassigned = [p for p in lobby.players if p.team_id is None]
             if unassigned:
-                # Simple round-robin assignment between team_a and team_b
-                teams = ["team_a", "team_b"]
-                for i, player in enumerate(unassigned):
-                    player.team_id = teams[i % 2]
+                # Count current team assignments
+                team_counts = {"team_a": 0, "team_b": 0}
+                for p in lobby.players:
+                    if p.team_id == "team_a":
+                        team_counts["team_a"] += 1
+                    elif p.team_id == "team_b":
+                        team_counts["team_b"] += 1
+                # Assign unassigned players to balance teams, max 5 per team
+                for player in unassigned:
+                    if team_counts["team_a"] <= team_counts["team_b"]:
+                        if team_counts["team_a"] < 5:
+                            player.team_id = "team_a"
+                            team_counts["team_a"] += 1
+                        elif team_counts["team_b"] < 5:
+                            player.team_id = "team_b"
+                            team_counts["team_b"] += 1
+                        # If both teams full (should not happen with 10 player limit), leave unassigned
+                    else:
+                        if team_counts["team_b"] < 5:
+                            player.team_id = "team_b"
+                            team_counts["team_b"] += 1
+                        elif team_counts["team_a"] < 5:
+                            player.team_id = "team_a"
+                            team_counts["team_a"] += 1
         elif lobby.game_mode == "word_race":
             # Generate target words from the board
             all_words = self.board_gen.find_all_words(self.validator.get_word_set())
@@ -190,12 +266,17 @@ class GameEngine:
             eligible = [w for w in all_words if 4 <= len(w) <= 8]
             # Pick 5 random target words (or fewer if not enough)
             num_targets = min(5, len(eligible))
-            lobby.target_words = random.sample(eligible, num_targets) if eligible else []
+            lobby.target_words = (
+                random.sample(eligible, num_targets) if eligible else []
+            )
         elif lobby.game_mode == "timed_attack":
             # Set up round timer (60 seconds) and power-up drop interval (15 seconds)
             lobby.mode_settings["round_duration"] = 60
             lobby.mode_settings["powerup_drop_interval"] = 15
             lobby.mode_settings["current_round"] = 1
+            lobby.mode_settings["max_rounds"] = 3
+            lobby.mode_settings["round_timer"] = 60
+            lobby.mode_settings["next_powerup_drop"] = 15  # seconds until next drop
             lobby.mode_settings["powerup_drops"] = []
 
         lobby.status = "countdown"
@@ -431,28 +512,34 @@ class GameEngine:
                     team_scores[team_id] = 0
                     team_members[team_id] = []
                 team_scores[team_id] += p.score
-                team_members[team_id].append({
-                    "player_id": p.id,
-                    "username": p.username,
-                    "character": p.character,
-                    "score": p.score
-                })
-            
+                team_members[team_id].append(
+                    {
+                        "player_id": p.id,
+                        "username": p.username,
+                        "character": p.character,
+                        "score": p.score,
+                    }
+                )
+
             # Convert to list for team_results
             for team_id, total_score in team_scores.items():
-                team_results.append({
-                    "team_id": team_id,
-                    "total_score": total_score,
-                    "members": team_members[team_id]
-                })
+                team_results.append(
+                    {
+                        "team_id": team_id,
+                        "total_score": total_score,
+                        "members": team_members[team_id],
+                    }
+                )
             # Sort teams by score
             team_results.sort(key=lambda x: x["total_score"], reverse=True)
-        
+
         elif lobby.game_mode == "word_race":
             # Add bonus points for target words found
             target_bonus = 50  # points per target word
             for p in lobby.players:
-                target_words_found = [w for w in p.found_words if w in lobby.target_words]
+                target_words_found = [
+                    w for w in p.found_words if w in lobby.target_words
+                ]
                 if target_words_found:
                     bonus = len(target_words_found) * target_bonus
                     p.score += bonus
@@ -462,7 +549,7 @@ class GameEngine:
                             result["total_score"] += bonus
                             result["word_score"] += bonus
                             break
-        
+
         elif lobby.game_mode == "timed_attack":
             # Round-based scoring: each round completed adds multiplier
             # For simplicity, add 10% bonus per round completed (rounds stored in mode_settings)
@@ -472,8 +559,12 @@ class GameEngine:
                 p.score = int(p.score * round_bonus_multiplier)
                 for result in final_results:
                     if result["player_id"] == p.id:
-                        result["total_score"] = int(result["total_score"] * round_bonus_multiplier)
-                        result["word_score"] = int(result["word_score"] * round_bonus_multiplier)
+                        result["total_score"] = int(
+                            result["total_score"] * round_bonus_multiplier
+                        )
+                        result["word_score"] = int(
+                            result["word_score"] * round_bonus_multiplier
+                        )
                         break
 
         # Sort by total score
@@ -531,6 +622,8 @@ class GameEngine:
         lobby.status = "lobby"
         lobby.board = []
         lobby.timer = 0
+        lobby.target_words = []  # Clear target words (word_race specific)
+        lobby.mode_settings = {}  # Clear mode settings (timed_attack specific)
 
         # Reset all players
         for p in lobby.players:

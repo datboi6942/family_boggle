@@ -9,6 +9,9 @@ import { PowerUpBar } from './PowerUpBar';
 import { LockProtectionAnimation } from './LockProtectionAnimation';
 import { BoardRenderer } from './BoardRenderer';
 import { useTouchController } from '../hooks/useTouchController';
+import { TargetWordsDisplay } from './TargetWordsDisplay';
+import { TeamDisplay } from './TeamDisplay';
+import { PowerupDropNotifications } from './PowerupDropNotifications';
 
 // Letter point values (same as backend scoring.py)
 
@@ -102,7 +105,7 @@ const CELL_STYLES = IS_IOS ? `
 
 export const GameBoard = () => {
   // Use shallow comparison to prevent unnecessary re-renders when unrelated state changes
-  const { playerId, board, boardSize, timer, bonusTime, lastWordResult, players, blockedCells, isFrozen, frozenTimerValue, isLockArmed, lockJustConsumed } = useGameStore(
+  const { playerId, board, boardSize, timer, bonusTime, lastWordResult, players, blockedCells, isFrozen, frozenTimerValue, isLockArmed, lockJustConsumed, gameMode, modeSettings } = useGameStore(
     useShallow(state => ({
       playerId: state.playerId,
       board: state.board,
@@ -116,8 +119,13 @@ export const GameBoard = () => {
        frozenTimerValue: state.frozenTimerValue,
        isLockArmed: state.isLockArmed,
        lockJustConsumed: state.lockJustConsumed,
+       gameMode: state.gameMode,
+       modeSettings: state.modeSettings,
     }))
   );
+
+   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   const settings = modeSettings as any;
 
   const { send } = useWebSocketContext();
   const audio = useAudioContext();
@@ -697,38 +705,50 @@ export const GameBoard = () => {
     return null;
   }, [bonusTime]);
 
-  const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
+   const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
-  return (
+    const hasExtraDisplay = gameMode === 'word_race' || gameMode === 'team';
+   const gridRows = hasExtraDisplay ? 'auto minmax(0, 140px) 1fr 80px' : 'auto 1fr 80px';
+   const boardOffset = hasExtraDisplay ? '300px' : '220px';
+
+   return (
     <div
       className="game-board-container grid bg-navy-gradient text-white select-none p-2 overflow-hidden"
-      style={{
-        height: 'calc(100svh - 50px)', // Aggressively shrink to guarantee power-ups visible above browser chrome
-        maxHeight: 'calc(-webkit-fill-available - 50px)', // iOS Safari fallback
-        paddingTop: 'env(safe-area-inset-top, 8px)',
-        paddingBottom: '16px',
-        gridTemplateRows: 'auto 1fr 80px', // Header, Board, Power-ups (80px for visibility)
-      }}
+       style={{
+         height: 'calc(100svh - 30px)', // Less aggressive shrink to prevent cropping
+         maxHeight: 'calc(-webkit-fill-available - 30px)', // iOS Safari fallback
+         paddingTop: 'env(safe-area-inset-top, 8px)',
+         paddingBottom: '8px',
+          gridTemplateRows: gridRows, // Header, [TargetWords/Team], Board, Power-ups (80px for visibility)
+       }}
     >
-      {/* Header */}
-      {/* iOS: use ios-pulse (transform-based) instead of animate-pulse (opacity-based) */}
-      <div className={`py-1 ${isFrozen ? 'ios-pulse text-blue-400' : ''}`}>
+       {/* Header */}
+       {/* iOS: use ios-pulse (transform-based) instead of animate-pulse (opacity-based) */}
+       <div className={`py-1 row-start-1 ${isFrozen ? 'ios-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
           <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
             {isFrozen ? <Snowflake className="w-5 h-5 animate-spin" /> : <div className="w-3 h-3 bg-red-500 rounded-full recording-pulse" />}
             <div className="flex flex-col items-start">
               <span className="text-xl sm:text-2xl font-black font-mono tabular-nums">{formattedTimer}</span>
-               {bonusTimeIndicator && (
-                 <div className="flex items-center gap-1 mt-[-2px]">
-                   <span className="text-xs text-green-400 font-bold">
-                     {bonusTimeIndicator}
-                   </span>
-                   <span className="text-xs text-white/60 ml-1">
-                     bonus time
-                   </span>
-                 </div>
-               )}
+                {bonusTimeIndicator && (
+                  <div className="flex items-center gap-1 mt-[-2px]">
+                    <span className="text-xs text-green-400 font-bold">
+                      {bonusTimeIndicator}
+                    </span>
+                    <span className="text-xs text-white/60 ml-1">
+                      bonus time
+                    </span>
+                  </div>
+                )}
+                {/* Round indicator for timed attack mode */}
+                {gameMode === 'timed_attack' && settings?.current_round && settings?.max_rounds && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="text-xs text-yellow-400 font-bold">
+                        Round {settings.current_round}/{settings.max_rounds}
+                    </span>
+                  </div>
+                )}
             </div>
           </div>
 
@@ -806,10 +826,16 @@ export const GameBoard = () => {
             <p className="text-xl sm:text-2xl font-black text-primary leading-none">{me?.score || 0}</p>
           </div>
         </div>
-      </div>
+       </div>
 
-      {/* The Board - Constrained square container that fits in available space */}
-      <div className="flex items-center justify-center overflow-hidden min-h-0 py-1">
+        {/* Target Words Display for word_race mode */}
+        {gameMode === 'word_race' && <div className="row-start-2"><TargetWordsDisplay /></div>}
+
+        {/* Team Display for team mode */}
+        {gameMode === 'team' && <div className="row-start-2"><TeamDisplay /></div>}
+
+       {/* The Board - Constrained square container that fits in available space */}
+       <div className="flex items-center justify-center overflow-hidden min-h-0 py-1 row-start-3">
         <div
           className={`relative w-full transition-all duration-300 rounded-2xl ${
             isFrozen
@@ -818,11 +844,12 @@ export const GameBoard = () => {
                 ? 'ring-4 ring-green-400/50 shadow-[0_0_20px_rgba(34,197,94,0.3)]'
                 : ''
           }`}
-          style={{
-            aspectRatio: '1/1',
-            maxWidth: 'min(100%, calc(100svh - 280px))',
-            maxHeight: 'calc(100svh - 280px)',
-          }}
+           style={{
+              aspectRatio: '1/1',
+              width: '100%',
+              maxWidth: `min(100%, calc(100svh - ${boardOffset}))`,
+              maxHeight: `min(100%, calc(100svh - ${boardOffset}))`,
+           }}
         >
           {/* Frost overlay when frozen */}
           {isFrozen && (
@@ -845,10 +872,11 @@ export const GameBoard = () => {
             onTouchMove={handleMove}
             onTouchEnd={handleEnd}
             className="game-board-grid absolute inset-0 grid gap-2 w-full h-full"
-            style={{
-              gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
-              touchAction: 'none'
-            }}
+             style={{
+               gridTemplateColumns: `repeat(${boardSize}, 1fr)`,
+               gridTemplateRows: `repeat(${boardSize}, 1fr)`,
+               touchAction: 'none'
+             }}
           >
           <BoardRenderer
             board={board}
@@ -889,7 +917,10 @@ export const GameBoard = () => {
         </div>
       </div>
 
-      <PowerUpBar playerId={playerId} players={players} isLockArmed={isLockArmed} />
+       <PowerupDropNotifications />
+        <div className="row-start-4">
+          <PowerUpBar playerId={playerId} players={players} isLockArmed={isLockArmed} />
+        </div>
 
       <LockProtectionAnimation lockJustConsumed={lockJustConsumed} />
 

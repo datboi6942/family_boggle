@@ -50,37 +50,38 @@ export const PlayerScoreCard: React.FC<PlayerScoreCardProps> = ({
   const [displayScore, setDisplayScore] = useState(0);
   const controls = useAnimation();
 
-  useEffect(() => {
-    if (score > displayScore) {
-      // Animate score increment
-      const start = displayScore;
-      const end = score;
-      const duration = 500; // ms
-      let startTime: number | null = null;
+   useEffect(() => {
+     if (score > displayScore) {
+       // Animate score increment
+       const start = displayScore;
+       const end = score;
+       const duration = 500; // ms
+       let startTime: number | null = null;
 
-      const step = (timestamp: number) => {
-        if (!startTime) startTime = timestamp;
-        const progress = Math.min((timestamp - startTime) / duration, 1);
-        const current = Math.floor(progress * (end - start) + start);
-        setDisplayScore(current);
+       const step = (timestamp: number) => {
+         if (!startTime) startTime = timestamp;
+         const progress = Math.min((timestamp - startTime) / duration, 1);
+         const current = Math.floor(progress * (end - start) + start);
+         setDisplayScore(current);
 
-        if (progress < 1) {
-          window.requestAnimationFrame(step);
-        }
-      };
+         if (progress < 1) {
+           window.requestAnimationFrame(step);
+         }
+       };
 
-      window.requestAnimationFrame(step);
+       window.requestAnimationFrame(step);
 
-      // Visual pop animation
-      controls.start({
-        scale: [1, 1.2, 1],
-        color: ['#ffffff', '#8b5cf6', '#ffffff'],
-        transition: { duration: 0.3 }
-      });
-    } else {
-      setDisplayScore(score);
-    }
-  }, [score, controls]);
+       // Visual pop animation
+       controls.start({
+         scale: [1, 1.2, 1],
+         color: ['#ffffff', '#8b5cf6', '#ffffff'],
+         transition: { duration: 0.3 }
+       });
+     } else {
+       // eslint-disable-next-line react-hooks/set-state-in-effect
+       setDisplayScore(score);
+     }
+   }, [score, controls, displayScore]);
 
   return (
     <motion.div

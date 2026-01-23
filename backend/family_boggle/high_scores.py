@@ -184,39 +184,3 @@ def get_player_stats(ip_address: str) -> dict | None:
             else 0
         ),
     }
-
-
-class PlayerIPTracker:
-    """Tracks IP addresses and user accounts for players in active games."""
-
-    def __init__(self):
-        # player_id -> ip_address
-        self.player_ips: dict[str, str] = {}
-        # player_id -> user_id
-        self.player_users: dict[str, int] = {}
-
-    def register_player(self, player_id: str, ip_address: str, user_id: Optional[int] = None):
-        """Registers a player's IP address and optional user account."""
-        self.player_ips[player_id] = ip_address
-        if user_id is not None:
-            self.player_users[player_id] = user_id
-        logger.info("player_ip_registered", player_id=player_id, ip=ip_address, has_user=user_id is not None)
-
-    def get_player_ip(self, player_id: str) -> str | None:
-        """Gets a player's IP address."""
-        return self.player_ips.get(player_id)
-    
-    def get_player_user(self, player_id: str) -> Optional[int]:
-        """Gets a player's user ID if logged in."""
-        return self.player_users.get(player_id)
-
-    def remove_player(self, player_id: str):
-        """Removes a player from tracking."""
-        if player_id in self.player_ips:
-            del self.player_ips[player_id]
-        if player_id in self.player_users:
-            del self.player_users[player_id]
-
-
-# Global IP tracker instance
-ip_tracker = PlayerIPTracker()
