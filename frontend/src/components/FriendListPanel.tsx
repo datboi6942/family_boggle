@@ -37,11 +37,12 @@ export const FriendListPanel = ({ onClose }: { onClose?: () => void }) => {
     setIsLoading(false);
   }, [loadFriends, loadFriendRequests, setIsLoading]);
 
-  useEffect(() => {
-    if (authToken) {
-      refreshFriends();
-    }
-  }, [authToken, refreshFriends]);
+   useEffect(() => {
+     if (authToken) {
+       // eslint-disable-next-line react-hooks/set-state-in-effect
+       refreshFriends();
+     }
+   }, [authToken, refreshFriends]);
 
   const handleSendRequest = async () => {
     if (!newFriendUsername.trim()) return;

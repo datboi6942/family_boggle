@@ -16,6 +16,7 @@ class PlayerModel(BaseModel):
     is_time_up: bool = False  # Whether this player's time has run out
     wants_play_again: bool = False  # Whether player clicked "Play Again" on summary
     team_id: Optional[str] = None  # Team assignment for team play mode
+    user_id: Optional[int] = None  # Authenticated user ID if logged in
 
 
 class GameStateModel(BaseModel):

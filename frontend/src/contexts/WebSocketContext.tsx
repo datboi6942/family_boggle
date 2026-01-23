@@ -2,11 +2,12 @@ import { createContext, useContext, useEffect, useRef, useCallback, type ReactNo
 import { useGameStore } from '../stores/gameStore';
 
 interface WebSocketContextType {
-  send: (type: string, data?: any) => void;
+  send: (type: string, data?: unknown) => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType>({ send: () => {} });
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useWebSocketContext = () => useContext(WebSocketContext);
 
 export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
@@ -136,9 +137,13 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
         case 'game_end':
           setGameEnd(message.data);
           break;
-        case 'powerup_event':
-          setPowerup(message.data, playerId || undefined);
-          break;
+         case 'powerup_event':
+           setPowerup(message.data, playerId || undefined);
+           break;
+         case 'powerup_drop':
+           // Handle powerup drops in timed attack mode
+           useGameStore.getState().handlePowerupDrop(message.data);
+           break;
         case 'powerup_consumed':
           // Update the player's powerups after one was used
           useGameStore.getState().updatePlayerPowerups(
@@ -184,7 +189,8 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
           useGameStore.getState().updatePlayerScore(
             message.data.player_id,
             message.data.score,
-            message.data.powerup
+            message.data.powerup,
+            message.data.word  // may be undefined for existing games
           );
           break;
         case 'waiting_phase':
@@ -326,7 +332,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
-  const messageQueueRef = useRef<Array<{type: string, data: any}>>([]);
+  const messageQueueRef = useRef<Array<{type: string, data: unknown}>>([]);
   const flushScheduledRef = useRef(false);
 
   const raf = typeof window !== 'undefined' ? window.requestAnimationFrame : (cb: () => void) => setTimeout(cb, 16);
@@ -358,7 +364,7 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
     flushScheduledRef.current = false;
   }, []);
 
-  const send = useCallback((type: string, data: any = {}) => {
+  const send = useCallback((type: string, data: unknown = {}) => {
     // Add to queue
     messageQueueRef.current.push({ type, data });
 

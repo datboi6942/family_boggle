@@ -18,7 +18,7 @@ export const ModeSelector = () => {
 
   const modes = [
     { id: 'classic', label: 'Classic', description: 'Traditional Boggle scoring' },
-    { id: 'team', label: 'Team Play', description: '2v2 or 3v3 team competition' },
+     { id: 'team', label: 'Team Play', description: 'Up to 5v5 team competition' },
     { id: 'timed_attack', label: 'Timed Attack', description: '60-second rounds, power-up drops' },
     { id: 'word_race', label: 'Word Race', description: 'Race to find target words first' },
   ];

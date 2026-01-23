@@ -12,16 +12,23 @@ import { RegisterModal } from './RegisterModal';
 import { UserProfile } from './UserProfile';
 
 export const JoinScreen = () => {
-   const { setUsername, setCharacter, setLobbyId, setPlayerId, setStatus, setMode, setPassword, username, character, authToken } = useGameStore();
+   const { setUsername, setCharacter, setLobbyId, setPlayerId, setStatus, setMode, setPassword, username, character, authToken, user } = useGameStore();
   const audio = useAudioContext();
-   const [lobbyInput, setLobbyInput] = useState('');
-   const [isPrivate, setIsPrivate] = useState(false);
-   const [passwordInput, setPasswordInput] = useState('');
-   const [showScanner, setShowScanner] = useState(false);
-   const [scanError, setScanError] = useState<string | null>(null);
-   const [showLoginModal, setShowLoginModal] = useState(false);
-   const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const musicStartedRef = useRef(false);
+    const [lobbyInput, setLobbyInput] = useState('');
+    const [isPrivate, setIsPrivate] = useState(false);
+    const [passwordInput, setPasswordInput] = useState('');
+    const [showScanner, setShowScanner] = useState(false);
+    const [scanError, setScanError] = useState<string | null>(null);
+    const [showLoginModal, setShowLoginModal] = useState(false);
+    const [showRegisterModal, setShowRegisterModal] = useState(false);
+   const musicStartedRef = useRef(false);
+
+   // Sync username with user.username when authenticated
+   useEffect(() => {
+     if (authToken && user && username !== user.username) {
+       setUsername(user.username);
+     }
+   }, [authToken, user, username, setUsername]);
 
   // Restore scroll state when entering join screen (game locks scroll)
   useEffect(() => {
@@ -179,14 +186,22 @@ export const JoinScreen = () => {
         FAMILY BOGGLE
       </motion.h1>
 
-      <div className="w-full max-w-sm space-y-4 frosted-glass p-6 sm:p-8 shrink-0">
-        <input
-          type="text"
-          placeholder="ENTER USERNAME"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          className="w-full p-4 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-center text-xl font-bold"
-        />
+       <div className="w-full max-w-sm space-y-4 frosted-glass p-6 sm:p-8 shrink-0">
+         {authToken && user ? (
+           <div className="w-full p-4 bg-white/5 border border-primary/50 rounded-xl text-center">
+             <div className="text-sm text-white/70 mb-1">Welcome back</div>
+             <div className="text-xl font-bold text-primary">{user.username}</div>
+             <div className="text-xs text-white/50 mt-1">Ready to play!</div>
+           </div>
+         ) : (
+           <input
+             type="text"
+             placeholder="ENTER USERNAME"
+             value={username}
+             onChange={(e) => setUsername(e.target.value)}
+             className="w-full p-4 bg-white/5 border border-white/20 rounded-xl focus:outline-none focus:border-primary text-center text-xl font-bold"
+           />
+         )}
 
         <div className="grid grid-cols-5 gap-2 py-4">
           {MONSTERS.map((m) => (

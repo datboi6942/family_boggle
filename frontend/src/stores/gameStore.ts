@@ -150,16 +150,17 @@ interface GameState extends PersistedState {
   blockedCells: [number, number][];
   isFrozen: boolean;
   frozenTimerValue: number | null;  // Timer value when freeze started (display this while frozen)
-  isLockArmed: boolean;  // Whether this player has an armed lock
-  lockJustConsumed: boolean;  // True briefly when lock blocks a shuffle (for animation)
-  playersStillPlaying: string[];  // Player IDs still playing during waiting phase
+   isLockArmed: boolean;  // Whether this player has an armed lock
+   lockJustConsumed: boolean;  // True briefly when lock blocks a shuffle (for animation)
+   powerupDropNotifications: Array<{ id: string; message: string; powerup: string; timestamp: number; }>;  // Notifications for powerup drops
+   playersStillPlaying: string[];  // Player IDs still playing during waiting phase
   playersWantingPlayAgain: string[];  // Player IDs who clicked "Play Again"
    chatMessages: ChatMessage[];  // Chat messages in the current lobby
    friends: Friend[];  // User's friends list
    friendRequests: FriendRequest[];  // Pending friend requests
   setTimer: (timer: number) => void;
   setBonusTime: (time: number) => void;
-  updatePlayerScore: (playerId: string, score: number, powerup?: string) => void;
+  updatePlayerScore: (playerId: string, score: number, powerup?: string, word?: string) => void;
   updatePlayerPowerups: (playerId: string, powerups: string[]) => void;
   setBoard: (board: string[][]) => void;
   addBonusTime: (seconds: number) => void;
@@ -180,15 +181,17 @@ interface GameState extends PersistedState {
    setMode: (mode: 'create' | 'join') => void;
    setPassword: (password: string | null) => void;
   setStatus: (status: PersistedState['status']) => void;
-  updateFromLobby: (data: any) => void;
-  updateFromGameState: (data: any) => void;
-  setWordResult: (result: any) => void;
-  setGameEnd: (data: any) => void;
-  setPowerup: (data: any, myPlayerId?: string) => void;
-  setWaitingPhase: (data: any, myPlayerId?: string) => void;
+   updateFromLobby: (data: any) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
+   updateFromGameState: (data: any) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
+   setWordResult: (result: any) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
+   setGameEnd: (data: any) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
+    setPowerup: (data: any, myPlayerId?: string) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
+    handlePowerupDrop: (data: any) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
+    removePowerupDropNotification: (id: string) => void;
+    setWaitingPhase: (data: any, myPlayerId?: string) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
   setPlayerTimeUp: (playerId: string, myPlayerId?: string) => void;
-  updateBonusTimer: (data: any, myPlayerId?: string) => void;
-  setPlayAgainUpdate: (data: any) => void;
+   updateBonusTimer: (data: any, myPlayerId?: string) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
+   setPlayAgainUpdate: (data: any) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
    addChatMessage: (message: ChatMessage) => void;
    // Friend actions
    loadFriends: () => Promise<{ success: boolean; friends?: Friend[]; message?: string }>;
@@ -238,9 +241,10 @@ export const useGameStore = create<GameState>()(
   blockedCells: [],
   isFrozen: false,
   frozenTimerValue: null,
-  isLockArmed: false,
-  lockJustConsumed: false,
-   playersStillPlaying: [],
+   isLockArmed: false,
+   lockJustConsumed: false,
+   powerupDropNotifications: [],
+    playersStillPlaying: [],
    playersWantingPlayAgain: [],
    chatMessages: [],
    friends: [],
@@ -249,11 +253,14 @@ export const useGameStore = create<GameState>()(
   setTimer: (timer) => set({ timer }),
   setBonusTime: (bonusTime) => set({ bonusTime }),
 
-  updatePlayerScore: (targetPlayerId, score, powerup) => set((state) => ({
+  updatePlayerScore: (targetPlayerId, score, powerup, word) => set((state) => ({
     players: state.players.map(p => {
       if (p.id === targetPlayerId) {
         const newPowerups = powerup ? [...p.powerups, powerup] : p.powerups;
-        return { ...p, score, powerups: newPowerups };
+        const newFoundWords = word && !p.found_words.includes(word.toUpperCase()) 
+          ? [...p.found_words, word.toUpperCase()] 
+          : p.found_words;
+        return { ...p, score, powerups: newPowerups, found_words: newFoundWords };
       }
       return p;
     })
@@ -279,7 +286,7 @@ export const useGameStore = create<GameState>()(
       });
       const data = await response.json();
       if (response.ok) {
-        set({ authToken: data.access_token, user: data.user });
+        set({ authToken: data.access_token, user: data.user, username: data.user.username });
         return { success: true, message: data.message || 'Login successful' };
       } else {
         return { success: false, message: data.detail || 'Login failed' };
@@ -298,7 +305,7 @@ export const useGameStore = create<GameState>()(
       });
       const data = await response.json();
       if (response.ok) {
-        set({ authToken: data.access_token, user: data.user });
+        set({ authToken: data.access_token, user: data.user, username: data.user.username });
         return { success: true, message: data.message || 'Registration successful' };
       } else {
         return { success: false, message: data.detail || 'Registration failed' };
@@ -378,7 +385,17 @@ export const useGameStore = create<GameState>()(
 
   setLobbyId: (id) => set({ lobbyId: id }),
   setPlayerId: (id) => set({ playerId: id }),
-  setUsername: (name) => set({ username: name }),
+   setUsername: (name) => {
+     const state = get();
+     // Don't allow changing username if authenticated (username must match user.username)
+     if (state.authToken && state.user) {
+       // Keep username synced with user.username
+       if (name !== state.user.username) {
+         return; // Ignore change
+       }
+     }
+     set({ username: name });
+   },
   setCharacter: (char) => set({ character: char }),
    setMode: (mode) => set({ mode }),
    setStatus: (status) => set({ status }),
@@ -402,9 +419,10 @@ export const useGameStore = create<GameState>()(
     blockedCells: [],
     isFrozen: false,
     frozenTimerValue: null,
-    isLockArmed: false,
-    lockJustConsumed: false,
-    playersWantingPlayAgain: [],
+     isLockArmed: false,
+     lockJustConsumed: false,
+     powerupDropNotifications: [],
+     playersWantingPlayAgain: [],
   }),
   updateFromGameState: (data) => set({
     status: data.status,
@@ -433,7 +451,7 @@ export const useGameStore = create<GameState>()(
     allPossibleWords: data.all_possible_words || null,
     totalPossibleWords: data.total_possible_words || 0
   }),
-   setPowerup: (data: any, myPlayerId?: string) => {
+    setPowerup: (data: any /* eslint-disable-line @typescript-eslint/no-explicit-any */, myPlayerId?: string) => {
     console.log('setPowerup called', { data, myPlayerId });
     if (data.type === 'freeze') {
       // Only the player who used freeze gets the freeze effect
@@ -472,10 +490,37 @@ export const useGameStore = create<GameState>()(
       // Track if this player armed a lock
       if (data.by === myPlayerId) {
         set({ isLockArmed: true });
+       }
+     }
+   },
+    handlePowerupDrop: (data: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
+      console.log('handlePowerupDrop called', data);
+      const powerup = data.powerup;
+      const playerId = data.player_id;
+       // round is available in data.round if needed
+      // Only show notification if this drop is for the current player
+      const store = get();
+      if (playerId === store.playerId) {
+        const id = Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+        const message = `Power-up dropped: ${powerup}`;
+        set((state) => ({
+          powerupDropNotifications: [
+            ...state.powerupDropNotifications,
+            { id, message, powerup, timestamp: Date.now() }
+          ]
+        }));
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+          get().removePowerupDropNotification(id);
+        }, 3000);
       }
-    }
-  },
-  setWaitingPhase: (data: any, myPlayerId?: string) => {
+    },
+    removePowerupDropNotification: (id: string) => {
+      set((state) => ({
+        powerupDropNotifications: state.powerupDropNotifications.filter(n => n.id !== id)
+      }));
+    },
+    setWaitingPhase: (data: any /* eslint-disable-line @typescript-eslint/no-explicit-any */, myPlayerId?: string) => {
     const playersFinished = data.players_finished || [];
     const playersWithBonus = data.players_with_bonus || [];
 
@@ -484,7 +529,7 @@ export const useGameStore = create<GameState>()(
       set({
         status: 'waiting',
         isTimeUp: true,
-        playersStillPlaying: playersWithBonus.map((p: any) => p.player_id)
+         playersStillPlaying: playersWithBonus.map((p: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => p.player_id)
       });
     }
   },
@@ -503,18 +548,18 @@ export const useGameStore = create<GameState>()(
       }));
     }
   },
-  updateBonusTimer: (data: any, myPlayerId?: string) => {
+   updateBonusTimer: (data: any /* eslint-disable-line @typescript-eslint/no-explicit-any */, myPlayerId?: string) => {
     const players = data.players || [];
-    const myData = players.find((p: any) => p.player_id === myPlayerId);
+     const myData = players.find((p: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => p.player_id === myPlayerId);
 
     if (myData) {
       set({ bonusTime: myData.bonus_time });
     }
 
     // Update list of players still playing
-    set({ playersStillPlaying: players.map((p: any) => p.player_id) });
+     set({ playersStillPlaying: players.map((p: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => p.player_id) });
   },
-  setPlayAgainUpdate: (data: any) => {
+   setPlayAgainUpdate: (data: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
     set({ playersWantingPlayAgain: data.players_ready || [] });
   },
    addChatMessage: (message: ChatMessage) => {
@@ -699,9 +744,10 @@ export const useGameStore = create<GameState>()(
       blockedCells: [],
       isFrozen: false,
       frozenTimerValue: null,
-      isLockArmed: false,
-      lockJustConsumed: false,
-      playersStillPlaying: [],
+       isLockArmed: false,
+       lockJustConsumed: false,
+       powerupDropNotifications: [],
+       playersStillPlaying: [],
       playersWantingPlayAgain: [],
     });
   },
@@ -720,28 +766,34 @@ export const useGameStore = create<GameState>()(
           sessionStorage.removeItem(name);
         },
       },
-      // Only persist session-critical state, not transient UI state
-      partialize: (state): PersistedState => ({
-        lobbyId: state.lobbyId,
-        playerId: state.playerId,
-        username: state.username,
-        character: state.character,
-        mode: state.mode,
-        status: state.status,
-        board: state.board,
-        boardSize: state.boardSize,
-        gameMode: state.gameMode,
-        modeSettings: state.modeSettings,
-        targetWords: state.targetWords,
-        timer: state.timer,
-        bonusTime: state.bonusTime,
-        isTimeUp: state.isTimeUp,
-        players: state.players,
-        hostId: state.hostId,
-         authToken: state.authToken,
-         user: state.user,
-         password: state.password,
-      }),
+       // Only persist session-critical state, not transient UI state
+       partialize: (state): PersistedState => ({
+         lobbyId: state.lobbyId,
+         playerId: state.playerId,
+         username: state.username,
+         character: state.character,
+         mode: state.mode,
+         status: state.status,
+         board: state.board,
+         boardSize: state.boardSize,
+         gameMode: state.gameMode,
+         modeSettings: state.modeSettings,
+         targetWords: state.targetWords,
+         timer: state.timer,
+         bonusTime: state.bonusTime,
+         isTimeUp: state.isTimeUp,
+         players: state.players,
+         hostId: state.hostId,
+          authToken: state.authToken,
+          user: state.user,
+          password: state.password,
+       }),
+       // Sync username with user.username on rehydration
+       onRehydrateStorage: () => (state) => {
+         if (state?.authToken && state?.user && state.username !== state.user.username) {
+           state.username = state.user.username;
+         }
+       },
     }
   )
 );

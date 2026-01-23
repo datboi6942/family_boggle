@@ -1,4 +1,5 @@
 import asyncio
+import random
 
 import structlog
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
@@ -7,7 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from family_boggle.config import settings
 from family_boggle.game_engine import game_engine
-from family_boggle.high_scores import get_leaderboard, get_player_stats, ip_tracker
+from family_boggle.high_scores import get_leaderboard, get_player_stats
 from family_boggle.models import GameStateModel, WordSubmission, FriendRequestCreate, FriendRequestUpdate
 from family_boggle.websocket_manager import manager
 from family_boggle.auth import user_manager, verify_token, create_access_token
@@ -333,17 +334,7 @@ async def remove_friend(
     return {"success": True, "message": message}
 
 
-def get_client_ip(websocket: WebSocket) -> str:
-    """Extract client IP from WebSocket connection."""
-    # Check for forwarded headers (for proxied connections)
-    forwarded = websocket.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
 
-    # Fall back to direct client connection
-    if websocket.client:
-        return websocket.client.host
-    return "unknown"
 
 
 @app.websocket("/ws/{lobby_id}/{player_id}")
@@ -359,8 +350,7 @@ async def websocket_endpoint(
 ):
     await manager.connect(websocket, lobby_id)
 
-    # Get client IP for high score tracking
-    client_ip = get_client_ip(websocket)
+
     
     # Validate token if provided
     user_id = None
@@ -381,10 +371,9 @@ async def websocket_endpoint(
         else:
             logger.warning("invalid_token_provided", player_id=player_id)
     
-    logger.info("client_connected", player_id=player_id, ip=client_ip, has_user=user_id is not None)
+    logger.info("client_connected", player_id=player_id, has_user=user_id is not None)
 
-    # Register player IP and optional user for high score tracking
-    ip_tracker.register_player(player_id, client_ip, user_id)
+
 
     # Handle create vs join modes
     lobby_exists = lobby_id in game_engine.lobbies
@@ -399,10 +388,10 @@ async def websocket_endpoint(
 
     if mode == "create" and not lobby_exists:
         # Create new lobby
-        game_engine.create_lobby(player_id, username, character, lobby_id=lobby_id, password=password)
+        game_engine.create_lobby(player_id, username, character, lobby_id=lobby_id, password=password, host_user_id=user_id)
     elif lobby_exists:
         # Join existing lobby
-        success = game_engine.join_lobby(lobby_id, player_id, username, character, password)
+        success = game_engine.join_lobby(lobby_id, player_id, username, character, password, user_id=user_id)
         if not success:
             await websocket.close(code=1008, reason="Lobby full or error joining")
             return
@@ -483,6 +472,7 @@ async def websocket_endpoint(
                                 "player_id": player_id,
                                 "score": result["total_score"],
                                 "powerup": result.get("powerup"),
+                                "word": submission.word.upper(),
                             },
                         },
                     )
@@ -680,7 +670,6 @@ async def websocket_endpoint(
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        ip_tracker.remove_player(player_id)
         # Remove player from lobby
         if game_engine.leave_lobby(lobby_id, player_id):
             # If lobby still exists, broadcast update
@@ -712,32 +701,131 @@ async def run_game_loop(lobby_id: str):
     # 2. Playing Phase
     game_engine.start_game(lobby_id)  # Generates board
     lobby.status = "playing"
-    # 4x4 boards get 2 minutes (less words available), larger boards get 3 minutes
-    lobby.timer = 120 if lobby.board_size == 4 else settings.GAME_DURATION_SECONDS
-
+    
     # Reset per-player time states
     for player in lobby.players:
         player.bonus_time = 0
         player.is_time_up = False
-
-    # Send initial full state for playing phase
-    await manager.broadcast(
-        lobby_id, {"type": "game_state", "data": lobby.model_dump()}
-    )
-
-    # Main timer phase
-    while lobby.timer > 0:
-        await asyncio.sleep(1)
-        lobby.timer -= 1
-
-        # Broadcast timer update only (90% reduction in payload)
+    
+    # Handle timed attack mode differently
+    if lobby.game_mode == "timed_attack":
+        # Initialize round settings
+        round_duration = lobby.mode_settings.get("round_duration", 60)
+        powerup_drop_interval = lobby.mode_settings.get("powerup_drop_interval", 15)
+        max_rounds = lobby.mode_settings.get("max_rounds", 3)
+        current_round = lobby.mode_settings.get("current_round", 1)
+        lobby.timer = round_duration
+        # Track drops within round
+        next_drop = powerup_drop_interval  # seconds until next drop from start of round
+        
+        # Send initial full state for playing phase
         await manager.broadcast(
-            lobby_id, {"type": "timer_update", "data": {"timer": lobby.timer}}
+            lobby_id, {"type": "game_state", "data": lobby.model_dump()}
+        )
+        
+        # Round loop
+        while current_round <= max_rounds:
+            while lobby.timer > 0:
+                await asyncio.sleep(1)
+                lobby.timer -= 1
+                
+                # Check for power-up drop
+                elapsed_in_round = round_duration - lobby.timer
+                if elapsed_in_round >= next_drop:
+                    # Award random power-up to each player
+                    for player in lobby.players:
+                        powerup = random.choice(["freeze", "blowup", "shuffle", "lock"])
+                        player.powerups.append(powerup)
+                        # Notify frontend of powerup award
+                        await manager.broadcast(
+                            lobby_id,
+                            {
+                                "type": "powerup_consumed",
+                                "data": {
+                                    "player_id": player.id,
+                                    "powerups": list(player.powerups),
+                                }
+                            }
+                        )
+                        await manager.broadcast(
+                            lobby_id,
+                            {
+                                "type": "powerup_event",
+                                "data": {
+                                    "type": "powerup_drop",
+                                    "player_id": player.id,
+                                    "powerup": powerup,
+                                    "round": current_round,
+                                }
+                            }
+                        )
+                    next_drop += powerup_drop_interval
+                
+                # Broadcast timer update
+                await manager.broadcast(
+                    lobby_id, {"type": "timer_update", "data": {"timer": lobby.timer}}
+                )
+                
+                # Check if game was forcibly ended or everyone left
+                if lobby_id not in game_engine.lobbies:
+                    return
+            
+            # Round ended
+            if current_round < max_rounds:
+                # Generate new board for next round
+                if game_engine.board_gen:
+                    game_engine.board_gen.generate()
+                    lobby.board = game_engine.board_gen.grid
+                    # Broadcast board update
+                    await manager.broadcast(
+                        lobby_id,
+                        {
+                            "type": "board_update",
+                            "data": {
+                                "board": lobby.board,
+                                "round": current_round + 1,
+                            }
+                        }
+                    )
+                # Reset round timer and drop counter
+                lobby.timer = round_duration
+                next_drop = powerup_drop_interval
+                current_round += 1
+                lobby.mode_settings["current_round"] = current_round
+                # Broadcast new round start
+                await manager.broadcast(
+                    lobby_id, {"type": "game_state", "data": lobby.model_dump()}
+                )
+            else:
+                # Last round completed
+                break
+        
+        # All rounds completed, set timer to 0 to exit outer loop
+        lobby.timer = 0
+    
+    else:
+        # Classic mode timing
+        # 4x4 boards get 2 minutes (less words available), larger boards get 3 minutes
+        lobby.timer = 120 if lobby.board_size == 4 else settings.GAME_DURATION_SECONDS
+
+        # Send initial full state for playing phase
+        await manager.broadcast(
+            lobby_id, {"type": "game_state", "data": lobby.model_dump()}
         )
 
-        # Check if game was forcibly ended or everyone left
-        if lobby_id not in game_engine.lobbies:
-            break
+        # Main timer phase
+        while lobby.timer > 0:
+            await asyncio.sleep(1)
+            lobby.timer -= 1
+
+            # Broadcast timer update only (90% reduction in payload)
+            await manager.broadcast(
+                lobby_id, {"type": "timer_update", "data": {"timer": lobby.timer}}
+            )
+
+            # Check if game was forcibly ended or everyone left
+            if lobby_id not in game_engine.lobbies:
+                break
 
     # Check if lobby still exists
     if lobby_id not in game_engine.lobbies:
@@ -812,8 +900,7 @@ async def run_game_loop(lobby_id: str):
         lobby.status = "summary"
         summary = game_engine.finalize_scores(lobby_id)
 
-        # Update high scores for all players
-        from family_boggle.high_scores import update_player_score
+
 
         winner_id = (
             summary.get("winner", {}).get("player_id")
@@ -823,31 +910,25 @@ async def run_game_loop(lobby_id: str):
 
         for result in summary.get("results", []):
             player_id = result.get("player_id")
-            if player_id:
-                player_ip = ip_tracker.get_player_ip(player_id)
-                if player_ip:
-                    update_player_score(
-                        ip_address=player_ip,
-                        username=result.get("username", "Unknown"),
-                        score=result.get("score", 0),
-                        words_count=len(result.get("words", [])),
-                        is_winner=(player_id == winner_id),
-                        challenges_completed=result.get("challenges_completed", 0),
-                    )
-                
-                # Also update user stats if player is logged in
-                user_id = ip_tracker.get_player_user(player_id)
-                if user_id:
+            if player_id and lobby:
+                # Find player in lobby to get user_id
+                player = next((p for p in lobby.players if p.id == player_id), None)
+                if player and player.user_id:
+                    # Update user stats for authenticated players
                     user_manager.update_user_stats(
-                        user_id,
+                        player.user_id,
                         {
                             "score": result.get("score", 0),
                             "is_winner": (player_id == winner_id),
                             "challenges_completed": result.get("challenges_completed", 0),
                         }
                     )
+                # Note: Anonymous players (without user_id) don't get stats tracked
 
         await manager.broadcast(lobby_id, {"type": "game_end", "data": summary})
+
+
+
 
 
 if __name__ == "__main__":

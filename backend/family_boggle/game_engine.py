@@ -42,13 +42,14 @@ class GameEngine:
         host_character: str,
         lobby_id: str | None = None,
         password: str | None = None,
+        host_user_id: int | None = None,
     ) -> str:
         """Creates a new game lobby."""
         if not lobby_id:
             lobby_id = str(uuid.uuid4())[:8].upper()
 
         host = PlayerModel(
-            id=host_id, username=host_username, character=host_character, is_ready=False
+            id=host_id, username=host_username, character=host_character, is_ready=False, user_id=host_user_id
         )
         # Hash password if provided
         hashed_password = None
@@ -74,6 +75,10 @@ class GameEngine:
         
         lobby.game_mode = game_mode
         lobby.mode_settings = mode_settings or {}
+        
+        # Clear target words if not in word_race mode
+        if game_mode != "word_race":
+            lobby.target_words = []
         
         # If switching from team mode, clear team assignments
         if game_mode != "team":
@@ -105,19 +110,39 @@ class GameEngine:
             if not any(p.id == player_id for p in lobby.players):
                 return False
         
+        # Validate team IDs (only team_a and team_b allowed)
+        valid_teams = {"team_a", "team_b"}
+        if any(team_id not in valid_teams for team_id in team_assignments.values()):
+            return False
+        
+        # Calculate final team assignments after changes
+        final_assignments = {}
+        for player in lobby.players:
+            if player.id in team_assignments:
+                final_assignments[player.id] = team_assignments[player.id]
+            else:
+                final_assignments[player.id] = player.team_id  # Could be None
+        
+        # Count team assignments (ignore None)
+        team_counts = {}
+        for team_id in final_assignments.values():
+            if team_id is not None:
+                team_counts[team_id] = team_counts.get(team_id, 0) + 1
+        
+        # Validate team sizes (max 5 per team)
+        if any(count > 5 for count in team_counts.values()):
+            return False
+        
         # Apply assignments
         for player in lobby.players:
             if player.id in team_assignments:
                 player.team_id = team_assignments[player.id]
-            else:
-                # If player not in assignments, keep existing team or set to None
-                pass
         
         logger.info("teams_assigned", lobby_id=lobby_id, assignments=team_assignments)
         return True
 
     def join_lobby(
-        self, lobby_id: str, player_id: str, username: str, character: str, password: str | None = None
+        self, lobby_id: str, player_id: str, username: str, character: str, password: str | None = None, user_id: int | None = None
     ) -> bool:
         """Adds a player to an existing lobby."""
         if lobby_id not in self.lobbies:
@@ -140,7 +165,7 @@ class GameEngine:
             return True
 
         new_player = PlayerModel(
-            id=player_id, username=username, character=character, is_ready=False
+            id=player_id, username=username, character=character, is_ready=False, user_id=user_id
         )
         lobby.players.append(new_player)
         logger.info("player_joined", lobby_id=lobby_id, player_id=player_id)
@@ -179,10 +204,30 @@ class GameEngine:
             # Auto-assign if not already assigned
             unassigned = [p for p in lobby.players if p.team_id is None]
             if unassigned:
-                # Simple round-robin assignment between team_a and team_b
-                teams = ["team_a", "team_b"]
-                for i, player in enumerate(unassigned):
-                    player.team_id = teams[i % 2]
+                # Count current team assignments
+                team_counts = {"team_a": 0, "team_b": 0}
+                for p in lobby.players:
+                    if p.team_id == "team_a":
+                        team_counts["team_a"] += 1
+                    elif p.team_id == "team_b":
+                        team_counts["team_b"] += 1
+                # Assign unassigned players to balance teams, max 5 per team
+                for player in unassigned:
+                    if team_counts["team_a"] <= team_counts["team_b"]:
+                        if team_counts["team_a"] < 5:
+                            player.team_id = "team_a"
+                            team_counts["team_a"] += 1
+                        elif team_counts["team_b"] < 5:
+                            player.team_id = "team_b"
+                            team_counts["team_b"] += 1
+                        # If both teams full (should not happen with 10 player limit), leave unassigned
+                    else:
+                        if team_counts["team_b"] < 5:
+                            player.team_id = "team_b"
+                            team_counts["team_b"] += 1
+                        elif team_counts["team_a"] < 5:
+                            player.team_id = "team_a"
+                            team_counts["team_a"] += 1
         elif lobby.game_mode == "word_race":
             # Generate target words from the board
             all_words = self.board_gen.find_all_words(self.validator.get_word_set())
@@ -196,6 +241,9 @@ class GameEngine:
             lobby.mode_settings["round_duration"] = 60
             lobby.mode_settings["powerup_drop_interval"] = 15
             lobby.mode_settings["current_round"] = 1
+            lobby.mode_settings["max_rounds"] = 3
+            lobby.mode_settings["round_timer"] = 60
+            lobby.mode_settings["next_powerup_drop"] = 15  # seconds until next drop
             lobby.mode_settings["powerup_drops"] = []
 
         lobby.status = "countdown"
@@ -531,6 +579,8 @@ class GameEngine:
         lobby.status = "lobby"
         lobby.board = []
         lobby.timer = 0
+        lobby.target_words = []  # Clear target words (word_race specific)
+        lobby.mode_settings = {}  # Clear mode settings (timed_attack specific)
 
         # Reset all players
         for p in lobby.players:
