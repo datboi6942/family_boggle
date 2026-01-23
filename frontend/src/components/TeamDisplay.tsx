@@ -38,41 +38,41 @@ export const TeamDisplay = () => {
   const currentPlayer = players.find(p => p.id === playerId);
   const currentTeamId = currentPlayer?.team_id;
 
-  return (
-     <div className="frosted-glass p-3 sm:p-4 mb-0">
-       <h3 className="text-center font-bold text-primary mb-2 sm:mb-3">TEAMS</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4">
-        {sortedTeams.map(([teamId, teamPlayers]) => {
-          const score = teamScores[teamId];
-          const isMyTeam = teamId === currentTeamId;
-          return (
-            <motion.div
-              key={teamId}
-              layout
-               className={`p-3 sm:p-4 rounded-xl ${isMyTeam ? 'border-2 border-primary bg-primary/10' : 'bg-white/5 border border-white/10'}`}
-            >
-              <div className="flex justify-between items-center mb-2">
-                 <h4 className="font-bold text-white text-sm sm:text-base">
-                  {teamId.toUpperCase().replace('TEAM_', 'TEAM ')}
-                  {isMyTeam && <span className="ml-2 text-xs text-primary">(YOU)</span>}
-                </h4>
-                 <div className="text-lg sm:text-xl font-black text-primary">{score}</div>
-              </div>
-              <div className="space-y-2">
-                {teamPlayers.map(player => (
-                   <div key={player.id} className="flex justify-between items-center text-xs sm:text-sm">
-                    <span className="text-white/80 truncate">{player.username}</span>
-                    <span className="font-bold text-white">{player.score || 0}</span>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          );
-        })}
-      </div>
-       <p className="text-xs text-white/30 mt-2 sm:mt-3 text-center">
-        Team scores are updated in real-time
-      </p>
-    </div>
-  );
+   return (
+      <div className="frosted-glass p-2 sm:p-3 mb-0 max-h-36 overflow-y-auto">
+        <h3 className="text-center font-bold text-primary text-sm mb-1">TEAMS</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2">
+         {sortedTeams.map(([teamId, teamPlayers]) => {
+           const score = teamScores[teamId];
+           const isMyTeam = teamId === currentTeamId;
+           return (
+             <motion.div
+               key={teamId}
+               layout
+                className={`p-2 sm:p-3 rounded-lg ${isMyTeam ? 'border-2 border-primary bg-primary/10' : 'bg-white/5 border border-white/10'}`}
+             >
+               <div className="flex justify-between items-center mb-1">
+                  <h4 className="font-bold text-white text-xs sm:text-sm">
+                   {teamId.toUpperCase().replace('TEAM_', 'TEAM ')}
+                   {isMyTeam && <span className="ml-1 text-xs text-primary">(YOU)</span>}
+                 </h4>
+                  <div className="text-base sm:text-lg font-black text-primary">{score}</div>
+               </div>
+               <div className="space-y-1">
+                 {teamPlayers.map(player => (
+                    <div key={player.id} className="flex justify-between items-center text-xs">
+                     <span className="text-white/80 truncate">{player.username}</span>
+                     <span className="font-bold text-white">{player.score || 0}</span>
+                   </div>
+                 ))}
+               </div>
+             </motion.div>
+           );
+         })}
+       </div>
+        <p className="text-xs text-white/30 mt-1 text-center">
+         Team scores are updated in real-time
+       </p>
+     </div>
+   );
 };

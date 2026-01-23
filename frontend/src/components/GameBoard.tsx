@@ -708,23 +708,23 @@ export const GameBoard = () => {
    const me = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
 
     const hasExtraDisplay = gameMode === 'word_race' || gameMode === 'team';
-   const gridRows = hasExtraDisplay ? 'auto auto 1fr 80px' : 'auto 1fr 80px';
-   const boardOffset = hasExtraDisplay ? '400px' : '280px';
+   const gridRows = hasExtraDisplay ? 'auto minmax(0, 140px) 1fr 80px' : 'auto 1fr 80px';
+   const boardOffset = hasExtraDisplay ? '300px' : '220px';
 
    return (
     <div
       className="game-board-container grid bg-navy-gradient text-white select-none p-2 overflow-hidden"
-      style={{
-        height: 'calc(100svh - 50px)', // Aggressively shrink to guarantee power-ups visible above browser chrome
-        maxHeight: 'calc(-webkit-fill-available - 50px)', // iOS Safari fallback
-        paddingTop: 'env(safe-area-inset-top, 8px)',
-        paddingBottom: '16px',
-         gridTemplateRows: gridRows, // Header, [TargetWords/Team], Board, Power-ups (80px for visibility)
-      }}
+       style={{
+         height: 'calc(100svh - 30px)', // Less aggressive shrink to prevent cropping
+         maxHeight: 'calc(-webkit-fill-available - 30px)', // iOS Safari fallback
+         paddingTop: 'env(safe-area-inset-top, 8px)',
+         paddingBottom: '8px',
+          gridTemplateRows: gridRows, // Header, [TargetWords/Team], Board, Power-ups (80px for visibility)
+       }}
     >
-      {/* Header */}
-      {/* iOS: use ios-pulse (transform-based) instead of animate-pulse (opacity-based) */}
-      <div className={`py-1 ${isFrozen ? 'ios-pulse text-blue-400' : ''}`}>
+       {/* Header */}
+       {/* iOS: use ios-pulse (transform-based) instead of animate-pulse (opacity-based) */}
+       <div className={`py-1 row-start-1 ${isFrozen ? 'ios-pulse text-blue-400' : ''}`}>
         <div className="flex justify-between items-center gap-2">
           {/* Timer */}
           <div className={`frosted-glass px-3 py-2 flex items-center space-x-2 shrink-0 ${isFrozen ? 'border-blue-400 border-2' : ''}`}>
@@ -829,13 +829,13 @@ export const GameBoard = () => {
        </div>
 
         {/* Target Words Display for word_race mode */}
-        {gameMode === 'word_race' && <TargetWordsDisplay />}
+        {gameMode === 'word_race' && <div className="row-start-2"><TargetWordsDisplay /></div>}
 
         {/* Team Display for team mode */}
-        {gameMode === 'team' && <TeamDisplay />}
+        {gameMode === 'team' && <div className="row-start-2"><TeamDisplay /></div>}
 
        {/* The Board - Constrained square container that fits in available space */}
-      <div className="flex items-center justify-center overflow-hidden min-h-0 py-1">
+       <div className="flex items-center justify-center overflow-hidden min-h-0 py-1 row-start-3">
         <div
           className={`relative w-full transition-all duration-300 rounded-2xl ${
             isFrozen
@@ -845,10 +845,11 @@ export const GameBoard = () => {
                 : ''
           }`}
            style={{
-             aspectRatio: '1/1',
-             maxWidth: `min(100%, calc(100svh - ${boardOffset}))`,
-             maxHeight: `calc(100svh - ${boardOffset})`,
-          }}
+              aspectRatio: '1/1',
+              width: '100%',
+              maxWidth: `min(100%, calc(100svh - ${boardOffset}))`,
+              maxHeight: `min(100%, calc(100svh - ${boardOffset}))`,
+           }}
         >
           {/* Frost overlay when frozen */}
           {isFrozen && (
@@ -917,7 +918,9 @@ export const GameBoard = () => {
       </div>
 
        <PowerupDropNotifications />
-       <PowerUpBar playerId={playerId} players={players} isLockArmed={isLockArmed} />
+        <div className="row-start-4">
+          <PowerUpBar playerId={playerId} players={players} isLockArmed={isLockArmed} />
+        </div>
 
       <LockProtectionAnimation lockJustConsumed={lockJustConsumed} />
 
